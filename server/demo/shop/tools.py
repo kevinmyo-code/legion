@@ -15,6 +15,8 @@ quantities and code prices them from the catalogue.
 - `shop_find`: a catalogue lookup. Read.
 - `shop_quote`: prices the order and reads it back, asking for a yes. Keeps the quote on the visit
   (a cart, not an order), so not a write, and it ends the turn: the yes must be the visitor's.
+  Code reads the shopper's own words first (`wants_to_buy`): while they are still asking, nothing
+  is priced.
 - `shop_place_order`: places the quoted order, only in a turn AFTER the read-back. A write.
 - `shop_handoff`: "let me get someone". Says where the callback form is, or, with the switch off
   or the day's callbacks used up, that no person can be reached from here.
@@ -276,7 +278,10 @@ def _find(request, arguments: dict) -> ToolResult:
     # money check backs a figure only from the turn's tool text (`speech_rules.backed_cents`).
     text = "\n".join(lines) + (
         f"\nPolicies: {POLICY}\nSay prices exactly as written. Stock and the bundle above are the "
-        "only ones there are."
+        "only ones there are. Use a product's own words above to say why it suits what they told "
+        "you. With more than one product of the same kind here, name both prices and what "
+        "separates them before you recommend one. What a product 'goes with' is offered only "
+        "after they say they want that product."
     )
     data = {
         "items": items,
@@ -344,10 +349,59 @@ def _readback(q: catalogue.Quote) -> tuple[str, ...]:
     return tuple(said)
 
 
+NO_INTENT = (
+    "Nothing was quoted: their own words do not say they want to buy yet. Recommend a product "
+    "and say why it suits what they told you, or ask whether to put it in an order, and quote "
+    "only once they say yes."
+)
+# Words that commit to this purchase. Checked first, so a message that both asks and commits
+# ("which one? I'll take the 40L") still quotes. Bare "buy" is not here: "which one should I
+# buy?" is a question.
+_BUY = re.compile(
+    r"\b(buy (it|that|this|them|the|a|one|two|both)|purchas\w*|checkout|check out|"
+    r"ring (it|me|that) up|"
+    r"add (it|that|them|this|those|one|two|the|a|some)|"
+    r"order (it|that|this|them|the|a|one|two|both|please|now)|place (the|my|that) order|"
+    r"(i|we)(?:'|’)?(?:ll| will|d| would) (take|have|get|go with|buy|order|do)|"
+    r"(i|we)(?:'|’)?(?:d| would) like (the|a|one|two|both|that|this|it)|"
+    r"let(?:'|’)?s (do|get|take|buy|order)|sign me up|i(?:'|’)?m sold)\b",
+    re.I,
+)
+# Asking for advice or a listing, not ordering. A blocklist on purpose, and a short one: a
+# refused real order is worse for this demo than an early read-back, so only a message that
+# plainly asks for advice or what the shop has is held back. "One headlamp please" is an order
+# and passes. A price question is not here: code's read-back is how a total is ever said at all,
+# and the placing guard (`is_yes`, below) is what keeps a price question from buying anything.
+# "Cheaper" is not here either: it is the objection turn, where the frame steers the rep to the
+# cheaper product and the shopper then takes it. Nor is a past "recommended" or "suggested":
+# that is the shopper taking what the rep just put up, which is the whole point of consulting.
+_BROWSING = re.compile(
+    r"\b(recommend(s|ing)?\b|suggest(s|ing)?\b|what (do|are|is|have)|what(?:'|’)?s|"
+    r"what (sort|kind|type)s? of|which (one|of|is)|"
+    r"any (ideas|suggestions|recommendations)|help me (choose|pick|decide)|"
+    r"(just )?(looking|browsing)|difference|not sure|thinking about|tell me about|"
+    r"what about|options?)\b",
+    re.I,
+)
+
+
+def wants_to_buy(words: str) -> bool:
+    """True when the shopper's own message may be priced into an order ("One headlamp please",
+    "I'll take the 40L", "the cheaper one then", "the one you recommended"); False while they are
+    still asking ("recommend me a pack", "which one is lighter?", "tell me about the tent"). A
+    yes alone passes, because nothing in it asks: what a yes may PLACE is `is_yes`'s business."""
+    text = words or ""
+    return bool(_BUY.search(text)) or not _BROWSING.search(text)
+
+
 def _quote(request, arguments: dict) -> ToolResult:
     visit = scenario.visit_of(request.user)
     if visit is None:
         return refused(NOT_A_VISIT)
+    # A read-back with a total is the cart, so it needs the shopper's own intent, not the rep's
+    # eagerness (the live run of 2026-11-24 offered to add something on every turn, unasked).
+    if not wants_to_buy(read_through.heard_words(request)):
+        return refused(NO_INTENT)
     items, problem = _items(arguments)
     if problem:
         return refused(problem)
