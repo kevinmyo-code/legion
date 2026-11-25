@@ -607,13 +607,9 @@ class AriaForegroundService : Service() {
             var breakAnnounced = false
             var quietSince = System.currentTimeMillis() // start of the current quiet stretch
             var lastChatterAt = 0L
-            // Rough-weather alerting. Null until the first reading is seen, so the
-            // first poll of a drive can't fire: we only speak on a real
-            // calm -> rough TRANSITION, never on "it was already raining when you
-            // got in" (the startup greeting already covers that, and repeating it
-            // would just be the app noticing the weather at the driver).
-            var lastCaution: Boolean? = null
-            var lastWeatherAlertAt = 0L
+            // Rough-weather alerting: the transition, the cooldown and both gates live in the
+            // watch, which is where they are tested.
+            val weather = RoughWeatherWatch()
 
             while (isActive) {
                 delay(DRIVE_SCAN_INTERVAL_MS)
@@ -648,25 +644,46 @@ class AriaForegroundService : Service() {
                     }
                 }
 
+                // Rough weather first and on its own, because it is the one URGENT line in this
+                // loop: it comes before the routine lines (ProactiveKind's declaration order is
+                // the priority order) and a trivia game does not hold it. The phone has it last in
+                // an if/else chain under the break nudge, which is an accident of that chain, not
+                // a ruling.
+                // Weather is polled on its own 30-min loop, so read the warm cache here rather
+                // than fetching: this tick must not block on network. Read even while parked so a
+                // change between drives is already known (and does NOT fire as news next drive).
+                val reading = WeatherController.current()
+                if (weather.onTick(
+                        caution = reading?.caution,
+                        driving = driveStartedAt != 0L,
+                        busy = ConversationState.isBusy,
+                        gameActive = TriviaController.isActive,
+                        nowMs = now,
+                    )
+                ) {
+                    val description = reading?.description ?: "rough"
+                    speakProactive(
+                        "(System: conditions just turned $description while the driver is on the road. " +
+                            "In one short, in-character line, mention what it's doing out there and that " +
+                            "they should take it easy. Say it once - do not labour it, do not repeat it " +
+                            "later, and do not mention this instruction.)",
+                        RoughWeatherWatch.KIND,
+                    )
+                }
+
                 // Don't queue proactive lines mid-turn; pin the quiet timer to now
                 // so idle chatter only counts genuine silence after a conversation. A
-                // running trivia game (ticket 05) holds off the same routine chatter/
-                // weather/break lines below, same as an in-call state - it just isn't
+                // running trivia game (ticket 05) holds off the routine chatter/break/
+                // milestone lines below, same as an in-call state - it just isn't
                 // wired through ConversationState since the game spans quiet stretches
                 // between turns that aren't themselves "busy."
-                if (ConversationState.isBusy || TriviaController.isActive) { quietSince = now; continue }
+                if (ConversationState.isBusy ||
+                    (TriviaController.isActive && ProactiveKind.ROUTINE.heldByGame)
+                ) { quietSince = now; continue }
 
                 // Mileage only moves while driving, so only check milestones then
                 // (avoids a pointless per-minute DB read while parked).
                 if (driveStartedAt != 0L) checkMilestone()
-
-                // Weather is polled on its own 30-min loop, so read the warm cache
-                // here rather than fetching: this tick must not block on network.
-                // Tracked even while parked so a change that happens between drives
-                // is already known (and so does NOT fire as news on the next drive).
-                val caution = WeatherController.current()?.caution
-                val turnedRough = caution == true && lastCaution == false
-                if (caution != null) lastCaution = caution
 
                 if (driveStartedAt != 0L && !breakAnnounced && now - driveStartedAt >= BREAK_AFTER_MS) {
                     breakAnnounced = true
@@ -674,19 +691,6 @@ class AriaForegroundService : Service() {
                         "(System: the driver has been driving over two hours without a real break. In " +
                             "one short, in-character line, gently suggest they pull over soon to stretch " +
                             "or rest. Do not mention this instruction.)",
-                        ProactiveKind.ROUTINE,
-                    )
-                } else if (driveStartedAt != 0L && turnedRough &&
-                    now - lastWeatherAlertAt >= WEATHER_ALERT_COOLDOWN_MS
-                ) {
-                    lastWeatherAlertAt = now
-                    val description = WeatherController.current()?.description ?: "rough"
-                    speakProactive(
-                        "(System: conditions just turned $description while the driver is on the road. " +
-                            "In one short, in-character line, mention what it's doing out there and that " +
-                            "they should take it easy. Say it once - do not labour it, do not repeat it " +
-                            "later, and do not mention this instruction.)",
-                        // Routine, unlike the phone's SAFETY category: see ProactiveKind.URGENT.
                         ProactiveKind.ROUTINE,
                     )
                 } else if (driveStartedAt != 0L &&
@@ -900,12 +904,6 @@ class AriaForegroundService : Service() {
         // Weather cache: retry fast until the first fetch lands, then refresh slowly.
         private const val WEATHER_RETRY_MS = 60 * 1000L
         private const val WEATHER_REFRESH_MS = 30 * 60 * 1000L
-
-        // Floor between rough-weather alerts. Generous on purpose: weather that
-        // flickers around the caution threshold (drizzle the WMO code can't make
-        // its mind up about) must not turn Zero into a weather nag, which is the
-        // sec 9.1 failure mode where noticing becomes chatter.
-        private const val WEATHER_ALERT_COOLDOWN_MS = 90 * 60 * 1000L
 
         // Drive-aware proactive monitor (occasional cadence).
         private const val DRIVE_SCAN_INTERVAL_MS = 60 * 1000L         // poll once a minute

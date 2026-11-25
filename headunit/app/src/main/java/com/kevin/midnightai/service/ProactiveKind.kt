@@ -20,14 +20,16 @@ package com.kevin.midnightai.service
  */
 enum class ProactiveKind {
     /**
-     * Something is wrong now and waiting would cost the driver: a fresh trouble code, an overheat.
-     * The phone files these under its `SAFETY` category.
+     * Something is wrong now and waiting would cost the driver: a fresh trouble code, an overheat,
+     * rough weather on the road. The phone files all three under its `SAFETY` category
+     * (`new_trouble_code`, `coolant_overheat`, `rough_weather_driving`), and so does this.
      *
-     * Rough weather is deliberately NOT one of these here, though the phone's SAFETY category
-     * includes it: `headunit/CLAUDE.md` sec 4.3 counts the rough-weather line with the routine ones
-     * a trivia game holds off ("idle chatter/weather/arrival hold off; urgent alerts still fire"),
-     * and the unit's own code has always treated it that way. Left as it is and named as a
-     * difference from the phone rather than changed inside a goodbye fix.
+     * Rough weather used to be [ROUTINE] here, which `headunit/CLAUDE.md` sec 4.3 described by
+     * grouping it with the lines a trivia game holds off. Kevin's standing rule is that Moose
+     * behaves like Alfred and only his personality differs, so it is URGENT now: it survives a
+     * goodbye and a running game does not hold it ([heldByGame]). The phone has no game to compare
+     * against, and the nearest thing it does have agrees - an active alarm blocks every category
+     * except SAFETY (`ProactiveBus`).
      */
     URGENT,
 
@@ -40,11 +42,18 @@ enum class ProactiveKind {
 
     /**
      * Everything unprompted that can wait: the startup opener, idle chatter, an odometer
-     * milestone, an arrival reminder, open recalls, rough weather, the two-hour break nudge, a
-     * trivia game's final score, an incoming-call heads-up.
+     * milestone, an arrival reminder, open recalls, the two-hour break nudge, a trivia game's
+     * final score, an incoming-call heads-up.
      */
     ROUTINE;
 
     /** Whether a goodbye keeps this line back instead of dropping it (ruled 2026-11-24). */
     val survivesGoodbye: Boolean get() = this != ROUTINE
+
+    /**
+     * Whether a running trivia game holds this line back (`headunit/CLAUDE.md` sec 4.3: the game
+     * counts as busy for routine proactives, urgent alerts still fire). A driver asking for
+     * something mid-game never reaches a gate at all, so [REQUESTED] is not held either.
+     */
+    val heldByGame: Boolean get() = this == ROUTINE
 }
