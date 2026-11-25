@@ -55,7 +55,7 @@ left is one static JSON file this repo already had the data for, and one on-devi
    publishes. Emitting `board.json` beside `index.html` costs one function and removes the entire
    sync: no API, no PAT, no rate limits, and no delete-discipline problem, because the file is
    rebuilt whole every time so a resolved ticket cannot linger.
-3. **Read-through.** Kevin: *"its company's azure, but its all my own projects, solo dev work."*
+3. **Read-through.** Kevin: the Azure organisation is his employer's, the work items all his own.
    That weakens section 7's third-party concern - it is his own writing - but not the company's
    ownership of the tenant. Querying live and discarding satisfies section 7 natively instead of
    carving an exception out of it, and costs a second of latency on a question asked occasionally.

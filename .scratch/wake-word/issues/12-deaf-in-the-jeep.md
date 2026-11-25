@@ -15,9 +15,9 @@ tags: [ticket]
 
 ## Question
 
-Kevin, 2026-08-20, the first time he used the working wake word in the world: *"just has a less
-sensitive input than usual voice, like in the car (jeep) it didnt activate at all, but outside it
-did."*
+Kevin, 2026-08-20, the first time he used the working wake word in the world: pickup is less
+sensitive than for ordinary speech - in the Jeep it did not activate at all, while outside it
+did.
 
 **The car is the whole point of this feature.** A wake word that works standing in a driveway and
 not while driving has failed at the only place it matters.

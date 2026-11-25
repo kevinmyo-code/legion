@@ -14,8 +14,8 @@ tags: [ticket]
 
 # Build: a livelier register for Alfred
 
-**Kevin, 2026-10-28:** *"right now he sounds very generic, maybe because its alfred, can we make him
-more lively and have a bit of personality? like you know how tony stark's jarvis talks"*. The same
+**Kevin, 2026-10-28:** found Alfred's voice generic and asked for a livelier register with some
+personality, naming Tony Stark's JARVIS as the reference. The same
 day's on-device audit (ticket 05's `LIVE_AUDIT` log) showed every answer correct and every answer
 flat: a fixed holding line before each lookup, a bare figure with no read on it, and a stock butler
 sign-off. Phone only, branch `feat/async-read-tools`.

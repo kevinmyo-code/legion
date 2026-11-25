@@ -12,8 +12,8 @@ tags: [map]
 
 # Worker workflows
 
-**Kevin, 2026-11-09:** *"legion can call u or the worker session. So certain repeated things can
-turn into workflows etc."* Planned 2026-11-09 and kept local until Kevin said build; he did on
+**Kevin, 2026-11-09:** LEGION can call the assistant or the worker session, so repeated things can
+turn into workflows. Planned 2026-11-09 and kept local until Kevin said build; he did on
 2026-11-10 (*"yeah as per ur recs"*), and the engine and worker half is built on
 `feat/worker-workflows` (see Build status). Two parts:
 

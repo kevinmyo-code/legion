@@ -15,8 +15,8 @@ tags: [ticket]
 
 ## The report
 
-Kevin, from a real drive, 2026-08-21: *"transcript subtitles say sir? but nothing is said on
-speakers. same with spotify skip track etc. i see the subtitles but dont hear anything."*
+Kevin, from a real drive, 2026-08-21: reported that the transcript subtitles appeared but nothing
+came out of the speakers, for the assistant's replies and for Spotify track skips alike.
 
 Everything else in that drive worked - all Spotify functions verified, wake word acceptable.
 

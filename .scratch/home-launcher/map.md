@@ -12,11 +12,11 @@ tags: [map]
 
 # HOME becomes a launcher, lists become real lists, and the look goes soft
 
-**Kevin, 2026-09-27, on the Android app:** *"i want a complete redesign of the home page. right now
-it needs scrolling. a calendar, then lists then whatever scrolls down. i want a single non scrolling
-landing page with buttons i can click to open up and navigate to different pages and reports. every
-list should be like a card icon that i can open. the lists now also doesnt look very appealing. it
-should look like an actual list."*
+**Kevin, 2026-09-27, on the Android app:** asked for a complete redesign of the home page. Today it
+scrolls through a calendar, then lists, then whatever follows. He wants a single non-scrolling
+landing page of buttons that open and navigate to the other pages and reports, with every list as a
+card icon he can open, and the lists themselves looking like actual lists rather than their present
+shape.
 
 ## What was true on 2026-09-27
 

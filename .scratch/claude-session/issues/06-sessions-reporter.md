@@ -14,8 +14,8 @@ tags: [ticket]
 
 # Build: sessions reporter
 
-Kevin, 2026-10-28: *"ask it progress, whats it doing what projects, not just on this laptop but on
-my work laptop as well."* Read-only.
+Kevin, 2026-10-28: asked to be able to query a session's progress, what it is doing and on which
+projects, across both the Alienware and the work laptop. Read-only.
 
 - `tools/claude_session/session_hook.py` (stdlib): run by `SessionStart`, `UserPromptSubmit`,
   `Stop`, `SessionEnd` hooks in Kevin's interactive `~/.claude/settings.json` on each machine.

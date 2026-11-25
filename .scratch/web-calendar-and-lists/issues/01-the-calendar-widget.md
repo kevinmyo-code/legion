@@ -46,8 +46,8 @@ selected (today by default).
 
 `Event.activeByKindInLocalWindow`'s doc comment records it: an all-day row's `startsAt` is UTC
 midnight of its date, NOT a device-zone instant, so bucketing by a naive local-day conversion
-moves it to the adjacent day. This bit the Android app on 2026-09-01 (*"the due dates seem to be
-advanced by 1 day"*) and `lib/horizon.ts` on the web already had to solve it once.
+moves it to the adjacent day. This bit the Android app on 2026-09-01 (Kevin reported due dates
+showing a day late) and `lib/horizon.ts` on the web already had to solve it once.
 
 **Read `lib/horizon.ts` first and reuse its day bucketing.** Do not write a second date-bucketing
 function in a component; if the logic needs to grow, it grows in `lib/` where it is testable.

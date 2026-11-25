@@ -13,9 +13,8 @@ tags: [ticket]
 
 # Decision: PDF text that refits
 
-Kevin, 2026-10-23: *"for books, sometimes the font is too small. i wanna make it bigger but its just a
-zoom on the pdf screen. how can we make the fonts refit instead? do we convert the pdf to something
-else ourselves?"*
+Kevin, 2026-10-23: asked whether a book's text could refit at a larger font instead of only zooming
+the PDF page, and whether LEGION should convert the PDF itself.
 
 A PDF is fixed layout: `PdfRenderer` draws a picture of a page, so bigger means zoom. EPUB already
 refits (Readium, the reader's A+ / A-). Options put to Kevin: get the EPUB edition, convert on the

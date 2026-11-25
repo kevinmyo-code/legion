@@ -142,7 +142,7 @@ of `tools/bofa_pull.py`, commented "last seen working 2026-09-28".
 **Kevin, 2026-09-27:** *"yes that works instead of me manually navigating the page and putting it on
 the drive folder."* **2026-09-28:** *"it might also be mid month transaction history pulls no?
 statements only come end of month"*, *"i want the ledger daily"*, and, offered a bank feed
-(SimpleFIN) for zero-effort daily freshness, *"nvm i'll login daily."*
+(SimpleFIN) for zero-effort daily freshness, he chose to sign in daily himself instead.
 
 ## Rulings
 

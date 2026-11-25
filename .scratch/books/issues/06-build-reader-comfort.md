@@ -14,8 +14,8 @@ tags: [ticket]
 
 # Build: reader comfort
 
-Kevin, 2026-10-23: *"and also a full screen mode for reading. and a day night dark mode toggle + like a
-daylight filter u know that blue light filter thingy we have on our laptops display settings"*
+Kevin, 2026-10-23: asked for a full-screen reading mode, a day/night toggle, and a blue-light filter
+of the kind a laptop display offers.
 
 Today (traced): the reader has Day / Sepia / Night in `books/ReaderSettings.kt`, applied to EPUB only.
 PDF pages (`PdfRenderer` bitmaps) and comics always render as drawn, so Night does nothing there. No

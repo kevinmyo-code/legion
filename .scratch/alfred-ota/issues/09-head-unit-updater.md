@@ -13,8 +13,8 @@ tags: [ticket]
 ---
 # Head unit updater: check, download, verify, tap to install
 
-Split out of [08](08-later.md)'s "Head unit" bullet. **Kevin, 2026-11-06:** *"can the headunit
-also receive updates like this instead of me having to install a new apk everytime"* ... *"yes"*.
+Split out of [08](08-later.md)'s "Head unit" bullet. **Kevin, 2026-11-06:** asked whether the head
+unit could receive the same updates instead of a new APK install each time, and *"yes"*.
 
 ## What
 
@@ -128,7 +128,7 @@ Settings, so a car build carries no dev key, and no published APK puts one in th
 
 ## Also on this branch: the phone's models (Kevin, 2026-11-06)
 
-*"seemed the car build had outdated models? can u check"*, so Kevin's one manual install carries
+Kevin asked whether the car build still carried outdated models, so his one manual install carries
 both. Live moved from `gemini-3.1-flash-live-preview` to `models/gemini-3.8-live` with the phone's
 3.8 rules (`service/LiveSetup.kt`): every declaration `BLOCKING`, no `thinkingConfig` /
 `proactivity` / `enableAffectiveDialog`, root `voiceActivity` ACTIVITY_START cancels the idle

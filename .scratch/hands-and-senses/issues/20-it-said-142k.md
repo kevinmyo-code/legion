@@ -15,8 +15,8 @@ tags: [ticket]
 
 ## Question
 
-Kevin, 2026-08-20: *"ai just said jeep was at 142k miles. its clearly not, the fleet tab says 199k"*
-(199,621 mi).
+Kevin, 2026-08-20: reported the assistant saying the Jeep was at 142k miles when the fleet tab
+showed 199k (199,621 mi).
 
 ### What was ruled out, by reading his real database off the phone
 

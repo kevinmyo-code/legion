@@ -26,7 +26,8 @@ out of, and it was the grill's question B:
 
 ### The fact that changed the weighting
 
-Kevin, 2026-09-01: *"its company's azure, but its all my own projects, solo dev work."*
+Kevin, 2026-09-01: the Azure DevOps organisation is his employer's, but the work items in it are
+all his own solo projects.
 
 That matters in one direction and not the other. **Section 7's concern is much weaker** - the work
 items are Kevin's own writing, not a colleague's, so this is not other-people's-prose the way mail

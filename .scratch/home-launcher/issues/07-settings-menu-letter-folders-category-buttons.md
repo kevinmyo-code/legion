@@ -30,10 +30,10 @@ tags: [ticket]
 
 # Settings menu, letter folders in Apps, and category buttons under the dock
 
-**Kevin, 2026-10-02:** *"currently top right has settings icon but that opens the app's settings. i
-want it to open a modal or a dropdown where i can choose the phone's settings or the app settings.
-and the app tray i want it to be organized in folders of alphabets. we should have native button
-(like not custom pinned app buttons) for things like banking, music, navigation, email etc."*
+**Kevin, 2026-10-02:** asked for three things. The top-right settings icon opens only the app's
+settings today; it should open a modal or dropdown offering the phone's settings or the app's. The
+app tray should be organised into alphabet folders. And there should be built-in category buttons,
+distinct from the custom pinned apps, for things like banking, music, navigation and email.
 
 Asked what a category button opens: *"you pick each app. but if theres multiple, like gmail and
 outlook, i should be able to choose multiple too."* Shown three clickable trays

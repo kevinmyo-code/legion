@@ -91,7 +91,7 @@ theory rather than the record, narrowing the music invisibly.
 ### 4. The seed
 
 **A (the current track), B (the drive itself), C (a spoken mood). D is dropped** - Kevin does not say
-"play me something": *"i ususally say hey im on a mood for retro synth music."* **C is the primary
+"play me something"; he usually asks by mood or genre, retro synth for one. **C is the primary
 path**, which matters, because a genre request is the one shape none of his first-party data is
 labelled for.
 

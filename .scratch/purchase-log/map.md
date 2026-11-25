@@ -12,9 +12,9 @@ tags: [map]
 
 # The household bought log
 
-**Kevin, 2026-10-04:** *"wife wants to be able to keep track when we bought certain household
-items. like shampoo etc. need a good system to track it. either from groceries checklist, or by her
-manually logging in her own notepad either by voice or by hand."*
+**Kevin, 2026-10-04:** asked for a way to track when household items such as shampoo were last
+bought, fed either from the groceries checklist or from entries another member logs by hand or by
+voice in a notepad of their own.
 
 ## Destination
 

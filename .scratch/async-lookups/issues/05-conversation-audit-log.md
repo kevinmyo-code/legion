@@ -14,8 +14,8 @@ tags: [ticket]
 
 # Build: conversation audit log in logcat
 
-**Kevin, 2026-10-28**, after testing the non-blocking lookups on the A25: *"cant u like record what
-i say in the logs too so u can see everything and audit"*. A `LIVE_LATENCY` capture shows timings
+**Kevin, 2026-10-28**, after testing the non-blocking lookups on the A25: asked that what he says
+be recorded in the logs too, so a whole conversation can be read back and audited. A `LIVE_LATENCY` capture shows timings
 and tool names but not what the user said, what the assistant said, or what a tool was asked and
 returned. The `fast` build is release-shaped, so Room is not readable over ADB. This log is how a
 run is audited. Phone only, branch `feat/async-read-tools`.

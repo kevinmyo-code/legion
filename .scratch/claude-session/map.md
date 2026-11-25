@@ -12,9 +12,9 @@ tags: [map]
 
 # Claude session: Alfred talks to Claude Code on Kevin's laptops
 
-**Kevin, 2026-10-29:** *"how can i get the ai to do something that claude code could do. like finding
-something, booking an appointment etc ... writing small custom code, python scripts etc if i wanted a
-pdf parsed."* Specified by interview the same day (*"lets spec this first"*, *"dont build it yet"*).
+**Kevin, 2026-10-29:** asked how the assistant could do what Claude Code can: find something, book
+an appointment, or write small custom code such as a Python script to parse a PDF.
+Specified by interview the same day (*"lets spec this first"*, *"dont build it yet"*).
 Replaces the same-day `.scratch/clerk/` chart; the name "clerk" is retired.
 
 ## Destination
@@ -80,9 +80,9 @@ machine. The same is reachable by hand on the Claude session screen.
     run is decided then.
 
 16. **WhatsApp dropped, Gmail instead** (Kevin 2026-11-01: *"whatsapp is abit hard then, gmail is
-    much easier yeah, lets keep gmail then"*). Use case kept: *"ask alfred to open a claude
-    session, use it to find something on the internet, summarize it in a file format i want, and
-    then get that claude session to send it to my whatsapp number"*, delivered by mail from
+    much easier yeah, lets keep gmail then"*). Use case kept: Alfred opens a Claude session, that
+    session finds something on the internet and summarises it into the file format asked for, and
+    the session then sends it on to him, delivered by mail from
     Alfred's Gmail (ruling 14) instead. WhatsApp Cloud API was chosen then dropped the same day for
     its setup (Meta business account, spare number, 24 h window, templates).
 17. **Naming your own email in the request is the yes** for that one task ("...and email it to

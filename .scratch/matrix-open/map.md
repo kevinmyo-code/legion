@@ -9,8 +9,8 @@ tags: [map]
 
 # Matrix mode blocks feeds, not everything
 
-**Kevin, 2026-10-24:** *"i just need to stop the social media apps... basically everything thats not a
-distraction or causes me to doomscroll should stay."* Decided by interview. ADR 0062 amendment
+**Kevin, 2026-10-24:** the goal is to stop the social media apps; everything that is not a
+distraction stays. Decided by interview. ADR 0062 amendment
 2026-10-24; `decisions.md` 2026-10-24.
 
 ## Destination

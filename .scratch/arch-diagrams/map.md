@@ -12,10 +12,9 @@ tags: [map]
 
 # Architecture diagrams that pop up
 
-**Kevin, 2026-11-05:** *"can we add the project architecture diagrams like uml layers, views etc.
-so a technical interviewer could ask and the diagrams pop up?"*, then *"same for all projects. so
-legion, midcon, quanex even?"* and *"same with my agentic coding workflows, something that
-visualizes"*.
+**Kevin, 2026-11-05:** asked for project architecture diagrams (UML layers, views and the like)
+that pop up when a technical interviewer asks, then for the same across every project (LEGION,
+Midcon, Quanex) and for his agentic coding workflows as well.
 
 When a visitor on `/try` (or a member on the web) asks how something is built, Alfred calls
 `show_diagram(project, view, highlight)` and the picture appears as a card in the chat dock while

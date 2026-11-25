@@ -19,10 +19,10 @@ tags: [ticket]
 
 # One tab or none
 
-**Kevin, 2026-09-10:** *"thinking of retiring meters page. just everything on home page (rename it
-from calendar)"*
+**Kevin, 2026-09-10:** floated retiring the meters page, and asked for *"just everything on home
+page (rename it from calendar)"*.
 
-*"Thinking of"* is the tentative half of that sentence and this ticket exists because of it.
+The meters half was floated rather than ruled, and this ticket exists because of that.
 
 ## The thing that has to be decided
 
@@ -52,9 +52,9 @@ is only worth doing if there is a real second surface, and the only candidate Ke
 news feed (ticket 07). That would make the shell HOME | NEWS. Defensible, but it decides ticket 06/07
 by the back door - a feed gets a tab before anyone has decided what a feed is allowed to keep.
 
-**C. Keep Meters.** The *"thinking of"* option. Home absorbs what Kevin wants at a glance and Meters
-stays as the tap-through index. Costs nothing, changes nothing, and leaves the duplication he is
-reacting to.
+**C. Keep Meters.** The option his tentative wording leaves open. Home absorbs what Kevin wants at a
+glance and Meters stays as the tap-through index. Costs nothing, changes nothing, and leaves the
+duplication he is reacting to.
 
 ## What the decision must also state
 

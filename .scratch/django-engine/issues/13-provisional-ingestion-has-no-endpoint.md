@@ -91,7 +91,8 @@ option 1, that sentence should stop pointing at a ticket and start stating the r
 ## Resolved 2026-09-28 (Kevin): option 2, deterministic by a Python CSV reader
 
 Kevin: *"it might also be mid month transaction history pulls no? statements only come end of
-month"*, *"i want the ledger daily"*, *"nvm i'll login daily."* The engine gets a provisional
+month"*, *"i want the ledger daily"*, and he chose to sign in daily himself rather than take a bank
+feed. The engine gets a provisional
 ingestion path. "Deterministic by what, server-side, with no PdfBox" is answered by the file type:
 BofA's activity export is CSV, and a CSV reader needs no PDF library and no LLM. All four rule 7
 conditions bind as written above. The producer is `backend-etl` ticket 09 (daily login pull, files

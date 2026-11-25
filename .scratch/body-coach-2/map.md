@@ -9,9 +9,9 @@ tags: [map]
 
 # Body coach 2: Alfred designs, tracks and recommends; the engine owns every number
 
-**Kevin, 2026-11-06.** It started as two asks by voice: *"will i be able to tell it like hey i
-wanna change the workouts. recommend me alternatives etc and change it accordingly"* and *"or ask
-it what to eat based on what i have left calorie and macro wise etc?"*. Then a full interview on the
+**Kevin, 2026-11-06.** It started as two asks by voice: whether he could tell it to change the
+workouts and recommend alternatives, and whether he could ask what to eat from the calories and
+macros he had left. Then a full interview on the
 Body aspect: *"i want alfred to be able to design track and recommend workouts diets meals etc for
 me and advise me"*, and *"i dont really need detailed screens... simple checklist of workouts to do
 and calories and macroes ive consumed + whats remaining. most of it ill do by voice... the goal is

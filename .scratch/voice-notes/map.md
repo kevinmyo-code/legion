@@ -39,7 +39,7 @@ All three from Kevin, 2026-09-01, in one pass. `memory/library/decisions.md` and
 |---|---|
 | What transcribes it | **Record to a file, batch upload.** Not the Live socket, not local Vosk |
 | Does §7 read-through bind a recording | **No.** *"drop 7 entirely. we can keep all transcripts"* - carved out for recordings, mail path untouched |
-| What is owed the room | **Nothing in-app.** *"they will know, i'll tell tem"* |
+| What is owed the room | **Nothing in-app.** Kevin tells the room himself, out of band |
 
 ### What exists today - traced 2026-09-01, not remembered
 

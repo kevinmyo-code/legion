@@ -15,7 +15,7 @@ tags: [ticket]
 
 ## Question
 
-Kevin, on a real drive, 2026-08-18: *"conversation drops after 3 turns."*
+Kevin, on a real drive, 2026-08-18: reported the conversation dropping after about three turns.
 
 ### Root cause, traced 2026-08-18
 

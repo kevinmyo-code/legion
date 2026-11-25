@@ -13,9 +13,9 @@ tags: [ticket]
 
 # Build: the daily brief
 
-Kevin, 2026-10-22: *"a personal daily digest delivered to my phone. canvas, money, car, ai news +
-topics im interested in, a morning brief basically. it should be a button, pressing it opens a modal i
-can dismiss. so i can bring it back up anytime. updates daily."*
+Kevin, 2026-10-22: asked for a personal daily digest on the phone, covering Canvas, money, car and
+AI news plus the topics he follows. A morning brief behind a button that opens a dismissible modal
+he can reopen at any time, rebuilt daily.
 
 ## Rulings
 

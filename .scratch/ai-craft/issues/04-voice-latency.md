@@ -15,8 +15,8 @@ tags: [ticket]
 
 ## Question
 
-Kevin, 2026-08-26, after using the voice agent in `bilawalsidhu/gods-eye-view`: *"his voice agent
-seemed faster and smoother than my gemini live."* That project uses the OpenAI Realtime API.
+Kevin, 2026-08-26, after using the voice agent in `bilawalsidhu/gods-eye-view`: that agent felt
+faster and smoother than LEGION's Gemini Live path. That project uses the OpenAI Realtime API.
 
 The comparison is not apples to apples (a desktop browser on wifi against a phone running a
 foreground service, a wake word engine and an OBD stack), so this ticket is not "switch to OpenAI".

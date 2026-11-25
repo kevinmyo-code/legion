@@ -15,11 +15,10 @@ tags: [ticket]
 
 From Kevin's own `/try` test on 2026-11-05:
 
-- *"the diagrams should kinda like pop up over the whole page as a modal i think, right now it
-  shows in chat but too small. but when i click to zoom its too zoomed in. so a pop up fit to page
-  modal works better"*
-- *"some questions didnt show diagrams at all"*
-- *"asking for the resume should pop up a modal thats scrollable showing my 1 page resume"*
+- Diagrams should open as a modal over the whole page, fit to the page. The in-chat card is too
+  small and click-to-zoom goes too far.
+- Some questions showed no diagram at all.
+- Asking for the resume should open a scrollable modal showing the one-page resume.
 
 ## What was built
 

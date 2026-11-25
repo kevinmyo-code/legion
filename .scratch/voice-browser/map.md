@@ -12,11 +12,8 @@ tags: [map]
 
 # Voice browser
 
-**Kevin, 2026-11-03, verbatim:**
-
-> *"can we give the phone ui its own sandbox browser like, if i ask it to find me a picture of a red
-> xj on stock height for example, i want it to be able to pull the search results up. or something
-> else, like a restaurant's menu etc."*
+**Kevin, 2026-11-03:** asked for a sandbox browser inside the phone UI, so that a spoken search (an
+image search, a restaurant's menu) pulls its results up on screen. Then, verbatim:
 
 > *"i want it to have everything chrome has, my logins, passwords etc. save cookies also. basicaly a
 > browser that i can ask alfred to control by voice"*

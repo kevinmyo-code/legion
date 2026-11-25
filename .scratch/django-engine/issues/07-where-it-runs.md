@@ -51,7 +51,7 @@ and the move is `rclone` the backup, `docker compose up`, change one URL on thre
 
 ## Decided 2026-09-05
 
-Kevin: *"i guess best is supabase > django > android/pwa?"* Database: the Supabase Postgres the data is
+Kevin sketched the layering as Supabase, then Django, then the Android app and the PWA. Database: the Supabase Postgres the data is
 already in, free tier, session pooler, Django the only writer, so ticket 10 has no data migration.
 Compute: a home box (old laptop or Pi 5) running Django + worker in compose, reached through
 Cloudflare Tunnel on Kevin's domain with Access in front (two emails); Oracle A1 as fallback. Media:
@@ -61,8 +61,8 @@ keeps the free project from pausing. Full reasoning and the rejected alternative
 
 ## Amended 2026-09-05, same night: compute is Cloud Run, not a home box
 
-Kevin: *"my github has the midconerpdash project which i put on cloudflare... it runs even if my
-laptop is off"* - and a shallow clone showed what it actually is: a Python container on **Google
+Kevin pointed at one of his own already-deployed dashboard projects as the precedent: it keeps
+refreshing with his laptop off - and a shallow clone showed what it actually is: a Python container on **Google
 Cloud Run** (`deploy.py`), a **Cloud Run Job** (`deploy_job.py`) fired by **Cloud Scheduler**
 (`install_schedule.py`), Firebase Hosting for the static page, Cloudflare in front as DNS. Its own
 Dockerfile states the reason: *"the figures have to keep refreshing when no workstation is switched

@@ -12,8 +12,8 @@ tags: [map]
 
 # Mapbox good enough that Google Maps is no longer needed
 
-**Kevin, 2026-10-23:** *"how can we improve our mapbox capabilities to the point where i dont use google
-maps anymore"*, then *"right now its always night mode. hard to see sometimes. i like google maps day and
+**Kevin, 2026-10-23:** asked how to improve Mapbox to the point of no longer needing Google
+Maps, then *"right now its always night mode. hard to see sometimes. i like google maps day and
 night mode styles theyre easy to see."*
 
 Builds on `.scratch/mapbox-nav/` (ADR 0054). Navigation there is built; its ticket 12, a real drive on

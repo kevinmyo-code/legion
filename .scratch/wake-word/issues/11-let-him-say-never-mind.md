@@ -84,7 +84,7 @@ not.
 
 ### Verified by voice, 2026-08-20
 
-Kevin: *"hey alfred, nevermind and no works as we expect."* Both halves confirmed on the device -
+Kevin, after using it: both halves behaved as expected, and both were confirmed on the device -
 "nevermind" ends the conversation after the sign-off, **and an ordinary "no" does not**. That second
 half is the one that mattered: the tests could only ever pin the wording of the guardrail, never the
 model's obedience to it, and this is the only kind of evidence that could close that gap.

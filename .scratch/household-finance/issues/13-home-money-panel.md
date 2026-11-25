@@ -13,15 +13,15 @@ tags: [ticket]
 ---
 # Home: a Money panel replaces the calendar; the calendar becomes a pop-up
 
-**Kevin, 2026-11-05:** *"i cant tell how much of the budget ive used"*, *"the main ui should show. i
-think it should replace the calendar. the calendr can be a pop up modal instead"*. He picked
-layout A.
+**Kevin, 2026-11-05:** home gives him no read on how much of the budget is spent, and *"the main ui
+should show. i think it should replace the calendar. the calendr can be a pop up modal instead"*. He
+picked layout A.
 
 ## Layout (Kevin, 2026-11-05: replace ONLY the month grid)
 
-*"right now on home i have the calender, below it theres today thu nov 5 with some things i have
-going on, then the row of todo list ideas etc. then the app icons etc. i just want that calendar
-section replaced the top one"*. Only the month grid at the top of `HomeCalendarArea` is replaced.
+He walked through home as it stands - month grid, the day's agenda under it, the panel chips, then
+the app icons - and asked for the top calendar section alone to be replaced. Only the month grid at
+the top of `HomeCalendarArea` is replaced.
 Everything below it stays: the "Today" agenda list, the panel chips (To-dos, Lists, Ideas, Games,
 Books), the app dock, the categories, the Claude line, Now playing, and the shell's tap-to-talk bar.
 

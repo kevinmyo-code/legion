@@ -12,8 +12,8 @@ tags: [map]
 
 # Centralized memory (memory v2) and the ID vault
 
-**Kevin, 2026-11-05:** *"alfred's memory should stay on a centralized place, like the engine no? i
-thought we did memories that way"*, then *"yeah lets do it. centralized memory. and the id vault"*.
+**Kevin, 2026-11-05:** asked whether Alfred's memory should live centrally on the engine, as he
+recalled it being built, then ruled *"yeah lets do it. centralized memory. and the id vault"*.
 
 Two efforts, one map, because they share one boundary: what Alfred may keep about a person, and
 where. Memory moves to the engine so the phone, the web and the Claude worker all read one store.
@@ -22,8 +22,8 @@ engine encrypted, and open only on the phone behind a fingerprint.
 
 ## Kevin's rulings (2026-11-05, verbatim where quoted)
 
-1. **Centralized.** *"alfred's memory should stay on a centralized place, like the engine no? i
-   thought we did memories that way"*; *"yeah lets do it. centralized memory. and the id vault"*.
+1. **Centralized.** He asked whether memory should live centrally on the engine, then ruled:
+   *"yeah lets do it. centralized memory. and the id vault"*.
 2. **Privacy.** A memory is **private to the member it is about**. A shared household fact
    (address, car) can be marked shared. ADR 0052's row ownership and
    `household.tenancy.visible()` enforce it.
@@ -35,8 +35,8 @@ engine encrypted, and open only on the phone behind a fingerprint.
    spoken aloud, never sent to the AI model, never logged. Passport, NRIC, SSN, A-number and bank
    account numbers go there. Low-sensitivity identifiers (plate, VIN, insurance policy number)
    are ordinary data, not vault.
-   **Later (Kevin, 2026-11-05):** *"can i enter it on the pc man, but later. not important
-   now"*. Ticket 15, KIV: the web desk may ADD or UPDATE an item, write-only. Revealing stays
+   **Later (Kevin, 2026-11-05):** he asked for entry from the PC as well, as later work he did
+   not count as important now. Ticket 15, KIV: the web desk may ADD or UPDATE an item, write-only. Revealing stays
    phone-only. The engine API is write-only already (create and update never answer with the
    value), so that ticket needs no engine change.
 6. **Vehicle plate.** A `plate` field on the engine's vehicle record, additive. Kevin's value is

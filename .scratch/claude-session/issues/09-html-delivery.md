@@ -14,9 +14,9 @@ tags: [ticket]
 
 # Build: HTML delivery
 
-Kevin, 2026-11-03: *"i ask alfred to make me an itinerary for a day trip into a nearby city, alfred asks
-if he should call the claude session on my alienware, he calls it asks it to research and make the
-html, the claude session somehow delivers it to the phone... push the html file to legion"*.
+Kevin, 2026-11-03: gave a day-trip itinerary as the test case. He asks Alfred for it, Alfred offers
+the Claude session on the Alienware, that session researches it and builds the HTML, and the file
+is then pushed to LEGION on the phone.
 
 ## Rulings (Kevin's defaults, 2026-11-03, may be revised)
 

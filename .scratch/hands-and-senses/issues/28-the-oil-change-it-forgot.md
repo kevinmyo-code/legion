@@ -13,8 +13,8 @@ tags: [ticket]
 ---
 # It has the oil change on file and still says it has no record
 
-Kevin, 2026-08-22: *"asking AI > when did i do the oil change on the jeep > says he has no record of
-it"* and *"i already logged oil change on the jeep"*.
+Kevin, 2026-08-22: asked the assistant when the Jeep's oil change was done and was told it had no
+record of one, although he had already logged that oil change.
 
 **He is right, and the data proves it.** Pulled from the phone's own database (v32, this session):
 

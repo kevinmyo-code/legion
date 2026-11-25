@@ -72,9 +72,9 @@ profile choose name (free text), persona (radio over `BUILT_IN_PERSONAS`), and T
 
 ### What is actually missing: freeform authoring. Kevin put it on the back burner.
 
-Kevin, 2026-08-16: *"i used to let the user build the personality which basically were system
-prompt edits... now im thinking if i want that + a few pre built personas"* -> then, after the
-findings: **"put it back burner for now. we just keep alfred and dorothy."**
+Kevin, 2026-08-16: weighed freeform personality authoring, which an earlier app did as
+system-prompt edits, alongside a few pre-built personas -> then, after the findings:
+**"put it back burner for now. we just keep alfred and dorothy."**
 
 The Midnight AI mechanism is **ported, complete, and orphaned**. `ai/PersonaTraits.kt` (272 lines)
 holds five staged questions (age, temperament, chattiness, humor, treats), five choices each with

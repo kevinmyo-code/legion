@@ -47,7 +47,7 @@ ticket and not an implementation detail. Ticket 03.
 
 ## What a tick may and may not be allowed to say
 
-Kevin said *"instead of pantry ingestion"*. **This map does not retire pantry ingestion, and the
+Kevin raised ticks as something to have instead of pantry ingestion. **This map does not retire pantry ingestion, and the
 distinction is not pedantry:**
 
 | | A gated receipt | A tick |

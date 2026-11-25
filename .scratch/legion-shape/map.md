@@ -26,8 +26,8 @@ building any of them - this map produces decisions, and the builds are separate 
 `feat/ledger-ingestion`. Read `CLAUDE.md` for rules and `memory/MEMORY.md` for state before deciding
 anything. Most of `memory/library/` is FROZEN Midnight AI history and carries a status banner.
 
-**Why this map exists.** Kevin, 2026-08-06: *"we need to figure out what this app is really trying
-to do. i feel like we are lost in the ledger stuff."* The instinct was measurable, not a mood: 17 of
+**Why this map exists.** Kevin, 2026-08-06: settle what the app is really trying to do, because the
+ledger work read as having taken the project over. The instinct was measurable, not a mood: 17 of
 37 test files are ledger, 22 of the last 30 commits are ledger or its Drive plumbing, and the voice
 path - the thing `CLAUDE.md` §1 calls the product - has one test file and **has never once run**.
 

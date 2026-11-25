@@ -16,8 +16,8 @@ tags: [map]
 the assistant what was due Sunday and it told him nothing was - while seven assignments were due that
 night.
 
-**Kevin, 2026-09-11:** *"the AI doesnt see anything thats due on sunday for sch. i asked it and it
-didnt know."*
+**Kevin, 2026-09-11:** reported it as a bug: the assistant, asked directly, did not know what was
+due that Sunday.
 
 ## What is actually wrong, in one line
 
