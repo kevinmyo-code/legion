@@ -121,13 +121,27 @@ jobs:
           distribution: temurin
           java-version: '25'
 
-      - name: Point local.properties at the runner's SDK (no key baked)
+      - name: Point local.properties at the runner's SDK and the engine (no key baked)
         working-directory: headunit
+        env:
+          LEGION_ENGINE_URL: ${{ vars.LEGION_ENGINE_URL }}
+        # `engine.base.url` is the address a car-link hand-over may sign this unit in to
+        # (`headunit/app/build.gradle.kts`, baked as `ENGINE_BASE_URL`). This step used to write
+        # local.properties with sdk.dir ALONE, so every cloud build baked "" and
+        # `EnginePolicy.handoverEngineUrl` then returned null, which made `LinkKeyStore` drop the
+        # engine token the phone handed over ("this build has no https engine address") - a paired
+        # unit could never check for its own updates. The same variable the publish steps below
+        # already use; no new secret, and it is the engine's own public https address, not a
+        # credential. Blank or http fails the build rather than quietly baking "" again.
         run: |
           set -euo pipefail
           sdk="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
           [ -n "${sdk}" ] || { echo "::error::Neither ANDROID_SDK_ROOT nor ANDROID_HOME is set."; exit 1; }
-          echo "sdk.dir=${sdk}" > local.properties
+          case "${LEGION_ENGINE_URL:-}" in
+            https://*) : ;;
+            *) echo "::error::Variable LEGION_ENGINE_URL must be set to the engine's https address, or the build bakes no engine address and a car-link sign-in is dropped on the unit. Nothing was built."; exit 1 ;;
+          esac
+          { echo "sdk.dir=${sdk}"; echo "engine.base.url=${LEGION_ENGINE_URL%/}"; } > local.properties
           chmod +x gradlew
 
       - name: Set up Gradle
