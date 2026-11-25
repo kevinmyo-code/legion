@@ -39,7 +39,15 @@ class PairingRunner(
     private val transport: PairingTransport,
     private val jitterMs: () -> Long,
     private val sleep: suspend (Long) -> Unit,
-    private val onStage: (PairingStage) -> Unit = {},
+    /**
+     * Called after every stage change, and AWAITED. The suspend is load-bearing: the phone mints
+     * the unit's engine sign-in when the stage reaches `DigitsShown`, which is a network call, and
+     * the handover frame is built by [PairingClient.onMessage] the moment `code_ok` arrives. This
+     * loop cannot take that message until this call returns, so awaiting here is what keeps the
+     * mint from landing after the frame it belongs in (it is why `CarLinkController` no longer
+     * launches it into the background).
+     */
+    private val onStage: suspend (PairingStage) -> Unit = {},
 ) {
     suspend fun run(client: PairingClient, host: String, port: Int): PairingStage {
         var retries = 0
