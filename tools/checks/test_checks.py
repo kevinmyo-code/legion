@@ -405,6 +405,24 @@ def test_django_an_operation_name_the_ast_walk_cannot_read_is_still_refused():
         "    operations = [migrations.__dict__.update("
         "{'SeparateDatabaseAndState': dict}),\n"
         f"        {sdas}]\n",
+        # The same three, moved INSIDE an operation's argument, where the helper clause reaches.
+        "the __dict__ mutation nested in an operation's argument": head
+        + "class Migration(migrations.Migration):\n"
+        "    operations = [migrations.RunSQL(migrations.__dict__.update("
+        "{'SeparateDatabaseAndState': dict}) or 'select 1'),\n"
+        f"        {sdas}]\n",
+        "a chain off a django import, nested in an argument":
+        "from django.db.migrations import serializer\n" + head
+        + "class Migration(migrations.Migration):\n"
+        "    operations = [migrations.RunSQL(serializer.builtins.setattr("
+        "migrations.SeparateDatabaseAndState, 'x', 1) or 'select 1'),\n"
+        f"        {sdas}]\n",
+        "a stdlib function re-exported under a django path":
+        "from django.utils.decorators import update_wrapper\n" + head
+        + "class Migration(migrations.Migration):\n"
+        "    operations = [migrations.RunSQL(update_wrapper("
+        "migrations.SeparateDatabaseAndState, dict) or 'select 1'),\n"
+        f"        {sdas}]\n",
     }
     for what, source in cases.items():
         assert _judge(source) == [WARN], what
@@ -445,6 +463,15 @@ def test_django_a_project_helper_inside_an_operations_argument_keeps_the_exempti
         "    operations = [\n", "    operations = [\n        household_unique_name('w', ['s']),\n"
     )
     assert _judge(moved) == [WARN]
+    # An attribute chain off a project import is a helper too: `household/0001_initial.py` calls
+    # `household.models.UserManager()` inside a field argument.
+    chained = source.replace(
+        "from household.tenancy_sql import household_unique_name",
+        "from household import models as hm\nfrom household.tenancy_sql import"
+        " household_unique_name",
+    ).replace("field=models.CharField(", "field=hm.CharField(")
+    assert chained != source
+    assert _judge(chained) == []
 
 
 def test_django_migration_that_does_not_parse_warns():
