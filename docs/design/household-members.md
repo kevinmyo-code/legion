@@ -105,11 +105,11 @@ letting the user find out.
 
 ```
 +----------------------------------------------------+
-|  The Myo household                    [Rename]       |
+|  The Test House                       [Rename]       |
 +----------------------------------------------------+
 |  Members                                              |
 |                                                        |
-|   Kevin Myo (you)                          Owner      |
+|   Kevin (you)                              Owner      |
 |   Dad                                     [Remove]     |
 |   Mom                                     [Remove]     |
 |                                                        |
