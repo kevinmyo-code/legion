@@ -170,8 +170,8 @@ it broke on any machine without Android Studio at that exact path, violating clo
 
 | Machine | Repo | Android Studio JBR |
 |---|---|---|
-| First (2026-08-01) | `C:\Users\Kwin\StudioProjects\legion` | `/c/Users/Kwin/Apps/AndroidStudio/jbr` |
-| Second (2026-08-19) | `C:\Users\kevin\AndroidStudioProjects\legion` | `/c/Program Files/Android/Android Studio/jbr` |
+| First (2026-08-01) | `C:\Users\<user>\StudioProjects\legion` | `/c/Users/<user>/Apps/AndroidStudio/jbr` |
+| Second (2026-08-19) | `C:\Users\<user>\AndroidStudioProjects\legion` | `/c/Program Files/Android/Android Studio/jbr` |
 
 ```
 export JAVA_HOME="/c/Program Files/Android/Android Studio/jbr"   # second machine
