@@ -30,7 +30,7 @@ search. It has no live hours or ratings at Google's depth (reasoned).
 
 ## How to decide
 
-Ticket 01's zero-result phrases are the test set. Load a Houston extract, replay those phrases
+Ticket 01's zero-result phrases are the test set. Load a metro-sized extract, replay those phrases
 against it, and count how many it answers that Mapbox did not. Build only if that count matters.
 
 ## Proven by NAV_AUDIT

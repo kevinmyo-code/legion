@@ -30,12 +30,12 @@ of thing are sitting in one table:
 
 | Row on the real device | Actually |
 |---|---|
-| COSC 4320 Software Engineering | Event - passes |
-| COSC 3334 Intro to Cybersecurity | Event - passes |
+| CSCI 3400 Software Engineering | Event - passes |
+| CSCI 2200 Intro to Cybersecurity | Event - passes |
 | Lin's birthday | Event - passes |
-| MATH 3391 - Discussion post due | Task - completed |
-| MATH 3391 - WebAssign homework due | Task - completed |
-| MATH 3391 - Chapter 1 Quiz due | Task - completed |
+| STAT 2300 - Discussion post due | Task - completed |
+| STAT 2300 - WebAssign homework due | Task - completed |
+| STAT 2300 - Chapter 1 Quiz due | Task - completed |
 
 **This reframes [[02-ticking-an-appointment]].** That ticket's premise was *"you cannot cross off a
 calendar item, and the field is not what is missing"* - right that the field was not missing, wrong
@@ -46,7 +46,7 @@ never appointments.
 
 1. **Every already-imported row becomes an EVENT.** No heuristic classifier over titles. Guessing
    from the word "due" or "quiz" on real data either invents a chore or hides one, and
-   `"COSC 3334 Exam review session"` is a class that matches `exam`. Google-imported rows keep only
+   `"CSCI 2200 Exam review session"` is a class that matches `exam`. Google-imported rows keep only
    what Google actually knew: when a thing happens.
 2. **Canvas becomes the source of truth for assignments**, arriving as tasks carrying real
    submission state. Separate ticket - see below.
@@ -65,7 +65,7 @@ NOT cheap is the data change, and that is the real work here.
 
 **`done`/`doneAt` must be CLEARED on every row becoming an event, not merely hidden.** A row that
 cannot be done must not carry a stale true - and there is at least one on the real device: a
-`COSC 3334` row was ticked during device testing on 2026-09-01. A hidden-but-present flag is
+`CSCI 2200` row was ticked during device testing on 2026-09-01. A hidden-but-present flag is
 exactly the kind of thing that surfaces later as a lie.
 
 **The day view splits into three sections**, and the split is the whole point:
@@ -113,7 +113,7 @@ but sometimes it requires a post on wednesday and 2 replies on friday etc."*
 
 Canvas exposes ONE `due_at` per discussion, and it is the LAST obligation (the replies). The initial
 post is a separate, earlier deadline that lives only in the assignment description and the syllabus.
-The 2026-09-04 reconciliation held back 15 MATH 3391 "first post due Wednesday" rows as probable
+The 2026-09-04 reconciliation held back 15 STAT 2300 "first post due Wednesday" rows as probable
 duplicates of the Friday discussion; that was wrong, and they are being written as their own task rows
 with `structured_meta.parent_canvas_assignment_id` pointing at the Canvas discussion they belong to.
 

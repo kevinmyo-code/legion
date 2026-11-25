@@ -20,6 +20,6 @@ tags: [ticket]
 4. Phone: "remember my gym is on Main Street", then on the web: "where is my gym?".
 5. "Forget that". The row is gone from the database, not hidden.
 6. A conversation that reads mail, then an hour later: nothing from it in memory.
-7. Mia's account cannot see Kevin's private memories; a shared one she can.
+7. A second member's account cannot see Kevin's private memories; a shared one they can.
 8. Vault: add a passport number, reveal with fingerprint, cancel the prompt and see nothing.
 9. Work laptop: a task that asks to recall a memory is refused.

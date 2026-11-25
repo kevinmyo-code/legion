@@ -328,16 +328,16 @@ html[data-eff=dark] .tt .sun{display:none}html[data-eff=dark] .tt .moon{display:
 
 <main class="board">
 <section class="grp">
-  <div class="grp-h"><h2>Phone</h2><span>Mia &middot; 390 &times; 844</span></div>
+  <div class="grp-h"><h2>Phone</h2><span>Member B &middot; 390 &times; 844</span></div>
   <div class="phones">
 
     <figure class="ab"><figcaption><b>1</b> Home</figcaption>
-    <div class="phone" id="ab1" data-who="Mia">
+    <div class="phone" id="ab1" data-who="Member B">
       <div class="status"><span>9:14</span><span class="si"><span class="sig"><i style="height:4px"></i><i style="height:6px"></i><i style="height:8px"></i><i style="height:11px"></i></span><span class="bat"></span></span></div>
       <div class="screen">
         <div class="scroll">
           <div class="navrow"><span class="dt">Saturday 3 October</span><button class="navbtn" data-act="open-sheet" aria-label="Add an event"><svg class="ic"><use href="#i-plus"/></svg></button></div>
-          <h1 class="lt">Good morning, Mia</h1>
+          <h1 class="lt">Good morning, Member B</h1>
           <section class="sec"><h3 class="gh">Today</h3><div class="g" data-render="events"></div></section>
           <section class="sec"><h3 class="gh">To do <span data-bind="todoLeft"></span></h3><div class="g" data-render="todos"></div></section>
           <section class="sec">
@@ -365,7 +365,7 @@ html[data-eff=dark] .tt .sun{display:none}html[data-eff=dark] .tt .moon{display:
     </div></figure>
 
     <figure class="ab"><figcaption><b>2</b> List view</figcaption>
-    <div class="phone" id="ab2" data-who="Mia">
+    <div class="phone" id="ab2" data-who="Member B">
       <div class="status"><span>9:14</span><span class="si"><span class="sig"><i style="height:4px"></i><i style="height:6px"></i><i style="height:8px"></i><i style="height:11px"></i></span><span class="bat"></span></span></div>
       <div class="screen">
         <div class="scroll">
@@ -390,7 +390,7 @@ html[data-eff=dark] .tt .sun{display:none}html[data-eff=dark] .tt .moon{display:
     </div></figure>
 
     <figure class="ab"><figcaption><b>3</b> Event sheet</figcaption>
-    <div class="phone" id="ab3" data-who="Mia" data-clone-of="ab1">
+    <div class="phone" id="ab3" data-who="Member B" data-clone-of="ab1">
       <div class="status"><span>9:14</span><span class="si"><span class="sig"><i style="height:4px"></i><i style="height:6px"></i><i style="height:8px"></i><i style="height:11px"></i></span><span class="bat"></span></span></div>
       <div class="screen"></div>
       <div class="sheet-host" data-start-open></div><div class="toast" data-on="false"></div>
@@ -478,7 +478,7 @@ html[data-eff=dark] .tt .sun{display:none}html[data-eff=dark] .tt .moon{display:
 <template data-tpl="listsum"><div class="ls"><span class="lico"><svg class="ic"><use href="#i-list"/></svg></span><span class="m"><b>{{name}}</b><small>{{meta}}</small></span><span class="cnt2 num">{{count}}</span><span class="sh" data-if="shared"><svg class="ic"><use href="#i-people"/></svg>Shared</span><svg class="ic chev"><use href="#i-chev"/></svg></div></template>
 <template data-tpl="txrow"><tr class="{{cls}}" data-act="sel-tx" data-id="{{id}}" tabindex="0" aria-selected="{{selected}}"><td class="num sec2">{{date}}</td><td class="c-desc">{{desc}}</td><td class="sec2">{{acctLabel}}</td><td class="r num {{amtCls}}">{{amtText}}</td><td><button class="catbtn {{uncatCls}}" data-act="cat" data-id="{{id}}" aria-haspopup="listbox"><span>{{catText}}</span><svg class="ic"><use href="#i-chevd"/></svg></button></td><td><span class="st unv" data-if="prov">unverified</span><span class="st ok" data-ifnot="prov">Verified</span></td></tr></template>
 <template data-tpl="txpanel"><p class="eyebrow">Inspector</p><h3>{{desc}}</h3><p class="big num {{amtCls}}">{{amtText}}</p><div class="fgroup"><div class="frow"><span>Date</span><span>{{date}}</span></div><div class="frow"><span>Account</span><span>{{acctLabel}}</span></div><div class="frow"><span>Source</span><span class="sm">{{source}}</span></div><div class="frow"><span>Category</span><button class="menubtn" data-act="cat-panel" aria-haspopup="listbox"><span>{{catText}}</span><svg class="ic"><use href="#i-chevd"/></svg></button></div></div><div class="notice unvbox" data-if="prov"><b class="unvw">unverified</b><p>{{explain}}</p></div><div class="notice okbox" data-ifnot="prov"><b class="okw">Verified</b><p>{{explain}}</p></div></template>
-<template data-tpl="rail"><div class="search"><svg class="ic"><use href="#i-search"/></svg>Search</div><nav data-tabs aria-label="Main"><button class="ri" data-act="tab" data-key="home" data-goto="ab4"><svg class="ic"><use href="#i-home"/></svg>Home</button><button class="ri" data-act="tab" data-key="calendar"><svg class="ic"><use href="#i-cal"/></svg>Calendar</button><button class="ri" data-act="tab" data-key="lists"><svg class="ic"><use href="#i-list"/></svg>Lists</button><button class="ri" data-act="tab" data-key="money" data-goto="ab5"><svg class="ic"><use href="#i-money"/></svg>Money</button><button class="ri" data-act="tab" data-key="pantry"><svg class="ic"><use href="#i-pantry"/></svg>Pantry</button><button class="ri" data-act="tab" data-key="body"><svg class="ic"><use href="#i-body"/></svg>Body</button><button class="ri" data-act="tab" data-key="fleet"><svg class="ic"><use href="#i-fleet"/></svg>Fleet</button><button class="ri" data-act="tab" data-key="places"><svg class="ic"><use href="#i-places"/></svg>Places</button><button class="ri" data-act="tab" data-key="notes"><svg class="ic"><use href="#i-notes"/></svg>Notes</button><hr><button class="ri" data-act="tab" data-key="settings"><svg class="ic"><use href="#i-gear"/></svg>Settings</button></nav><div class="who"><span class="av k">K</span><span class="av m">M</span><small>Kevin and Mia</small></div></template>
+<template data-tpl="rail"><div class="search"><svg class="ic"><use href="#i-search"/></svg>Search</div><nav data-tabs aria-label="Main"><button class="ri" data-act="tab" data-key="home" data-goto="ab4"><svg class="ic"><use href="#i-home"/></svg>Home</button><button class="ri" data-act="tab" data-key="calendar"><svg class="ic"><use href="#i-cal"/></svg>Calendar</button><button class="ri" data-act="tab" data-key="lists"><svg class="ic"><use href="#i-list"/></svg>Lists</button><button class="ri" data-act="tab" data-key="money" data-goto="ab5"><svg class="ic"><use href="#i-money"/></svg>Money</button><button class="ri" data-act="tab" data-key="pantry"><svg class="ic"><use href="#i-pantry"/></svg>Pantry</button><button class="ri" data-act="tab" data-key="body"><svg class="ic"><use href="#i-body"/></svg>Body</button><button class="ri" data-act="tab" data-key="fleet"><svg class="ic"><use href="#i-fleet"/></svg>Fleet</button><button class="ri" data-act="tab" data-key="places"><svg class="ic"><use href="#i-places"/></svg>Places</button><button class="ri" data-act="tab" data-key="notes"><svg class="ic"><use href="#i-notes"/></svg>Notes</button><hr><button class="ri" data-act="tab" data-key="settings"><svg class="ic"><use href="#i-gear"/></svg>Settings</button></nav><div class="who"><span class="av k">K</span><span class="av m">M</span><small>Kevin and Member B</small></div></template>
 <template data-tpl="sheet"><div class="scrim" data-act="close-sheet"></div><section class="sheet" role="dialog" aria-modal="true" aria-label="Event"><div class="grab"></div><div class="sh-hd"><button class="tbtn" data-act="close-sheet">Cancel</button><h2 data-sheet-title>New event</h2><button class="tbtn strong" data-sheet-save data-act="save-sheet">Add</button></div><div class="sheet-body"><div class="fgroup"><label class="frow"><input class="inp" name="title" type="text" placeholder="Title" autocomplete="off" aria-label="Title"></label></div><p class="err" data-err hidden>Give the event a title first.</p><div class="fgroup"><div class="frow"><span>All day</span><button class="switch" role="switch" data-act="switch" data-switch="allday" aria-checked="false" aria-label="All day"><i></i></button></div><label class="frow"><span>Date</span><input class="inp r" name="date" type="date"></label><label class="frow" data-timerow><span>Time</span><input class="inp r" name="time" type="time"></label></div><div class="fgroup"><button class="frow menurow" data-act="menu" data-key="repeat" data-options="Never|Daily|Weekly|Monthly|Yearly" data-value="Never"><span>Repeats</span><span class="rv"><span class="menu-val">Never</span><svg class="ic"><use href="#i-chevd"/></svg></span></button><button class="frow menurow" data-act="menu" data-key="remind" data-options="None|At the time|5 minutes before|15 minutes before|30 minutes before|1 hour before|1 day before" data-value="30 minutes before"><span>Reminder</span><span class="rv"><span class="menu-val">30 minutes before</span><svg class="ic"><use href="#i-chevd"/></svg></span></button></div><div class="segwrap"><div class="seg two" role="radiogroup" data-seg="share" aria-label="Who sees it"><button role="radio" data-act="seg" data-val="Shared" aria-checked="true"><svg class="ic"><use href="#i-people"/></svg>Shared</button><button role="radio" data-act="seg" data-val="Only me" aria-checked="false"><svg class="ic"><use href="#i-lock"/></svg>Only me</button></div><p class="foot" data-hint>Shared events show up for Kevin too. Only me keeps it to you.</p></div></div></section></template>
 
 <script>
@@ -505,7 +505,7 @@ mq.addEventListener('change', paintTheme);
 addEventListener('message', e => { if (e.data && e.data.theme) setTheme(e.data.theme); });
 if (/dark|light/.test(location.hash)) setTheme(location.hash.replace('#', ''));
 
-/* ---------------- sample data (Kevin and Mia only) ---------------- */
+/* ---------------- sample data (Kevin and Member B only) ---------------- */
 const CATS = ['Groceries', 'Housing', 'Utilities', 'Dining', 'Transport', 'Health', 'Fun', 'Shopping', 'Income', 'Other'];
 const S = {
   todos: [
@@ -520,41 +520,41 @@ const S = {
   ],
   groceries: [
     { id: 'g1', name: 'Oat milk', meta: '2 cartons', by: 'Kevin', done: false },
-    { id: 'g2', name: 'Eggs', meta: 'One dozen', by: 'Mia', done: false },
-    { id: 'g3', name: 'Spinach', meta: '', by: 'Mia', done: false },
+    { id: 'g2', name: 'Eggs', meta: 'One dozen', by: 'Member B', done: false },
+    { id: 'g3', name: 'Spinach', meta: '', by: 'Member B', done: false },
     { id: 'g4', name: 'Bananas', meta: '', by: 'Kevin', done: false },
-    { id: 'g5', name: 'Greek yogurt', meta: 'The big tub', by: 'Mia', done: false },
-    { id: 'g6', name: 'Sourdough loaf', meta: '', by: 'Mia', done: false },
+    { id: 'g5', name: 'Greek yogurt', meta: 'The big tub', by: 'Member B', done: false },
+    { id: 'g6', name: 'Sourdough loaf', meta: '', by: 'Member B', done: false },
     { id: 'g7', name: 'Chicken thighs', meta: 'Bone-in', by: 'Kevin', done: false },
     { id: 'g8', name: 'Jasmine rice', meta: '', by: 'Kevin', done: false },
-    { id: 'g9', name: 'Olive oil', meta: '', by: 'Mia', done: false },
-    { id: 'g10', name: 'Lemons', meta: '', by: 'Mia', done: false },
+    { id: 'g9', name: 'Olive oil', meta: '', by: 'Member B', done: false },
+    { id: 'g10', name: 'Lemons', meta: '', by: 'Member B', done: false },
     { id: 'g11', name: 'Dish soap', meta: '', by: 'Kevin', done: false },
     { id: 'g12', name: 'Coffee beans', meta: 'Medium roast', by: 'Kevin', done: false },
     { id: 'g13', name: 'Butter', meta: '', by: 'Kevin', done: true, tickedBy: 'Kevin', tickedAt: 'at 8:40 this morning' },
-    { id: 'g14', name: 'Tomatoes', meta: '', by: 'Mia', done: true, tickedBy: 'Mia', tickedAt: 'yesterday' },
+    { id: 'g14', name: 'Tomatoes', meta: '', by: 'Member B', done: true, tickedBy: 'Member B', tickedAt: 'yesterday' },
   ],
   agenda: [
     { label: 'Today', date: 'Sat 3', today: true, rows: [
       { id: 'a1', time: '11:45 am', title: 'Soccer pickup', meta: 'Maplewood fields', kind: 'shared' },
-      { id: 'a2', time: '3:15 pm', title: 'Dentist, Mia', meta: 'Riverside Dental', kind: 'shared' },
-      { id: 'a3', time: '11:59 pm', title: 'HW 4 due', meta: 'Canvas, COSC 4320', kind: 'canvas', tick: true } ] },
+      { id: 'a2', time: '3:15 pm', title: 'Dentist, Member B', meta: 'Riverside Dental', kind: 'shared' },
+      { id: 'a3', time: '11:59 pm', title: 'HW 4 due', meta: 'Canvas, CSCI 3400', kind: 'canvas', tick: true } ] },
     { label: 'Sun', date: '4', rows: [ { id: 'a4', time: '9:00 am', title: 'Farmers market', meta: '', kind: 'shared' } ] },
     { label: 'Mon', date: '5', rows: [
       { id: 'a5', time: 'All day', title: 'Rent due', meta: '$1,850.00', kind: 'shared' },
-      { id: 'a6', time: '9:30 am', title: 'COSC 4320 lecture', meta: 'Class schedule', kind: 'canvas' },
-      { id: 'a7', time: '8:00 pm', title: 'Quiz 3 closes', meta: 'Canvas, COSC 4320', kind: 'canvas', tick: true } ] },
+      { id: 'a6', time: '9:30 am', title: 'CSCI 3400 lecture', meta: 'Class schedule', kind: 'canvas' },
+      { id: 'a7', time: '8:00 pm', title: 'Quiz 3 closes', meta: 'Canvas, CSCI 3400', kind: 'canvas', tick: true } ] },
     { label: 'Tue', date: '6', rows: [ { id: 'a8', time: '8:30 am', title: 'Oil change', meta: 'Fleet', kind: 'shared' } ] },
     { label: 'Wed', date: '7', rows: [
-      { id: 'a9', time: '9:30 am', title: 'COSC 4320 lecture', meta: 'Class schedule', kind: 'canvas' },
-      { id: 'a10', time: '11:59 pm', title: 'Lab 5 report due', meta: 'Canvas, COSC 4320', kind: 'canvas', tick: true } ] },
+      { id: 'a9', time: '9:30 am', title: 'CSCI 3400 lecture', meta: 'Class schedule', kind: 'canvas' },
+      { id: 'a10', time: '11:59 pm', title: 'Lab 5 report due', meta: 'Canvas, CSCI 3400', kind: 'canvas', tick: true } ] },
     { label: 'Thu', date: '8', rows: [ { id: 'a11', time: 'All day', title: 'Bins out', meta: '', kind: 'shared' } ] },
     { label: 'Fri', date: '9', rows: [ { id: 'a12', time: '7:30 pm', title: 'Dinner reservation', meta: 'Two people', kind: 'shared' } ] },
     { label: 'Sat', date: '10', rows: [] },
   ],
   lists: [
     { name: 'Groceries', key: 'groceries', shared: true },
-    { name: 'Hardware store', count: '4 to get', meta: 'Shared with Mia', shared: true },
+    { name: 'Hardware store', count: '4 to get', meta: 'Shared with Member B', shared: true },
     { name: 'Weekend ideas', count: '', meta: 'Nothing here yet', shared: true, empty: true },
   ],
   tx: [
@@ -564,7 +564,7 @@ const S = {
     { id: 'x4', date: 'Oct 1', m: 'Oct', desc: 'City Water & Power', acct: 'checking', amt: -86.40, cat: 'Utilities', prov: false },
     { id: 'x5', date: 'Oct 1', m: 'Oct', desc: 'Paycheck, Northside Univ.', acct: 'checking', amt: 2310.55, cat: 'Income', prov: false },
     { id: 'x6', date: 'Oct 1', m: 'Oct', desc: 'Corner Market', acct: 'checking', amt: -112.37, cat: 'Groceries', prov: false },
-    { id: 'x7', date: 'Oct 1', m: 'Oct', desc: 'Transfer to Mia', acct: 'checking', amt: -45.00, cat: '', prov: false },
+    { id: 'x7', date: 'Oct 1', m: 'Oct', desc: 'Transfer to Member B', acct: 'checking', amt: -45.00, cat: '', prov: false },
     { id: 'x8', date: 'Oct 1', m: 'Oct', desc: 'Riverside Dental', acct: 'card', amt: -120.00, cat: 'Health', prov: true },
     { id: 'x9', date: 'Sep 30', m: 'Sep', desc: 'Costco Wholesale', acct: 'card', amt: -187.64, cat: '', prov: true },
     { id: 'x10', date: 'Sep 30', m: 'Sep', desc: 'Blue Door Coffee', acct: 'card', amt: -6.50, cat: '', prov: true },
@@ -634,7 +634,7 @@ function renderAgenda() {
 }
 function renderLists() {
   const items = S.lists.map(l => l.key === 'groceries'
-    ? { ...l, count: open().length ? `${open().length} to get` : 'Nothing left to get', meta: `Shared with ${'Mia'}${done().length ? ` · ${done().length} ticked` : ''}` }
+    ? { ...l, count: open().length ? `${open().length} to get` : 'Nothing left to get', meta: `Shared with ${'Member B'}${done().length ? ` · ${done().length} ticked` : ''}` }
     : l);
   $$('[data-render="lists"]').forEach(c => c.replaceChildren(...items.flatMap(l => Array.from(frag(fill('listsum', l)).childNodes))));
 }
@@ -756,7 +756,7 @@ function sheetSave(sheet) {
 }
 
 /* ---------------- ticks ---------------- */
-function whoOf(el) { const w = el.closest('[data-who]'); return w ? w.dataset.who : 'Mia'; }
+function whoOf(el) { const w = el.closest('[data-who]'); return w ? w.dataset.who : 'Member B'; }
 function tickTodo(btn) {
   const t = S.todos.find(x => x.id === btn.dataset.id); t.done = !t.done;
   $$(`[data-act="tick-todo"][data-id="${t.id}"]`).forEach(b => { b.setAttribute('aria-checked', String(t.done)); b.closest('[data-row]').classList.toggle('done', t.done); });

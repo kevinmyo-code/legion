@@ -165,7 +165,7 @@ Full trace with line numbers: [research/call-sequences-today.md](research/call-s
 - Retiring the phone's local copies of car and money figures once the engine's are the spoken
   ones (depends on Engine down and the evaluation).
 - Hands paths for each procedure on the phone screens beyond car and money.
-- Whether Mia's household view gets its own built-ins or shares Kevin's.
+- Whether Member B's household view gets its own built-ins or shares Kevin's.
 - Procedures that span devices (phone asks, laptop finds, engine stores): waits on the laptop
   ticket.
 

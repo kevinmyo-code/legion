@@ -52,7 +52,7 @@ advanced by 1 day"*) and `lib/horizon.ts` on the web already had to solve it onc
 **Read `lib/horizon.ts` first and reuse its day bucketing.** Do not write a second date-bucketing
 function in a component; if the logic needs to grow, it grows in `lib/` where it is testable.
 
-A Canvas deadline is written as `04:59Z the next day` (11:59pm local in Houston) and is `allDay =
+A Canvas deadline is written as `04:59Z the next day` (11:59pm device-local) and is `allDay =
 0` with a true instant - those bucket correctly by ordinary conversion. It is the `allDay = 1`
 rows that need the UTC-recovery idiom.
 
@@ -61,6 +61,6 @@ rows that need the UTC-recovery idiom.
 - `npm run build` and `npx tsc --noEmit` clean in `server/frontend/`.
 - Vitest over the day-bucketing: an all-day row on the 1st lands on the 1st at UTC-5, and a
   23:59-local task lands on its own day, not the next.
-- The month containing 2026-09-16 shows MATH 3391's Module 4 discussion on Wednesday the 16th -
+- The month containing 2026-09-16 shows STAT 2300's Module 4 discussion on Wednesday the 16th -
   that row is live on the device and is the one Kevin asked about.
 - At 400px wide the grid still fits, gutters intact, no horizontal body scroll.

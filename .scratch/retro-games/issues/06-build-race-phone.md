@@ -29,5 +29,5 @@ tags: [ticket]
 
 ## Verification
 
-compileDebugKotlin, testDebugUnitTest, detekt. Owed on the A25: solo, a race against Mia's PWA,
+compileDebugKotlin, testDebugUnitTest, detekt. Owed on the A25: solo, a race against Member B's PWA,
 and an invite from her arriving while LEGION is backgrounded.

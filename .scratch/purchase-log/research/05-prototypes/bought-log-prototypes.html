@@ -243,12 +243,12 @@ footer{max-width:1320px;margin:0 auto;padding:0 24px 48px;color:oklch(0.42 0.016
 <body>
 <div class="intro">
   <h1>Bought log: pick A, B or C</h1>
-  <p>Purchase-log ticket 05. Mia's iPhone family view first (390 x 844, soft Material light, the real web tokens). Then Kevin's workbench (variant A) and Kevin's Android phone (variant C, 384 dp, soft Material dark). Everything is clickable: search, tick a Groceries line, untick it, log something by hand, open an entry. The chips above each device jump to a state.</p>
-  <p>Mia's iPhone mocks are signed in as Mia, so she sees her own private entry and not Kevin's. The workbench and Android are Kevin, so the reverse. Prices are what someone typed and every one says so.</p>
+  <p>Purchase-log ticket 05. Member B's iPhone family view first (390 x 844, soft Material light, the real web tokens). Then Kevin's workbench (variant A) and Kevin's Android phone (variant C, 384 dp, soft Material dark). Everything is clickable: search, tick a Groceries line, untick it, log something by hand, open an entry. The chips above each device jump to a state.</p>
+  <p>Member B's iPhone mocks are signed in as Member B, so she sees her own private entry and not Kevin's. The workbench and Android are Kevin, so the reverse. Prices are what someone typed and every one says so.</p>
 </div>
 
 <section class="group">
-  <h2>Mia's iPhone: family view (under 1024 px)</h2>
+  <h2>Member B's iPhone: family view (under 1024 px)</h2>
   <p class="gsub">Four tabs stay four tabs (Home, Lists, Calendar, Settings). The variants differ in where the log lives and what it is organised around.</p>
   <div class="row" id="row-ios"></div>
 </section>
@@ -315,16 +315,16 @@ function esc(s){ return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt
 // Ticket 01 columns: item, bought_on, logged_at, created_by (null = not recorded), store, price_cents
 // (entered by hand), quantity_note, owner_user (null = shared), source.
 const BASE = [
-  {id:'e1', item:'Paper towels', day:'2026-10-02', who:'Mia', src:'tick', at:'Oct 2, 5:48 PM'},
-  {id:'e2', item:'Contact lens solution', day:'2026-09-30', who:'Mia', src:'hand', store:'Target', price:949, owner:'Mia', at:'Sep 30, 7:02 PM'},
+  {id:'e1', item:'Paper towels', day:'2026-10-02', who:'Member B', src:'tick', at:'Oct 2, 5:48 PM'},
+  {id:'e2', item:'Contact lens solution', day:'2026-09-30', who:'Member B', src:'hand', store:'Target', price:949, owner:'Member B', at:'Sep 30, 7:02 PM'},
   {id:'e3', item:'Toothpaste', day:'2026-09-28', who:'Kevin', src:'tick', at:'Sep 28, 11:20 AM'},
   {id:'e4', item:'Eggs', day:'2026-09-27', who:'Kevin', src:'tick', at:'Sep 27, 10:05 AM'},
-  {id:'e5', item:'Dish soap', day:'2026-09-25', who:'Kevin', src:'hand', store:'HEB', note:'Dawn, the big bottle', at:'Sep 25, 6:31 PM'},
-  {id:'e6', item:'Shampoo', day:'2026-09-20', who:'Mia', src:'tick', at:'Sep 20, 4:12 PM'},
+  {id:'e5', item:'Dish soap', day:'2026-09-25', who:'Kevin', src:'hand', store:'GroceryCo', note:'Dawn, the big bottle', at:'Sep 25, 6:31 PM'},
+  {id:'e6', item:'Shampoo', day:'2026-09-20', who:'Member B', src:'tick', at:'Sep 20, 4:12 PM'},
   {id:'e7', item:'Razor blades', day:'2026-09-18', who:'Kevin', src:'hand', store:'Target', price:1899, owner:'Kevin', at:'Sep 18, 8:44 PM'},
-  {id:'e8', item:'Laundry detergent', day:'2026-09-12', who:'Mia', src:'hand', store:'Target', price:1499, note:'Tide pods, 42 count', at:'Sep 12, 1:15 PM'},
-  {id:'e9', item:'Colgate toothpaste', day:'2026-08-30', who:'Mia', src:'hand', store:'HEB', price:349, note:'2-pack', at:'Aug 30, 3:40 PM'},
-  {id:'e10', item:'Head & Shoulders shampoo', day:'2026-08-09', who:'Kevin', src:'hand', store:'HEB', price:899, at:'Aug 9, 12:02 PM'},
+  {id:'e8', item:'Laundry detergent', day:'2026-09-12', who:'Member B', src:'hand', store:'Target', price:1499, note:'Tide pods, 42 count', at:'Sep 12, 1:15 PM'},
+  {id:'e9', item:'Colgate toothpaste', day:'2026-08-30', who:'Member B', src:'hand', store:'GroceryCo', price:349, note:'2-pack', at:'Aug 30, 3:40 PM'},
+  {id:'e10', item:'Head & Shoulders shampoo', day:'2026-08-09', who:'Kevin', src:'hand', store:'GroceryCo', price:899, at:'Aug 9, 12:02 PM'},
   {id:'e11', item:'Dish soap', day:'2026-08-02', who:null, src:'old', at:'imported Oct 4'},
   {id:'e12', item:'Toilet paper', day:'2026-07-19', who:null, src:'old', at:'imported Oct 4'},
   {id:'e13', item:'Dove shampoo', day:'2026-06-14', who:null, src:'old', at:'imported Oct 4'}
@@ -404,7 +404,7 @@ function answerCard(s, q, list){
 function blankForm(item){ return {item:item||'', day:TODAY, store:'', price:'', note:'', priv:false}; }
 function logForm(s, mode){
   const f = s.form;
-  const other = s.viewer === 'Mia' ? 'Kevin' : 'Mia';
+  const other = s.viewer === 'Member B' ? 'Kevin' : 'Member B';
   const err = s.formErr === 'down' ? '<p class="ferr" role="alert">Can\'t reach the bought log right now. Nothing was logged. What you typed is still here.</p>'
     : s.formErr === 'item' ? '<p class="ferr" role="alert">Say what was bought.</p>'
     : s.formErr === 'price' ? '<p class="ferr" role="alert">Price should look like 8.99, or leave it empty.</p>' : '';
@@ -488,7 +488,7 @@ function homeBody(s, extraTop){
     + (extraTop||'')
     + '<p class="sec-label">On today</p>'
     + '<div class="ev"><span class="tm">5:00 PM</span><span class="nm">Soccer practice</span>'+sharedMark()+'</div>'
-    + '<div class="ev"><span class="tm">6:30 PM</span><span class="nm">HEB pickup</span>'+sharedMark()+'</div>'
+    + '<div class="ev"><span class="tm">6:30 PM</span><span class="nm">Grocery pickup</span>'+sharedMark()+'</div>'
     + '<div class="card" style="margin-top:12px"><div class="lhead"><h2 style="font-size:16px">Groceries</h2>'+sharedMark()+'</div>'
     + s.groc.filter(i => !s.ticks[i.id]).slice(0,3).map(i => '<p style="margin:6px 0;display:flex;gap:10px;align-items:center"><span aria-hidden="true" style="width:16px;height:16px;border:2px solid var(--outline);border-radius:5px"></span>'+esc(i.text)+'</p>').join('')
     + '<p class="small muted" style="margin:4px 0 0 26px">and '+Math.max(0, s.groc.filter(i => !s.ticks[i.id]).length - 3)+' more</p></div>';
@@ -626,7 +626,7 @@ function renderDesk(s){
         if (q) left += matchHead(q, list);
         left += '<div style="overflow-x:auto;border-radius:var(--r-card)"><table class="dtable"><thead><tr><th>Bought on</th><th>Item, as logged</th><th>Logged by</th><th>Source</th><th>Store, price</th><th>Who sees it</th></tr></thead><tbody>'
           + list.map(e => '<tr><td class="num" title="'+wd(e.day)+'">'+fmt(e.day)+'</td><td style="font-weight:500">'+esc(e.item)+(e.note ? '<div class="small muted" style="font-weight:400">'+esc(e.note)+'</div>' : '')+'</td><td>'+(e.who ? esc(e.who) : '<span class="muted">not recorded</span>')+'</td><td>'+srcChip(e)+'</td><td class="num">'+(e.store || e.price != null ? [e.store ? esc(e.store) : '', e.price != null ? money(e.price) : ''].filter(Boolean).join(', ')+(e.price != null ? '<div class="small muted">price entered by hand</div>' : '') : '<span class="muted">-</span>')+'</td><td>'+(e.owner ? '<span class="mark-private strong">'+ic('lock',14)+'Only you</span>' : sharedMark())+'</td></tr>').join('')
-          + '</tbody></table></div><p class="note">Prices are typed by hand. They are never checked against the bank and never counted in Money. Mia\'s private entries are not in this list; yours are marked "Only you".</p>';
+          + '</tbody></table></div><p class="note">Prices are typed by hand. They are never checked against the bank and never counted in Money. Member B\'s private entries are not in this list; yours are marked "Only you".</p>';
       }
     }
     main += '<div class="dgrid"><div>'+left+'</div><div class="card" style="position:sticky;top:0"><h2 style="margin:0 0 10px;font-size:20px;font-weight:500">Log something bought</h2>'+logForm(s, 'panel')+'</div></div>';
@@ -662,7 +662,7 @@ function fresh(viewer, extra){
     entries: BASE.map(e => Object.assign({}, e)), groc: GROC.map(x => Object.assign({}, x)), target: TARGET.map(x => Object.assign({}, x)), ticks:{}, tticks:{}}, extra||{});
 }
 const MOCKS = [
-  {id:'A', row:'row-ios', frame:'ios t-web', viewer:'Mia', name:'A. A Bought tab inside Lists',
+  {id:'A', row:'row-ios', frame:'ios t-web', viewer:'Member B', name:'A. A Bought tab inside Lists',
    desc:'Lists gets two tabs: Lists and Bought. Bought is a timeline by month with a search box and a "Log it" button that opens a sheet. Nothing new on Home or the tab bar.',
    render:renderA, formMode:'sheet',
    presets:{
@@ -674,7 +674,7 @@ const MOCKS = [
      'Private entry': s => { s.screen='lists'; s.seg='bought'; s.sheet='log'; s.form = Object.assign(blankForm('Contact lens solution'), {store:'Target', price:'9.49', priv:true}); },
      'Engine down': s => { s.screen='lists'; s.seg='bought'; s.down=true; }
    }},
-  {id:'B', row:'row-ios', frame:'ios t-web', viewer:'Mia', name:'B. Per-item cards with history',
+  {id:'B', row:'row-ios', frame:'ios t-web', viewer:'Member B', name:'B. Per-item cards with history',
    desc:'Organised around the thing, not the date. Each Groceries line\'s "last bought" opens that item\'s history; a Bought log button on Lists shows one card per item name.',
    render:renderB, formMode:'sheet',
    presets:{
@@ -687,7 +687,7 @@ const MOCKS = [
      'Private entry': s => { s.screen='items'; s.sheet='log'; s.form = Object.assign(blankForm('Contact lens solution'), {store:'Target', price:'9.49', priv:true}); },
      'Engine down': s => { s.screen='items'; s.down=true; }
    }},
-  {id:'C', row:'row-ios', frame:'ios t-web', viewer:'Mia', name:'C. Search first, from Home',
+  {id:'C', row:'row-ios', frame:'ios t-web', viewer:'Member B', name:'C. Search first, from Home',
    desc:'Home gets one search pill: "When did we last buy...?" It opens a search screen that answers with the latest match in a sentence, lists the rest, and logs by hand on its own page.',
    render:renderC, formMode:'page',
    presets:{
@@ -701,13 +701,13 @@ const MOCKS = [
      'Engine down': s => { s.screen='search'; s.down=true; }
    }},
   {id:'D', row:'row-desk', frame:'desk t-web', viewer:'Kevin', name:'Workbench: variant A at 1280 px (Kevin)', wide:true,
-   desc:'Lists | Bought tabs as on the phone. At this width the timeline is a table with a source filter, and the "Log it" form stays open on the right. Kevin sees his private razor blades entry and not Mia\'s contact lens solution.',
+   desc:'Lists | Bought tabs as on the phone. At this width the timeline is a table with a source filter, and the "Log it" form stays open on the right. Kevin sees his private razor blades entry and not Member B\'s contact lens solution.',
    render:renderDesk, formMode:'panel',
    presets:{
      'Bought log': s => { s.seg='bought'; },
      'Search "shampoo"': s => { s.seg='bought'; s.query='shampoo'; },
      'No match': s => { s.seg='bought'; s.query='conditioner'; },
-     'Private entry': s => { s.seg='bought'; s.form = Object.assign(blankForm('Vitamin D'), {store:'HEB', price:'11.49', note:'90 count', priv:true}); },
+     'Private entry': s => { s.seg='bought'; s.form = Object.assign(blankForm('Vitamin D'), {store:'GroceryCo', price:'11.49', note:'90 count', priv:true}); },
      'Lists': s => { s.seg='lists'; },
      'Engine down': s => { s.seg='bought'; s.down=true; }
    }},
@@ -719,7 +719,7 @@ const MOCKS = [
      'Search "shampoo"': s => { s.screen='search'; s.query='shampoo'; },
      'No match': s => { s.screen='search'; s.query='conditioner'; },
      'Log it': s => { s.screen='log'; },
-     'Private entry': s => { s.screen='log'; s.form = Object.assign(blankForm('Vitamin D'), {store:'HEB', price:'11.49', priv:true}); },
+     'Private entry': s => { s.screen='log'; s.form = Object.assign(blankForm('Vitamin D'), {store:'GroceryCo', price:'11.49', priv:true}); },
      'Lists': s => { s.screen='lists'; },
      'Engine down': s => { s.screen='search'; s.down=true; }
    }}

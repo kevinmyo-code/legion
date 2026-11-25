@@ -82,7 +82,7 @@ web assistant (existing, ADR 0056)
   enough: read tools that reach Kevin's mail, calendar, Drive, Spotify, device logs or (later)
   `claude_session` must be off for recruiters. Role allowlist is the fence; scope is the second one.
 - **Companions:** `assistant/companions.py` keys companion by `User.first_name` (Kevin -> Alfred,
-  Mia -> Dorothy). A recruiter companion slots in here.
+  Member B -> Dorothy). A recruiter companion slots in here.
 - **Honesty and the gate:** `ingest/gate.py` (reconciliation gate, quarantine on totals that do not
   reconcile). The seed keeps one receipt that fails it, but nothing recruiter-facing mentions
   rejected receipts (Kevin, 2026-11-02: *"we dont do receipt ingestion anymore"*). Recruiters see

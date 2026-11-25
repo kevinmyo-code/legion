@@ -47,7 +47,7 @@ section measuring 5.4 s. Both findings are in git history; neither applies to an
   renews the Let's Encrypt certificate. Cloudflare is DNS only (grey cloud) so HTTP-01 reaches the
   box. `ALLOWED_HOSTS` and `CSRF_TRUSTED_ORIGINS` carry the name; the Android `ServerConfig` default
   hint updates to it. The parents type a name, not an IP.
-- **Latency, measured rather than assumed:** `/health` from Houston to the VM's home region,
+- **Latency, measured rather than assumed:** `/health` from the home city to the VM's home region,
   written into `deploy/vm/README.md`, so the next person who asks "why is it slow" has a baseline.
 
 ## Done means

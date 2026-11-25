@@ -20,7 +20,7 @@ Not built in this map. A handoff list for whoever owns `app/`.
 1. **Privacy toggle** on phone event and list editors, writing `visibility` (ADR 0052). The phone is
    already correct without it: unknown keys ignored, redacted tombstones delete locally. Verify the
    tombstone path once on the A25 after ticket "Private rows on the engine" is live.
-2. **`remind_minutes_before`** read and written by the phone, so a lead time Mia sets on the web
+2. **`remind_minutes_before`** read and written by the phone, so a lead time Member B sets on the web
    shows on Kevin's phone.
 3. **Switch the phone's spend figures to `GET /api/ledger/spend`**, retiring the local
    `LedgerBudget.operatingExpenses` path once the parity test has held for a month.

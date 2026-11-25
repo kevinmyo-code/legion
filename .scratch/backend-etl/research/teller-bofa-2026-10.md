@@ -263,7 +263,7 @@ personal tool is not stated either way. [unconfirmed]
   purposes"; no reselling or making the Services available to third parties; Teller may terminate
   "at any time, with or without cause"; price changes on 30 days' notice. **No clause addresses
   personal or household use explicitly.** [confirmed: https://teller.io/legal/developer/terms]
-  Reading: a household app for Kevin and Mia's own accounts fits "independent developers" on the
+  Reading: a household app for the household's own accounts fits "independent developers" on the
   homepage; it is not a ruling by Teller. [reasoned]
 - SOC 2 Type 2 is listed under Enterprise; the 2021 blog says Teller is SOC 2 Type 2 compliant.
   [confirmed: https://teller.io/ ; https://teller.io/blog]

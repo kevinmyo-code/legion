@@ -34,8 +34,8 @@ ran on the phone:
   place; guidance text populated ("Turn left", "116 mi left, 1 h 59 min"); Stop and backing out both
   stop the trip session, and the SDK's `NavigationNotificationService` and its notification are gone
   afterwards. No crash.
-- **on-device, a gap:** no route line and no location puck in view. The camera is fixed on downtown
-  Houston and never follows or fits the route. `NavSpikeScreen` also skips drawing the route line if
+- **on-device, a gap:** no route line and no location puck in view. The camera is fixed on the map's
+  default centre and never follows or fits the route. `NavSpikeScreen` also skips drawing the route line if
   the style has not loaded yet and never retries (reasoned cause). This build needs camera follow,
   fit-to-route in preview, the puck, and a route line drawn after the style loads.
 - **on-device, open:** the SDK starts a Free Drive session for about 8 ms before Active Guidance

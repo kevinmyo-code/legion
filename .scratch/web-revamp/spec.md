@@ -13,7 +13,7 @@ is reasoned rather than traced, it says so.
 
 The household web app exists and nobody can really live in it.
 
-- **For Mia** it is a login screen, a Today page and a Lists page in a stock grey theme that has
+- **For Member B** it is a login screen, a Today page and a Lists page in a stock grey theme that has
   never been looked at on a phone. She cannot add an event, cannot see what the household is
   spending, gets no nudge when Kevin adds to the grocery list, and sees Kevin's coursework deadlines
   mixed into her day because nothing in the engine can be private.
@@ -23,13 +23,13 @@ The household web app exists and nobody can really live in it.
 - **The design language drawn on 2026-09-12 was never applied**, and the PWA manifest still wears
   the phone's black-and-orange mission control, the opposite of what was decided.
 - **There is no way to invite anyone through the web.** The accounts backend is built with zero UI;
-  Mia's own password was set with `manage.py changepassword`.
+  Member B's own password was set with `manage.py changepassword`.
 
 ## Solution
 
 One web client, two surfaces, split by viewport.
 
-- **Narrow (the PWA on Mia's iPhone): the family view.** What is on today, what needs doing,
+- **Narrow (the PWA on Member B's iPhone): the family view.** What is on today, what needs doing,
   the shared lists, a calendar she can add to, and what the two BofA accounts have spent this month.
   Push notifications when a shared list changes, before a shared event, and once in the morning for
   shared tasks due. No tables, no ingestion, no provenance tags beyond the word "unverified".
@@ -69,40 +69,40 @@ One web client, two surfaces, split by viewport.
 
 ## User Stories
 
-### Mia, on the PWA
+### Member B, on the PWA
 
-1. As Mia, I want to install LEGION to my iPhone home screen with a walkthrough, so that it opens like an app and can send me notifications.
-2. As Mia, I want to sign up from an invite link Kevin sends me, so that I never need him to set a password from a terminal.
-3. As Mia, I want Home to show today's date and what is on today, so that I know my day in one look.
-4. As Mia, I want Home to show what needs doing today with a checkbox on each, so that I can tick things off without opening anything.
-5. As Mia, I want overdue shared tasks to sit in their own short section above today's, so that nothing slips silently.
-6. As Mia, I want the lists I care about (Groceries) pinned on Home with their first three open items and a count of the rest, so that I can see the list without opening it.
-7. As Mia, I want to pin and unpin lists on my own Home, so that my Home is mine without changing Kevin's.
-8. As Mia, I want Home to show what each of the two BofA accounts has spent this month, so that I know where we stand.
-9. As Mia, I want that spend figure to say "unverified" in words when it includes transactions the bank has not closed yet, so that I never mistake a provisional number for a final one.
-10. As Mia, I want the spend card to say when the numbers were last updated, in words, so that I know how fresh they are.
-11. As Mia, I want the spend card to say plainly when it could not reach the engine, so that "could not load" never looks like "spent nothing".
-12. As Mia, I want to open any shared list and tick, untick, add and remove items, so that we can shop from one list.
-13. As Mia, I want ticked items to drop into a "Ticked" section instead of vanishing, so that I can undo a mis-tap.
-14. As Mia, I want to see when Kevin has ticked or added something, within about half a minute and without refreshing, so that we do not both buy eggs.
-15. As Mia, I want to create a new list, so that we can start a packing list or a party list.
-16. As Mia, I want to see a calendar of the month with how busy each day is, and an agenda for the day I tap, so that I can plan ahead.
-17. As Mia, I want to add an event with a title, date, time or all-day, location and notes, so that the household calendar has it.
-18. As Mia, I want to make an event repeat daily, weekly on chosen days, monthly or yearly, with an end, so that I enter a recurring thing once.
-19. As Mia, I want editing or deleting a repeating event to ask "Just this one" or "All of them", so that cancelling one swim lesson does not cancel the term.
-20. As Mia, I want to set a reminder lead time on an event, so that my phone tells me before it starts.
-21. As Mia, I want new events to be shared by default with a clear "Shared" marker, so that Kevin sees what I add.
-22. As Mia, I want to mark an event or list "Only me", so that my private things stay mine.
-23. As Mia, I want shared things to carry a pink marker and the word "Shared" or a two-person glyph, so that I can tell at a glance what Kevin also sees.
-24. As Mia, I never want to see Kevin's coursework deadlines or class schedule, so that my day is about the household.
-25. As Mia, I want a push when Kevin adds to a shared list, batched into one message, so that I know without being pinged per item.
-26. As Mia, I want a push before a shared event, at the lead time set on it, so that I am not late.
-27. As Mia, I want one morning push listing shared tasks due today, so that the day starts with what matters.
-28. As Mia, I want every push to have a way to turn that kind off in one tap, so that I am never nagged.
-29. As Mia, I want dark mode that follows my phone, with a manual override, so that it is comfortable at night.
-30. As Mia, I want every tappable thing to be at least 44 px, so that I do not mis-tap.
-31. As Mia, I want any desktop-only page I reach by a link to tell me it is made for a bigger screen and take me home, so that I never land in a table.
-32. As Mia, I want a failed write to say in words what did not happen, so that I never think a tick saved when it did not.
+1. As Member B, I want to install LEGION to my iPhone home screen with a walkthrough, so that it opens like an app and can send me notifications.
+2. As Member B, I want to sign up from an invite link Kevin sends me, so that I never need him to set a password from a terminal.
+3. As Member B, I want Home to show today's date and what is on today, so that I know my day in one look.
+4. As Member B, I want Home to show what needs doing today with a checkbox on each, so that I can tick things off without opening anything.
+5. As Member B, I want overdue shared tasks to sit in their own short section above today's, so that nothing slips silently.
+6. As Member B, I want the lists I care about (Groceries) pinned on Home with their first three open items and a count of the rest, so that I can see the list without opening it.
+7. As Member B, I want to pin and unpin lists on my own Home, so that my Home is mine without changing Kevin's.
+8. As Member B, I want Home to show what each of the two BofA accounts has spent this month, so that I know where we stand.
+9. As Member B, I want that spend figure to say "unverified" in words when it includes transactions the bank has not closed yet, so that I never mistake a provisional number for a final one.
+10. As Member B, I want the spend card to say when the numbers were last updated, in words, so that I know how fresh they are.
+11. As Member B, I want the spend card to say plainly when it could not reach the engine, so that "could not load" never looks like "spent nothing".
+12. As Member B, I want to open any shared list and tick, untick, add and remove items, so that we can shop from one list.
+13. As Member B, I want ticked items to drop into a "Ticked" section instead of vanishing, so that I can undo a mis-tap.
+14. As Member B, I want to see when Kevin has ticked or added something, within about half a minute and without refreshing, so that we do not both buy eggs.
+15. As Member B, I want to create a new list, so that we can start a packing list or a party list.
+16. As Member B, I want to see a calendar of the month with how busy each day is, and an agenda for the day I tap, so that I can plan ahead.
+17. As Member B, I want to add an event with a title, date, time or all-day, location and notes, so that the household calendar has it.
+18. As Member B, I want to make an event repeat daily, weekly on chosen days, monthly or yearly, with an end, so that I enter a recurring thing once.
+19. As Member B, I want editing or deleting a repeating event to ask "Just this one" or "All of them", so that cancelling one swim lesson does not cancel the term.
+20. As Member B, I want to set a reminder lead time on an event, so that my phone tells me before it starts.
+21. As Member B, I want new events to be shared by default with a clear "Shared" marker, so that Kevin sees what I add.
+22. As Member B, I want to mark an event or list "Only me", so that my private things stay mine.
+23. As Member B, I want shared things to carry a pink marker and the word "Shared" or a two-person glyph, so that I can tell at a glance what Kevin also sees.
+24. As Member B, I never want to see Kevin's coursework deadlines or class schedule, so that my day is about the household.
+25. As Member B, I want a push when Kevin adds to a shared list, batched into one message, so that I know without being pinged per item.
+26. As Member B, I want a push before a shared event, at the lead time set on it, so that I am not late.
+27. As Member B, I want one morning push listing shared tasks due today, so that the day starts with what matters.
+28. As Member B, I want every push to have a way to turn that kind off in one tap, so that I am never nagged.
+29. As Member B, I want dark mode that follows my phone, with a manual override, so that it is comfortable at night.
+30. As Member B, I want every tappable thing to be at least 44 px, so that I do not mis-tap.
+31. As Member B, I want any desktop-only page I reach by a link to tell me it is made for a bigger screen and take me home, so that I never land in a table.
+32. As Member B, I want a failed write to say in words what did not happen, so that I never think a tick saved when it did not.
 
 ### Kevin, at the desktop
 
@@ -110,7 +110,7 @@ One web client, two surfaces, split by viewport.
 34. As Kevin, I want a dashboard with today and the next seven days, so that I see what is coming at me.
 35. As Kevin, I want the dashboard to list what needs a decision (uncategorised transactions, quarantined files, overdue tasks), each linking to where I fix it, so that I clear the queue.
 36. As Kevin, I want the dashboard to show this month's spend per account with a weekly bar, so that money is in view.
-37. As Kevin, I want my Canvas tasks and class schedule private to me and shown with a lock and "Only you", so that I know Mia does not see them.
+37. As Kevin, I want my Canvas tasks and class schedule private to me and shown with a lock and "Only you", so that I know Member B does not see them.
 38. As Kevin, I want existing Canvas rows and class blocks made private in one backfill, so that I do not toggle 145 rows by hand.
 39. As Kevin, I want to toggle any event or list I can see between shared and private, so that I can fix a wrong default.
 40. As Kevin, I want a Money screen listing every transaction in a dense table with date, description, account, amount and category, so that I review the ledger in one place.
@@ -158,7 +158,7 @@ One web client, two surfaces, split by viewport.
   Below 1024 px is `family`; 1024 px and up is `workbench`. It re-evaluates on resize.
 - **The two surfaces render different component trees.** A workbench-only affordance is absent from
   the DOM at family width, never `display:none` (web-surface 04's rule). Tests assert absence.
-- ADR 0045 allows no roles, so the split is viewport only. Mia on a laptop gets the workbench; Kevin
+- ADR 0045 allows no roles, so the split is viewport only. Member B on a laptop gets the workbench; Kevin
   on a narrow window gets the family view. Both are accepted, not bugs.
 - **Family shell:** top bar (household name, theme toggle), bottom tab bar with four tabs: Home `/`,
   Lists `/lists`, Calendar `/calendar`, Settings `/settings`. Safe-area insets respected
@@ -169,7 +169,7 @@ One web client, two surfaces, split by viewport.
   "no item that opens an empty page"). Content max width 1440 px.
 - **Workbench-only routes at family width** (`/money`, `/pantry`, `/body`, `/fleet`, `/places`,
   `/notes`) render one card: "This page is made for a bigger screen." and a button "Go to Home".
-  Except: Mia's spend glance lives on Home, not on `/money`.
+  Except: Member B's spend glance lives on Home, not on `/money`.
 - `/` renders `FamilyHome` or `WorkbenchHome` by surface. `/calendar` and `/lists` render a family
   or workbench variant by surface; both variants call the same query and mutation hooks.
 
@@ -313,7 +313,7 @@ One web client, two surfaces, split by viewport.
   3. **Still not done:** overdue tasks, max 3 rows plus "and N more" linking to `/calendar`.
   4. **To do today:** due tasks and due scheduled checklist items, tickable (existing optimistic tick).
   5. **Pinned lists:** up to 3 cards, each the first 3 open items plus "and N more". Pins are
-     per-device in `localStorage` key `legion.pins.v1` (a per-viewer convenience; Mia's pins never
+     per-device in `localStorage` key `legion.pins.v1` (a per-viewer convenience; Member B's pins never
      change Kevin's). With nothing pinned: the unscheduled lists with open items, most recently
      updated first, max 2. A pin button on each list header in `/lists`.
   6. **Spent this month:** one row per account from D5: label, amount, "unverified" in the same
@@ -516,11 +516,11 @@ Per ticket, in the ticket. For the map as a whole, done means all of:
    `test_tenancy.py`, `test_spend_parity.py`, the recurrence vectors and `push_dispatch` tests.
 4. Playwright shots for every screen at 390x844 and 1440x900, light and dark, kept.
 5. On live, by Kevin, owed and named in the map, never claimed by an agent:
-   - Mia installs the PWA on her iPhone from an invite link, signs up, sees Home.
-   - `make_private` run for `canvas:` and `course`; Mia's Home shows no coursework.
-   - Mia's spend card for the two accounts equals the phone's Money figure to the cent.
-   - Kevin adds to Groceries on the phone; Mia gets one batched push within about 7 minutes (2-minute
+   - Member B installs the PWA on her iPhone from an invite link, signs up, sees Home.
+   - `make_private` run for `canvas:` and `course`; Member B's Home shows no coursework.
+   - Member B's spend card for the two accounts equals the phone's Money figure to the cent.
+   - Kevin adds to Groceries on the phone; Member B gets one batched push within about 7 minutes (2-minute
      batch window plus the 5-minute cron).
-   - A shared event with a 30-minute reminder pushes to Mia's phone.
+   - A shared event with a 30-minute reminder pushes to Member B's phone.
    - Kevin categorises a transaction on the web; the phone shows the same category after its next
      mirror.

@@ -16,7 +16,7 @@ tags: [ticket]
 
 ## Question
 
-2-3 clickable HTML prototypes (Kevin's standing preference), iPhone width for Mia's family view,
+2-3 clickable HTML prototypes (Kevin's standing preference), iPhone width for Member B's family view,
 desktop for the workbench, 384dp for the Android chatbox beside the existing `AssistantStrip`.
 
 - Where the chat opens from (a button on the bottom bar? a panel?), the live-voice state (listening,
@@ -33,7 +33,7 @@ replies "shown, not spoken") renderings.
 
 - Tapping the orb expands to the chat with the keyboard up; a mic button switches to live voice (that
   tap is the user gesture iOS needs). Minimising keeps the conversation with a status on the orb.
-- The companion's name comes from the member's companion (Mia sees Dorothy), never hardcoded.
+- The companion's name comes from the member's companion (Member B sees Dorothy), never hardcoded.
 - Tool lines only after a success; failures say what did not happen; phone-only asks say "That's only
   on Kevin's phone"; screen lock ends it ("Conversation ended when the screen locked."); "Not saved"
   line and New conversation.

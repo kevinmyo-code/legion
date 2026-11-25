@@ -4,7 +4,7 @@ ticket: 10
 title: "Family Home, Lists and Calendar"
 type: build
 status: built
-status-detail: "Built and green (378 vitest): family Home in D6 order with per-section empty, unreachable and stale sentences, pins on this device, the spend card and its category sheet, family Lists with a collapsed Ticked section and a pin button; /calendar was built under 13. Shots kept. Owed on live (Kevin): Mia's spend card against the phone's Money figure to the cent."
+status-detail: "Built and green (378 vitest): family Home in D6 order with per-section empty, unreachable and stale sentences, pins on this device, the spend card and its category sheet, family Lists with a collapsed Ticked section and a pin button; /calendar was built under 13. Shots kept. Owed on live (Kevin): Member B's spend card against the phone's Money figure to the cent."
 blockers: ["03", "07", "09", "11"]
 blocked-by: ["[[03-the-shell-split-by-viewport]]", "[[07-shared-and-private-on-the-web]]", "[[09-the-event-sheet]]", "[[11-spend-on-the-engine]]"]
 open-blockers: 4
@@ -32,4 +32,4 @@ See `.scratch/web-revamp/spec.md` D6, D10 (family), D11 (family).
       (`routes/-family-home.test.tsx`, `routes/-family-lists.test.tsx`, `lib/pins.test.ts`.)
 - [x] Shots at 390x844 light and dark in `research/shots/10/`, plus the 1440 Home to show the
       workbench Home did not move.
-- [ ] Owed on live (Kevin): Mia's spend card equals the phone's Money figure to the cent.
+- [ ] Owed on live (Kevin): Member B's spend card equals the phone's Money figure to the cent.

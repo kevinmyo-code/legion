@@ -19,4 +19,4 @@ reminders, leave by times and budget pace"*. Rulings in `memory/library/decision
 | 03 | build | Canvas grades on the phone: screen and voice |
 | 04 | build | Budget pace alert (engine watch) |
 | 05 | build | Leave-by: notification and Alfred says it |
-| 06 | build | Location reminders ("when I'm at HEB, remind me") |
+| 06 | build | Location reminders ("when I'm at the grocery store, remind me") |

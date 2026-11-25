@@ -27,7 +27,7 @@ and what makes it live?
 - **Qualifies when**: the same ordered set of read tools, with the same argument shape, succeeded
   in at least 3 conversations over at least 2 separate days, and no turn in them touched a
   read-through tool (mail). Writes never distil into a procedure without an `ask` step in front.
-- **Never from recruiter visits** (other people's sessions), never from Mia's conversations into
+- **Never from recruiter visits** (other people's sessions), never from Member B's conversations into
   Kevin's procedures or the reverse unless the procedure only reads shared rows.
 - **Kevin approves in the inspector**: sees the traces it came from, the YAML, a dry run on
   today's data; approve, edit, or dismiss. Approval writes `approved_by`, `approved_at` and

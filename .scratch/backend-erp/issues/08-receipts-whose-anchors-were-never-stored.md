@@ -18,7 +18,7 @@ All three of Kevin's receipts failed and were skipped:
 | Store | Sum of lines | Printed total | Unexplained |
 |---|---|---|---|
 | Walmart | 12084 | 12886 | 802 (6.6%) |
-| Katy Elyson | 2293 | 2341 | 48 (2.1%) |
+| Store B | 2293 | 2341 | 48 (2.1%) |
 | Walmart | 2292 | 2443 | 151 (6.6%) |
 
 ## Root cause, traced rather than guessed
@@ -29,7 +29,7 @@ record type has all three, and they are NULL for these rows because there was no
 from. The legacy rows fail by identical amounts, so the copy is faithful.
 
 So the agent almost certainly gated these correctly at ingestion, holding tax in memory, and then
-persisted only the total and the lines. Two of the three gaps sitting at ~6.6% is Texas sales tax.
+persisted only the total and the lines. Two of the three gaps sitting at ~6.6% is the local sales tax.
 
 **The finding that outlives these three rows: rule 2's guarantee is only as durable as the evidence
 kept. A gate that passes in memory and discards its anchors leaves rows nobody can ever re-verify.**

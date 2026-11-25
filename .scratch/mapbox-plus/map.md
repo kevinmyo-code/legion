@@ -34,4 +34,4 @@ Kevin drives with LEGION's own navigation by choice, and stops opening Google Ma
 | 04 | build | Traffic on the route, lane guidance, speed limit shown | 02 |
 | 05 | decision | Offline maps: which area, how big, when to refresh | 02 |
 | 06 | decision | Place search ("tacos near me", open now): Mapbox Search Box vs another POI source | 02 |
-| 07 | decision | LEGION-only extras: ETA to Mia, "leave by" from calendar and Canvas, fuel-aware stops | 02 |
+| 07 | decision | LEGION-only extras: ETA to a household member, "leave by" from calendar and Canvas, fuel-aware stops | 02 |

@@ -13,4 +13,4 @@ tags: [ticket]
 
 # Decision: offline maps (area, size, refresh)
 
-Which region (Houston metro? Texas?), how much storage Kevin accepts, Wi-Fi only, how often to refresh, and what is said in words when offline. Needs the SDK's offline facts first.
+Which region (the home metro? the whole state?), how much storage Kevin accepts, Wi-Fi only, how often to refresh, and what is said in words when offline. Needs the SDK's offline facts first.

@@ -28,7 +28,7 @@ After deploy ("deploy OK"), install, and the phone build.
 6. "What's my LEGION session doing?" names the open interactive session and its project.
 7. Follow-up: "now zip it" reaches the same main session and knows what "it" is.
 8. `tools/voice_audit.py` over the capture: no outcome verb before a result row.
-9. Ticket 09: "Make me an itinerary for a day trip into Atlanta." Alfred offers the Alienware as a
+9. Ticket 09: "Make me an itinerary for a day trip into a nearby city." Alfred offers the Alienware as a
    page; yes; it is sent with `deliver: phone`. When it is done: "The page ... is ready. Want me to
    open it?"; yes opens it in LEGION's browser. The page is listed on the web desk's `/claude`
    with an Open link. A notification tap (assistant off) opens it too.

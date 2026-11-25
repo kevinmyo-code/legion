@@ -22,9 +22,9 @@ meals' macros, and `memory/MEMORY.md` lists it as never built.
 1. **The category set.** Fixed list, or freeform? Shared between ledger and meals or separate? A
    budget needs a stable set; "groceries" must mean the same thing in March and April.
 2. **Rule format.** Substring match on the merchant string, regex, or something richer? Where stored
-   - Room, preferences, or a bundled asset? Kevin's real descriptions look like
-   `WM SUPERCENTER #4512 KATY TX` and `KROGER #115 CYPRESS TX`, so the store number varies and the
-   chain does not.
+   - Room, preferences, or a bundled asset? the stored descriptions look like
+   `BIGMART SUPERCENTER #4512 CITY ST` and `GROCERYCO #115 TOWN ST`, so the store number varies and
+   the chain does not.
 3. **When the AI guesses.** One-shot per unknown merchant, or batched? On import or on demand? It
    costs his own Gemini key, so `.scratch/ledger-drive-ingestion/issues/06-llm-spend-gate.md`'s
    spend-gate posture probably applies.
@@ -48,8 +48,8 @@ April. Freeform drifts within a week and the budget quietly stops meaning anythi
 what makes the deferred grocery-vs-meals cross-check (ticket 09) possible later without a migration.
 
 **16. Rules are substring matches on the UPPERCASED description**, stored in Room, editable.
-Verified against Kevin's real rows: `KROGER #115 CYPRESS TX` and `KROGER #122 KATY TX` differ only in
-the store number, so `KROGER` matches both. The chain is stable; the store is not.
+Verified against the stored rows: `GROCERYCO #115 TOWN ST` and `GROCERYCO #122 CITY ST` differ only in
+the store number, so `GROCERYCO` matches both. The chain is stable; the store is not.
 
 **17. The AI guesses only for merchants with no rule, batched, behind the existing spend gate**
 (`.scratch/ledger-drive-ingestion/issues/06-llm-spend-gate.md`). Never per-import, never silently.

@@ -205,13 +205,13 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 <body>
 <div class="intro">
   <h1>Assistant chat and voice: pick A, B or C</h1>
-  <p>Web-assistant ticket 05. Mia's iPhone family view first (390 x 844, soft Material light from the real web tokens), then Kevin's workbench and Kevin's Android typed chatbox beside the existing push-to-talk strip (384 dp, soft Material dark).</p>
+  <p>Web-assistant ticket 05. Member B's iPhone family view first (390 x 844, soft Material light from the real web tokens), then Kevin's workbench and Kevin's Android typed chatbox beside the existing push-to-talk strip (384 dp, soft Material dark).</p>
   <p>Everything is clickable: type a message (try "when did we last buy shampoo", "I bought shampoo at Target, log it", "play some music"), tap the mic, interrupt, end. The chips above each device jump to a state. Tool lines appear only after the engine answered; a failure says what did not happen.</p>
-  <div class="who" role="group" aria-label="Who is signed in on the iPhone mocks"><span>The companion's name is data from the signed-in member. iPhone mocks signed in as:</span><button data-viewer="Mia" class="on">Mia (talks to Dorothy)</button><button data-viewer="Kevin">Kevin (talks to Alfred)</button></div>
+  <div class="who" role="group" aria-label="Who is signed in on the iPhone mocks"><span>The companion's name is data from the signed-in member. iPhone mocks signed in as:</span><button data-viewer="Member B" class="on">Member B (talks to Dorothy)</button><button data-viewer="Kevin">Kevin (talks to Alfred)</button></div>
 </div>
 
 <section class="group">
-  <h2>Mia's iPhone: family view</h2>
+  <h2>Member B's iPhone: family view</h2>
   <p class="gsub">iOS needs a tap before the mic opens, and a screen lock ends the conversation (ticket 02). Chats are session only: nothing is saved.</p>
   <div class="row" id="row-ios"></div>
 </section>
@@ -260,22 +260,22 @@ function esc(s){ return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt
 function cap(s){ return s.charAt(0).toUpperCase()+s.slice(1); }
 
 /* ===== members: the companion name is data, read from here and nowhere else ===== */
-const MEMBERS = { Mia:{companion:'Dorothy'}, Kevin:{companion:'Alfred'} };
+const MEMBERS = { Member B:{companion:'Dorothy'}, Kevin:{companion:'Alfred'} };
 
 /* ===== scripted engine: a tool line exists only when the "engine" returned ===== */
 const ITEMS = ['paper towels','laundry detergent','dish soap','shampoo','toothpaste','conditioner','eggs','bananas'];
 const FOUND = {
-  shampoo:{n:3, say:'The latest is Shampoo on Sep 20, ticked off Groceries by Mia. Before that, Head & Shoulders shampoo on Aug 9, logged by Kevin, and Dove shampoo on Jun 14, who logged it isn\'t recorded.'},
-  toothpaste:{n:2, say:'You logged Toothpaste on Sep 28, ticked off Groceries by Kevin. Before that, Colgate toothpaste on Aug 30, logged by Mia.'},
-  'paper towels':{n:1, say:'Paper towels on Oct 2, ticked off Groceries by Mia.'}
+  shampoo:{n:3, say:'The latest is Shampoo on Sep 20, ticked off Groceries by Member B. Before that, Head & Shoulders shampoo on Aug 9, logged by Kevin, and Dove shampoo on Jun 14, who logged it isn\'t recorded.'},
+  toothpaste:{n:2, say:'You logged Toothpaste on Sep 28, ticked off Groceries by Kevin. Before that, Colgate toothpaste on Aug 30, logged by Member B.'},
+  'paper towels':{n:1, say:'Paper towels on Oct 2, ticked off Groceries by Member B.'}
 };
 function route(s, raw){
   const t = ' '+raw.toLowerCase()+' ';
   const it = ITEMS.find(i => t.includes(i)) || null;
-  const store = /target/.test(t) ? 'Target' : /\bheb\b/.test(t) ? 'HEB' : null;
+  const store = /target/.test(t) ? 'Target' : /\bgrocery\b/.test(t) ? 'GroceryCo' : null;
   if (s.droid && /(music|spotify| play )/.test(t)) return {tool:{ok:true, text:'Spotify started: Kitchen playlist'}, reply:'Playing your Kitchen playlist.'};
   if (/(music|spotify| play |navigat|directions|oil|my car|email|gmail|alarm| call )/.test(t))
-    return {reply: (s.viewer === 'Mia' ? 'That\'s only on Kevin\'s phone, so I can\'t do it from here.' : 'That\'s only on your Android phone, so I can\'t do it from the web.') + ' I can check the calendar, the lists or the bought log.', phoneOnly:true};
+    return {reply: (s.viewer === 'Member B' ? 'That\'s only on Kevin\'s phone, so I can\'t do it from here.' : 'That\'s only on your Android phone, so I can\'t do it from the web.') + ' I can check the calendar, the lists or the bought log.', phoneOnly:true};
   if (/(when|last).*(buy|bought)/.test(t)) {
     const what = it || 'that';
     if (s.down) return {tool:{ok:false, text:'Couldn\'t reach the engine. The bought log was not searched.'}, reply:'I can\'t reach the bought log right now, so I can\'t say. That isn\'t the same as having no record.'};
@@ -293,7 +293,7 @@ function route(s, raw){
   }
   if (/(today|calendar|schedule|on tonight)/.test(t)) {
     if (s.down) return {tool:{ok:false, text:'Couldn\'t reach the engine. The calendar was not read.'}, reply:'I can\'t reach the calendar right now, so I don\'t know what\'s on today. That doesn\'t mean the day is clear.'};
-    return {tool:{ok:true, text:'Read today\'s calendar: 2 events'}, reply:'Two things today: soccer practice at 5:00 PM and the HEB pickup at 6:30 PM.'};
+    return {tool:{ok:true, text:'Read today\'s calendar: 2 events'}, reply:'Two things today: soccer practice at 5:00 PM and the Grocery pickup at 6:30 PM.'};
   }
   return {reply:'I\'m not sure what you meant. I can check the calendar, the lists and the bought log, or log something you bought.'};
 }
@@ -371,7 +371,7 @@ function homeBody(s){
   return '<h1 class="greet">Good afternoon, '+esc(s.viewer)+'</h1><p class="muted" style="margin:2px 0 0">Sunday, 4 October</p>'
     + '<p class="sec-label">On today</p>'
     + '<div class="ev"><span class="tm">5:00 PM</span><span class="nm">Soccer practice</span><span class="mark-shared">'+ic('users',14)+'Shared</span></div>'
-    + '<div class="ev"><span class="tm">6:30 PM</span><span class="nm">HEB pickup</span><span class="mark-shared">'+ic('users',14)+'Shared</span></div>'
+    + '<div class="ev"><span class="tm">6:30 PM</span><span class="nm">Grocery pickup</span><span class="mark-shared">'+ic('users',14)+'Shared</span></div>'
     + '<div class="card" style="margin-top:12px"><p style="margin:0 0 8px;font-weight:500">Groceries</p>'
     + ['Shampoo','Toothpaste','Eggs'].map(i => '<p style="margin:6px 0;display:flex;gap:10px;align-items:center"><span aria-hidden="true" style="width:16px;height:16px;border:2px solid var(--outline);border-radius:5px"></span>'+i+'</p>').join('')
     + '<p class="muted" style="margin:4px 0 0 26px;font-size:13px">and 2 more</p></div>';
@@ -436,7 +436,7 @@ function renderDesk(s){
     + '<button class="ritem" data-a="noop">'+ic('gear',20)+'Settings</button></nav></aside>';
   h += '<main class="dmain"><h1>Good afternoon, '+esc(s.viewer)+'</h1><p class="muted" style="margin:0 0 18px">Sunday, 4 October</p>'
     + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:760px"><div class="card"><p style="margin:0 0 10px;font-weight:500">On today</p>'
-    + '<div class="ev" style="background:var(--s2)"><span class="tm">5:00 PM</span><span class="nm">Soccer practice</span></div><div class="ev" style="background:var(--s2)"><span class="tm">6:30 PM</span><span class="nm">HEB pickup</span></div></div>'
+    + '<div class="ev" style="background:var(--s2)"><span class="tm">5:00 PM</span><span class="nm">Soccer practice</span></div><div class="ev" style="background:var(--s2)"><span class="tm">6:30 PM</span><span class="nm">Grocery pickup</span></div></div>'
     + '<div class="card"><p style="margin:0 0 10px;font-weight:500">Groceries</p>'+['Shampoo','Toothpaste','Eggs','Bananas'].map(i => '<p style="margin:6px 0;display:flex;gap:10px;align-items:center"><span aria-hidden="true" style="width:16px;height:16px;border:2px solid var(--outline);border-radius:5px"></span>'+i+'</p>').join('')+'</div></div>'
     + '<p class="muted" style="margin-top:18px;font-size:14px">The conversation docks on the right of any page and leaves it usable. Shortcut: press / to focus the message box.</p></main>';
   if (s.open) {
@@ -452,7 +452,7 @@ function renderDesk(s){
 function renderDroid(s){
   const sb = '<div class="sb"><span>9:41</span><span class="sbi"><svg width="15" height="11" viewBox="0 0 15 11" aria-hidden="true"><path d="M7.5 11 0 3.2a10.7 10.7 0 0 1 15 0z" fill="currentColor"/></svg><svg width="10" height="15" viewBox="0 0 10 15" aria-hidden="true"><rect x="0" y="1.5" width="10" height="13.5" rx="2" fill="currentColor"/><rect x="3" y="0" width="4" height="2" rx="1" fill="currentColor"/></svg><span>82%</span></span></div>';
   const home = '<div class="main"><h1 class="greet" style="font-size:26px">Sunday, Oct 4</h1><p class="sec-label">Today</p>'
-    + '<div class="ev"><span class="tm">5:00 PM</span><span class="nm">Soccer practice</span></div><div class="ev"><span class="tm">6:30 PM</span><span class="nm">HEB pickup</span></div>'
+    + '<div class="ev"><span class="tm">5:00 PM</span><span class="nm">Soccer practice</span></div><div class="ev"><span class="tm">6:30 PM</span><span class="nm">Grocery pickup</span></div>'
     + '<div class="card" style="margin-top:12px"><p style="margin:0 0 8px;font-weight:600">Groceries</p><p class="muted" style="margin:0">Shampoo, Toothpaste, Eggs and 2 more</p></div></div>';
   let panel = '';
   if (s.turns.length || s.busy) {
@@ -529,11 +529,11 @@ function phonePresets(where){
   };
 }
 const MOCKS = [
-  {id:'A', row:'row-ios', frame:'ios t-web', viewer:'Mia', name:'A. A tab of its own', where:'tab', render:renderA,
+  {id:'A', row:'row-ios', frame:'ios t-web', viewer:'Member B', name:'A. A tab of its own', where:'tab', render:renderA,
    desc:'A fifth tab, labelled with the companion\'s name, between Lists and Calendar. Full-screen chat with a mic in the composer; voice takes the top of the screen and the chat runs underneath.'},
-  {id:'B', row:'row-ios', frame:'ios t-web', viewer:'Mia', name:'B. Ask bar and a sheet, over any screen', where:'sheet', render:renderB,
+  {id:'B', row:'row-ios', frame:'ios t-web', viewer:'Member B', name:'B. Ask bar and a sheet, over any screen', where:'sheet', render:renderB,
    desc:'A slim "Ask Dorothy" bar sits above the tabs on every screen, like the Android strip. Tap the bar to type, the mic to talk; both open the same sheet over the page you were on.'},
-  {id:'C', row:'row-ios', frame:'ios t-web', viewer:'Mia', name:'C. A floating orb that expands', where:'orb', render:renderC,
+  {id:'C', row:'row-ios', frame:'ios t-web', viewer:'Member B', name:'C. A floating orb that expands', where:'orb', render:renderC,
    desc:'Voice first. One orb floats above the tabs; tapping it is the tap iOS needs, so talking starts at once. It expands full screen; the keyboard button switches to typing; minimise keeps talking.'},
   {id:'D', row:'row-desk', frame:'desk t-web', viewer:'Kevin', name:'Workbench: a docked panel (Kevin, talks to Alfred)', where:'panel', render:renderDesk, wide:true,
    desc:'The rail gets one entry named for Kevin\'s companion; it opens a 400 px panel on the right of any page. Same chat, same voice states, same honesty lines as the phone.'},
@@ -555,7 +555,7 @@ MOCKS.forEach(m => {
 });
 
 /* ===== mount ===== */
-let IOS_VIEWER = 'Mia';
+let IOS_VIEWER = 'Member B';
 MOCKS.forEach(m => {
   const col = document.createElement('div');
   col.className = 'col'+(m.wide ? ' wide' : '');

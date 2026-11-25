@@ -19,7 +19,7 @@ tags: [ticket]
 In a browser Live session, Gemini sends tool calls to the browser. Who executes them?
 
 - The browser calls a session-authenticated engine endpoint with the same tool set as `/mcp`,
-  through `visible()` for the signed-in member (Mia sees only shared + hers).
+  through `visible()` for the signed-in member (Member B sees only shared + hers).
 - Or the engine relays the whole Live session server-side (Cloud Run WebSockets, min-instances 0,
   5.4 s cold start).
 - `/mcp` is device-token only by design; a cookie path must not open `/mcp` itself (CSRF reasoning in
@@ -37,12 +37,12 @@ Opus's details, built unless vetoed:
   `/mcp` stays device-token only, as its view's CSRF reasoning requires. Django session + CSRF token,
   same-origin only.
 - **Same tool implementations as `/mcp`** (one registry, two doors), every read through `visible()`
-  for the signed-in member: Mia's assistant cannot see Kevin's private rows, and the reverse.
+  for the signed-in member: Member B's assistant cannot see Kevin's private rows, and the reverse.
 - Throttled per member and audited like `McpCall` (tool name, outcome, no arguments stored).
 - The locked token carries the tool declarations with `BLOCKING` behaviour, so the browser cannot
   add, remove or reword a tool.
 
-**Also ruled the same day (Kevin):** Mia is on a recent iPhone on **iOS 27** (WebKit bug 326286,
+**Also ruled the same day (Kevin):** Member B is on a recent iPhone on **iOS 27** (WebKit bug 326286,
 playback crackle with the mic open, applies). **No device spike first: build it all, test after.**
 **Screen lock or app switch ends the conversation** cleanly; coming back starts fresh, and the
 session-only history clears.

@@ -17,7 +17,7 @@ lets build a spec first before we start implementing."*
 
 ## Destination
 
-The household web app as the spec describes it: Mia lives in the PWA on her iPhone (today, lists,
+The household web app as the spec describes it: Member B lives in the PWA on her iPhone (today, lists,
 calendar, spend, push), Kevin reviews and edits every aspect at the desktop, and private rows keep
 Kevin's coursework his. Spec: `.scratch/web-revamp/spec.md`. Execution is in scope.
 
@@ -62,7 +62,7 @@ Made in the 2026-10-03 interview, all recorded in the spec:
 - [Pick the web design language](issues/01-pick-the-web-design-language.md): C, soft Material light. ADR 0053.
 - Private rows: ADR 0052 written; CLAUDE.md section 1 amended.
 - Surfaces split by viewport, rendered not hidden (D1). ADR 0045 allows no roles.
-- Mia's PWA: today, ticks, add/edit events, groceries as a shared checklist, shared lists and events,
+- Member B's PWA: today, ticks, add/edit events, groceries as a shared checklist, shared lists and events,
   spend on the two BofA accounts this month (D6).
 - Private rows, server-enforced; Canvas and class schedule private, hand-made shared by default,
   shared marked pink (D3, ADR 0052 to write).
@@ -84,14 +84,14 @@ for the Android side and stays open.
   applied. The first attempt died at ingest 0013 (`private` schema permission); 0009-0012 had
   applied under old code in between. Fixed in `40efc935`.
 - `make_private`: 251 school rows private to Kevin. Selectors that matched real data: the
-  `canvas_assignment_id` and `parent_canvas_assignment_id` keys, and `--title-prefix` "COSC ",
-  "MATH 3391", "MKTG 3303" (the class schedule has no metadata). 70 household rows stay shared.
+  `canvas_assignment_id` and `parent_canvas_assignment_id` keys, and `--title-prefix` "CSCI ",
+  "STAT 2300", "BUSN 2400" (the class schedule has no metadata). 70 household rows stay shared.
 - Canvas re-login via `connect_session.py canvas` (it had been `needs_login` since 2026-09-29).
   The first sync after that came back `ok`, and new Canvas rows arrive private.
 - Schedule installed; `legion-worker-push-dispatch` is PAUSED until VAPID keys exist (it ran a
   Job every 5 minutes for nothing).
 
-**Still owed by Kevin:** look at the site against real data; invite Mia and have her install the
+**Still owed by Kevin:** look at the site against real data; invite Member B and have her install the
 PWA; check her spend card against the phone to the cent; push keys (`deploy/cloudrun/README.md`)
 and then resume `legion-worker-push-dispatch`. The "Laptop: connect_session" write token is in
 Settings > Devices.

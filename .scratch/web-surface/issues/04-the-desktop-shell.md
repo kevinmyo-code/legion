@@ -37,4 +37,4 @@ are not furniture and they are not a footnote.
 ## Verification
 
 At 1707px and at 1280px. And at 390px, where every desktop-only affordance must be absent rather
-than merely hidden - Mia should not be able to reach an ingestion control by rotating her phone.
+than merely hidden - Member B should not be able to reach an ingestion control by rotating her phone.

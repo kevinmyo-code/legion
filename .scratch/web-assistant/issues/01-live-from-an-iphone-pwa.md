@@ -47,4 +47,4 @@ with the key held by the engine? Primary sources (ai.google.dev, WebKit, Apple d
   talk depending on compression; about $0.006 per typed turn. The key must be on a billed project.
 - **Fallback if iOS fails:** record each turn, engine runs a non-live model with all tools server-side
   (~$0.002 per turn), reply spoken by the browser.
-- **Owed:** a real token mint and connect, and a spike on Mia's actual iPhone before the web build.
+- **Owed:** a real token mint and connect, and a spike on Member B's actual iPhone before the web build.

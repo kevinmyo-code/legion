@@ -18,7 +18,7 @@ manually logging in her own notepad either by voice or by hand."*
 
 ## Destination
 
-**Shipped on the phone and the web, used by Mia.** Either of us can log "bought shampoo" by voice
+**Shipped on the phone and the web, used by Member B.** Either of us can log "bought shampoo" by voice
 or by hand, a tick on the Groceries list logs it by itself, and "when did we last buy shampoo?"
 answers from real purchase entries on the phone, the web, and the web assistant
 (`.scratch/web-assistant/`). Execution is in scope.
@@ -32,7 +32,7 @@ answers from real purchase entries on the phone, the web, and the web assistant
   that one list and says so in words.
 - **Shared by default, private optional.** The log is household-shared so either of us can ask; an
   entry may be marked private to the person who logged it (ADR 0052's ownership model).
-- **Mia is on an iPhone, web PWA only.** Her voice path is the web assistant, not the Android app.
+- **The second member is on an iPhone, web PWA only.** That voice path is the web assistant, not the Android app.
 
 ## What exists, so nothing here is invented (traced 2026-10-04 on origin/dev 59fec9b6)
 
@@ -57,7 +57,7 @@ answers from real purchase entries on the phone, the web, and the web assistant
   results say what did not happen.
 - **Price is what someone typed.** It is not reconciled against the bank and is never summed into
   ledger figures; every surface that shows it says it was entered by hand.
-- Skills: `/grilling` for decisions, `/prototype` for 05 (clickable HTML, iPhone width for Mia, the
+- Skills: `/grilling` for decisions, `/prototype` for 05 (clickable HTML, iPhone width for Member B, the
   A25's 384dp for the phone).
 
 ## The tickets
@@ -72,7 +72,7 @@ answers from real purchase entries on the phone, the web, and the web assistant
 | 06 | build | Server: table, API, tenancy, the Groceries hook, `/mcp` tools | 01, 02, 03 |
 | 07 | build | Web: the log screen, "log it" form, last-bought on list items | 05, 06 |
 | 08 | build | Phone: voice tools, the log screen, last-bought label | 04, 05, 06 |
-| 09 | test | Mia logs and asks, on her iPhone | 07 |
+| 09 | test | A second household member logs and asks, from the web app | 07 |
 
 ## Decisions so far
 

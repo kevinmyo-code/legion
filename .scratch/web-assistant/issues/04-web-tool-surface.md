@@ -30,7 +30,7 @@ navigation) are not on the server.
 "Everything the engine has" = the 11 `/mcp` tools plus the bought log's four
 (`.scratch/purchase-log/`). Opus's proposal, built unless vetoed:
 
-- **Moves server-side now:** tick history (`last_ticked`, ADR 0049 wording), because Mia will ask it
+- **Moves server-side now:** tick history (`last_ticked`, ADR 0049 wording), because Member B will ask it
   and it is a pure read of synced tables.
 - **Readable on the web:** voice-note summaries already on the server (transcript and summary;
   audio stays phone-only).

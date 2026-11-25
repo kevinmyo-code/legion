@@ -33,7 +33,7 @@ match asserts a purchase that never happened).
   layer: the query's words all appear in the entry (so "shampoo" finds "Head & Shoulders shampoo"),
   simple plural folding ("shampoos").
 - **Every answer names the entry it matched and its date**: "You logged Head & Shoulders shampoo on
-  Sep 20 (Mia)." Never "you bought shampoo on Sep 20" when the entry said something else.
+  Sep 20 (Member B)." Never "you bought shampoo on Sep 20" when the entry said something else.
 - Several different matches: list them (newest first), never pick one silently.
 - No match: "I have no record of buying shampoo." Never "you have never bought it" (ADR 0049's
   absent-record rule carries over).

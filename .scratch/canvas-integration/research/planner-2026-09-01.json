@@ -1,11 +1,11 @@
 {
  "pulled": "2026-09-01",
- "host": "uhv.instructure.com",
+ "host": "example.instructure.com",
  "endpoint": "/api/v1/planner/items",
  "note": "truncated at 50KB by get_page_text; 67 of an unknown larger total",
  "items": [
   {
-   "course": "2026FA MATH3391 20937 - Probability and Statistics I",
+   "course": "2026FA STAT2300 10001 - Probability and Statistics I",
    "course_id": 7135,
    "type": "discussion_topic",
    "canvas_id": 109375,
@@ -16,7 +16,7 @@
    "url": "/courses/7135/discussion_topics/109375"
   },
   {
-   "course": "2026FA COSC4305 27931 - Computer Science Internship",
+   "course": "2026FA CSCI3300 10002 - Computer Science Internship",
    "course_id": 7748,
    "type": "assignment",
    "canvas_id": 178574,
@@ -27,18 +27,18 @@
    "url": "/courses/7748/assignments/178574"
   },
   {
-   "course": "2026FA MATH3391 20937 - Probability and Statistics I",
+   "course": "2026FA STAT2300 10001 - Probability and Statistics I",
    "course_id": 7135,
    "type": "assignment",
    "canvas_id": 172187,
-   "title": "Chapter 1 Quiz MATH 3391",
+   "title": "Chapter 1 Quiz STAT 2300",
    "due_at_utc": "2026-09-07T04:59:00Z",
    "submitted": false,
    "points": 20.0,
    "url": "/courses/7135/assignments/172187"
   },
   {
-   "course": "2026FA MKTG3303 20608 - Principles of Marketing",
+   "course": "2026FA BUSN2400 10006 - Principles of Marketing",
    "course_id": 7270,
    "type": "discussion_topic",
    "canvas_id": 106843,
@@ -49,7 +49,7 @@
    "url": "/courses/7270/discussion_topics/106843"
   },
   {
-   "course": "2026FA MKTG3303 20608 - Principles of Marketing",
+   "course": "2026FA BUSN2400 10006 - Principles of Marketing",
    "course_id": 7270,
    "type": "assignment",
    "canvas_id": 164300,
@@ -60,7 +60,7 @@
    "url": "/courses/7270/assignments/164300"
   },
   {
-   "course": "2026FA MATH3391 20937 - Probability and Statistics I",
+   "course": "2026FA STAT2300 10001 - Probability and Statistics I",
    "course_id": 7135,
    "type": "assignment",
    "canvas_id": 170630,
@@ -71,7 +71,7 @@
    "url": "/courses/7135/assignments/170630"
   },
   {
-   "course": "2026FA COSC4320 26653 MAIN - Software Engineering",
+   "course": "2026FA CSCI3400 10003 MAIN - Software Engineering",
    "course_id": 7761,
    "type": "assignment",
    "canvas_id": 173264,
@@ -82,7 +82,7 @@
    "url": "/courses/7761/assignments/173264"
   },
   {
-   "course": "2026FA COSC3318 21007 MAIN - Python Programming",
+   "course": "2026FA CSCI2100 10004 MAIN - Python Programming",
    "course_id": 6954,
    "type": "assignment",
    "canvas_id": 173596,
@@ -93,7 +93,7 @@
    "url": "/courses/6954/assignments/173596"
   },
   {
-   "course": "2026FA COSC4320 26653 MAIN - Software Engineering",
+   "course": "2026FA CSCI3400 10003 MAIN - Software Engineering",
    "course_id": 7761,
    "type": "quiz",
    "canvas_id": 49224,
@@ -104,7 +104,7 @@
    "url": "/courses/7761/quizzes/49224"
   },
   {
-   "course": "2026FA MATH3391 20937 - Probability and Statistics I",
+   "course": "2026FA STAT2300 10001 - Probability and Statistics I",
    "course_id": 7135,
    "type": "discussion_topic",
    "canvas_id": 109376,
@@ -115,18 +115,18 @@
    "url": "/courses/7135/discussion_topics/109376"
   },
   {
-   "course": "2026FA MATH3391 20937 - Probability and Statistics I",
+   "course": "2026FA STAT2300 10001 - Probability and Statistics I",
    "course_id": 7135,
    "type": "assignment",
    "canvas_id": 175837,
-   "title": "Chapter 2 Quiz MATH 3391",
+   "title": "Chapter 2 Quiz STAT 2300",
    "due_at_utc": "2026-09-14T04:59:00Z",
    "submitted": false,
    "points": 20.0,
    "url": "/courses/7135/assignments/175837"
   },
   {
-   "course": "2026FA MKTG3303 20608 - Principles of Marketing",
+   "course": "2026FA BUSN2400 10006 - Principles of Marketing",
    "course_id": 7270,
    "type": "assignment",
    "canvas_id": 164302,
@@ -137,7 +137,7 @@
    "url": "/courses/7270/assignments/164302"
   },
   {
-   "course": "2026FA MATH3391 20937 - Probability and Statistics I",
+   "course": "2026FA STAT2300 10001 - Probability and Statistics I",
    "course_id": 7135,
    "type": "assignment",
    "canvas_id": 170632,
@@ -148,7 +148,7 @@
    "url": "/courses/7135/assignments/170632"
   },
   {
-   "course": "2026FA COSC4320 26653 MAIN - Software Engineering",
+   "course": "2026FA CSCI3400 10003 MAIN - Software Engineering",
    "course_id": 7761,
    "type": "discussion_topic",
    "canvas_id": 110380,
@@ -159,7 +159,7 @@
    "url": "/courses/7761/discussion_topics/110380"
   },
   {
-   "course": "2026FA COSC4320 26653 MAIN - Software Engineering",
+   "course": "2026FA CSCI3400 10003 MAIN - Software Engineering",
    "course_id": 7761,
    "type": "assignment",
    "canvas_id": 173265,
@@ -170,7 +170,7 @@
    "url": "/courses/7761/assignments/173265"
   },
   {
-   "course": "2026FA COSC4320 26653 MAIN - Software Engineering",
+   "course": "2026FA CSCI3400 10003 MAIN - Software Engineering",
    "course_id": 7761,
    "type": "quiz",
    "canvas_id": 49225,
@@ -181,7 +181,7 @@
    "url": "/courses/7761/quizzes/49225"
   },
   {
-   "course": "2026FA COSC3334 20997 MAIN - Introduction to Cybersecurity",
+   "course": "2026FA CSCI2200 10005 MAIN - Introduction to Cybersecurity",
    "course_id": 7073,
    "type": "assignment",
    "canvas_id": 178542,
@@ -192,7 +192,7 @@
    "url": "/courses/7073/assignments/178542"
   },
   {
-   "course": "2026FA MATH3391 20937 - Probability and Statistics I",
+   "course": "2026FA STAT2300 10001 - Probability and Statistics I",
    "course_id": 7135,
    "type": "discussion_topic",
    "canvas_id": 109377,
@@ -203,7 +203,7 @@
    "url": "/courses/7135/discussion_topics/109377"
   },
   {
-   "course": "2026FA COSC4305 27931 - Computer Science Internship",
+   "course": "2026FA CSCI3300 10002 - Computer Science Internship",
    "course_id": 7748,
    "type": "assignment",
    "canvas_id": 178575,
@@ -214,18 +214,18 @@
    "url": "/courses/7748/assignments/178575"
   },
   {
-   "course": "2026FA MATH3391 20937 - Probability and Statistics I",
+   "course": "2026FA STAT2300 10001 - Probability and Statistics I",
    "course_id": 7135,
    "type": "assignment",
    "canvas_id": 175838,
-   "title": "Chapter 3 Quiz MATH 3391",
+   "title": "Chapter 3 Quiz STAT 2300",
    "due_at_utc": "2026-09-21T04:59:00Z",
    "submitted": false,
    "points": 20.0,
    "url": "/courses/7135/assignments/175838"
   },
   {
-   "course": "2026FA MKTG3303 20608 - Principles of Marketing",
+   "course": "2026FA BUSN2400 10006 - Principles of Marketing",
    "course_id": 7270,
    "type": "assignment",
    "canvas_id": 164309,
@@ -236,7 +236,7 @@
    "url": "/courses/7270/assignments/164309"
   },
   {
-   "course": "2026FA MATH3391 20937 - Probability and Statistics I",
+   "course": "2026FA STAT2300 10001 - Probability and Statistics I",
    "course_id": 7135,
    "type": "assignment",
    "canvas_id": 170634,
@@ -247,7 +247,7 @@
    "url": "/courses/7135/assignments/170634"
   },
   {
-   "course": "2026FA MATH3391 20937 - Probability and Statistics I",
+   "course": "2026FA STAT2300 10001 - Probability and Statistics I",
    "course_id": 7135,
    "type": "discussion_topic",
    "canvas_id": 109378,
@@ -258,18 +258,18 @@
    "url": "/courses/7135/discussion_topics/109378"
   },
   {
-   "course": "2026FA MATH3391 20937 - Probability and Statistics I",
+   "course": "2026FA STAT2300 10001 - Probability and Statistics I",
    "course_id": 7135,
    "type": "assignment",
    "canvas_id": 175839,
-   "title": "Chapter 4 Quiz MATH 3391",
+   "title": "Chapter 4 Quiz STAT 2300",
    "due_at_utc": "2026-09-28T04:59:00Z",
    "submitted": false,
    "points": 20.0,
    "url": "/courses/7135/assignments/175839"
   },
   {
-   "course": "2026FA MKTG3303 20608 - Principles of Marketing",
+   "course": "2026FA BUSN2400 10006 - Principles of Marketing",
    "course_id": 7270,
    "type": "assignment",
    "canvas_id": 164305,
@@ -280,7 +280,7 @@
    "url": "/courses/7270/assignments/164305"
   },
   {
-   "course": "2026FA MATH3391 20937 - Probability and Statistics I",
+   "course": "2026FA STAT2300 10001 - Probability and Statistics I",
    "course_id": 7135,
    "type": "assignment",
    "canvas_id": 170636,
@@ -291,7 +291,7 @@
    "url": "/courses/7135/assignments/170636"
   },
   {
-   "course": "2026FA COSC4320 26653 MAIN - Software Engineering",
+   "course": "2026FA CSCI3400 10003 MAIN - Software Engineering",
    "course_id": 7761,
    "type": "discussion_topic",
    "canvas_id": 110379,
@@ -302,7 +302,7 @@
    "url": "/courses/7761/discussion_topics/110379"
   },
   {
-   "course": "2026FA COSC4320 26653 MAIN - Software Engineering",
+   "course": "2026FA CSCI3400 10003 MAIN - Software Engineering",
    "course_id": 7761,
    "type": "assignment",
    "canvas_id": 173266,
@@ -313,7 +313,7 @@
    "url": "/courses/7761/assignments/173266"
   },
   {
-   "course": "2026FA COSC4320 26653 MAIN - Software Engineering",
+   "course": "2026FA CSCI3400 10003 MAIN - Software Engineering",
    "course_id": 7761,
    "type": "quiz",
    "canvas_id": 49226,
@@ -324,7 +324,7 @@
    "url": "/courses/7761/quizzes/49226"
   },
   {
-   "course": "2026FA MATH3391 20937 - Probability and Statistics I",
+   "course": "2026FA STAT2300 10001 - Probability and Statistics I",
    "course_id": 7135,
    "type": "discussion_topic",
    "canvas_id": 109379,
@@ -335,7 +335,7 @@
    "url": "/courses/7135/discussion_topics/109379"
   },
   {
-   "course": "2026FA COSC4305 27931 - Computer Science Internship",
+   "course": "2026FA CSCI3300 10002 - Computer Science Internship",
    "course_id": 7748,
    "type": "assignment",
    "canvas_id": 178576,
@@ -346,18 +346,18 @@
    "url": "/courses/7748/assignments/178576"
   },
   {
-   "course": "2026FA MATH3391 20937 - Probability and Statistics I",
+   "course": "2026FA STAT2300 10001 - Probability and Statistics I",
    "course_id": 7135,
    "type": "assignment",
    "canvas_id": 175840,
-   "title": "Chapter 5 Quiz MATH 3391",
+   "title": "Chapter 5 Quiz STAT 2300",
    "due_at_utc": "2026-10-05T04:59:00Z",
    "submitted": false,
    "points": 20.0,
    "url": "/courses/7135/assignments/175840"
   },
   {
-   "course": "2026FA MKTG3303 20608 - Principles of Marketing",
+   "course": "2026FA BUSN2400 10006 - Principles of Marketing",
    "course_id": 7270,
    "type": "assignment",
    "canvas_id": 164296,
@@ -368,18 +368,18 @@
    "url": "/courses/7270/assignments/164296"
   },
   {
-   "course": "2026FA MKTG3303 20608 - Principles of Marketing",
+   "course": "2026FA BUSN2400 10006 - Principles of Marketing",
    "course_id": 7270,
    "type": "assignment",
    "canvas_id": 164307,
-   "title": "TAMUV SWOT Analysis Due 10/04",
+   "title": "SWOT Analysis Due 10/04",
    "due_at_utc": "2026-10-05T04:59:59Z",
    "submitted": false,
    "points": 300.0,
    "url": "/courses/7270/assignments/164307"
   },
   {
-   "course": "2026FA MATH3391 20937 - Probability and Statistics I",
+   "course": "2026FA STAT2300 10001 - Probability and Statistics I",
    "course_id": 7135,
    "type": "assignment",
    "canvas_id": 170638,
@@ -390,7 +390,7 @@
    "url": "/courses/7135/assignments/170638"
   },
   {
-   "course": "2026FA MKTG3303 20608 - Principles of Marketing",
+   "course": "2026FA BUSN2400 10006 - Principles of Marketing",
    "course_id": 7270,
    "type": "assignment",
    "canvas_id": 164294,
@@ -401,7 +401,7 @@
    "url": "/courses/7270/assignments/164294"
   },
   {
-   "course": "2026FA MATH3391 20937 - Probability and Statistics I",
+   "course": "2026FA STAT2300 10001 - Probability and Statistics I",
    "course_id": 7135,
    "type": "discussion_topic",
    "canvas_id": 109380,
@@ -412,18 +412,18 @@
    "url": "/courses/7135/discussion_topics/109380"
   },
   {
-   "course": "2026FA MATH3391 20937 - Probability and Statistics I",
+   "course": "2026FA STAT2300 10001 - Probability and Statistics I",
    "course_id": 7135,
    "type": "assignment",
    "canvas_id": 175841,
-   "title": "Chapter 6 Quiz MATH 3391",
+   "title": "Chapter 6 Quiz STAT 2300",
    "due_at_utc": "2026-10-12T04:59:00Z",
    "submitted": false,
    "points": 20.0,
    "url": "/courses/7135/assignments/175841"
   },
   {
-   "course": "2026FA MKTG3303 20608 - Principles of Marketing",
+   "course": "2026FA BUSN2400 10006 - Principles of Marketing",
    "course_id": 7270,
    "type": "assignment",
    "canvas_id": 164298,
@@ -434,7 +434,7 @@
    "url": "/courses/7270/assignments/164298"
   },
   {
-   "course": "2026FA MKTG3303 20608 - Principles of Marketing",
+   "course": "2026FA BUSN2400 10006 - Principles of Marketing",
    "course_id": 7270,
    "type": "assignment",
    "canvas_id": 164311,
@@ -445,7 +445,7 @@
    "url": "/courses/7270/assignments/164311"
   },
   {
-   "course": "2026FA MATH3391 20937 - Probability and Statistics I",
+   "course": "2026FA STAT2300 10001 - Probability and Statistics I",
    "course_id": 7135,
    "type": "assignment",
    "canvas_id": 170640,
@@ -456,7 +456,7 @@
    "url": "/courses/7135/assignments/170640"
   },
   {
-   "course": "2026FA COSC4320 26653 MAIN - Software Engineering",
+   "course": "2026FA CSCI3400 10003 MAIN - Software Engineering",
    "course_id": 7761,
    "type": "discussion_topic",
    "canvas_id": 110378,
@@ -467,7 +467,7 @@
    "url": "/courses/7761/discussion_topics/110378"
   },
   {
-   "course": "2026FA COSC4320 26653 MAIN - Software Engineering",
+   "course": "2026FA CSCI3400 10003 MAIN - Software Engineering",
    "course_id": 7761,
    "type": "assignment",
    "canvas_id": 173267,
@@ -478,7 +478,7 @@
    "url": "/courses/7761/assignments/173267"
   },
   {
-   "course": "2026FA COSC4320 26653 MAIN - Software Engineering",
+   "course": "2026FA CSCI3400 10003 MAIN - Software Engineering",
    "course_id": 7761,
    "type": "quiz",
    "canvas_id": 49227,
@@ -489,7 +489,7 @@
    "url": "/courses/7761/quizzes/49227"
   },
   {
-   "course": "2026FA COSC4320 26653 MAIN - Software Engineering",
+   "course": "2026FA CSCI3400 10003 MAIN - Software Engineering",
    "course_id": 7761,
    "type": "quiz",
    "canvas_id": 49230,
@@ -500,7 +500,7 @@
    "url": "/courses/7761/quizzes/49230"
   },
   {
-   "course": "2026FA MATH3391 20937 - Probability and Statistics I",
+   "course": "2026FA STAT2300 10001 - Probability and Statistics I",
    "course_id": 7135,
    "type": "discussion_topic",
    "canvas_id": 109381,
@@ -511,7 +511,7 @@
    "url": "/courses/7135/discussion_topics/109381"
   },
   {
-   "course": "2026FA COSC4305 27931 - Computer Science Internship",
+   "course": "2026FA CSCI3300 10002 - Computer Science Internship",
    "course_id": 7748,
    "type": "assignment",
    "canvas_id": 178577,
@@ -522,18 +522,18 @@
    "url": "/courses/7748/assignments/178577"
   },
   {
-   "course": "2026FA MATH3391 20937 - Probability and Statistics I",
+   "course": "2026FA STAT2300 10001 - Probability and Statistics I",
    "course_id": 7135,
    "type": "assignment",
    "canvas_id": 175842,
-   "title": "Chapter 7 Quiz MATH 3391",
+   "title": "Chapter 7 Quiz STAT 2300",
    "due_at_utc": "2026-10-19T04:59:00Z",
    "submitted": false,
    "points": 20.0,
    "url": "/courses/7135/assignments/175842"
   },
   {
-   "course": "2026FA MATH3391 20937 - Probability and Statistics I",
+   "course": "2026FA STAT2300 10001 - Probability and Statistics I",
    "course_id": 7135,
    "type": "assignment",
    "canvas_id": 170642,
@@ -544,7 +544,7 @@
    "url": "/courses/7135/assignments/170642"
   },
   {
-   "course": "2026FA MATH3391 20937 - Probability and Statistics I",
+   "course": "2026FA STAT2300 10001 - Probability and Statistics I",
    "course_id": 7135,
    "type": "discussion_topic",
    "canvas_id": 109382,
@@ -555,18 +555,18 @@
    "url": "/courses/7135/discussion_topics/109382"
   },
   {
-   "course": "2026FA MATH3391 20937 - Probability and Statistics I",
+   "course": "2026FA STAT2300 10001 - Probability and Statistics I",
    "course_id": 7135,
    "type": "assignment",
    "canvas_id": 175843,
-   "title": "Chapter 8 Quiz MATH 3391",
+   "title": "Chapter 8 Quiz STAT 2300",
    "due_at_utc": "2026-10-26T04:59:00Z",
    "submitted": false,
    "points": 20.0,
    "url": "/courses/7135/assignments/175843"
   },
   {
-   "course": "2026FA MATH3391 20937 - Probability and Statistics I",
+   "course": "2026FA STAT2300 10001 - Probability and Statistics I",
    "course_id": 7135,
    "type": "assignment",
    "canvas_id": 170644,
@@ -577,7 +577,7 @@
    "url": "/courses/7135/assignments/170644"
   },
   {
-   "course": "2026FA COSC4320 26653 MAIN - Software Engineering",
+   "course": "2026FA CSCI3400 10003 MAIN - Software Engineering",
    "course_id": 7761,
    "type": "discussion_topic",
    "canvas_id": 110377,
@@ -588,7 +588,7 @@
    "url": "/courses/7761/discussion_topics/110377"
   },
   {
-   "course": "2026FA COSC4320 26653 MAIN - Software Engineering",
+   "course": "2026FA CSCI3400 10003 MAIN - Software Engineering",
    "course_id": 7761,
    "type": "assignment",
    "canvas_id": 173268,
@@ -599,7 +599,7 @@
    "url": "/courses/7761/assignments/173268"
   },
   {
-   "course": "2026FA COSC4320 26653 MAIN - Software Engineering",
+   "course": "2026FA CSCI3400 10003 MAIN - Software Engineering",
    "course_id": 7761,
    "type": "quiz",
    "canvas_id": 49228,
@@ -610,7 +610,7 @@
    "url": "/courses/7761/quizzes/49228"
   },
   {
-   "course": "2026FA MATH3391 20937 - Probability and Statistics I",
+   "course": "2026FA STAT2300 10001 - Probability and Statistics I",
    "course_id": 7135,
    "type": "discussion_topic",
    "canvas_id": 109383,
@@ -621,7 +621,7 @@
    "url": "/courses/7135/discussion_topics/109383"
   },
   {
-   "course": "2026FA COSC4305 27931 - Computer Science Internship",
+   "course": "2026FA CSCI3300 10002 - Computer Science Internship",
    "course_id": 7748,
    "type": "assignment",
    "canvas_id": 178578,
@@ -632,18 +632,18 @@
    "url": "/courses/7748/assignments/178578"
   },
   {
-   "course": "2026FA MATH3391 20937 - Probability and Statistics I",
+   "course": "2026FA STAT2300 10001 - Probability and Statistics I",
    "course_id": 7135,
    "type": "assignment",
    "canvas_id": 175844,
-   "title": "Chapter 9 Quiz MATH 3391",
+   "title": "Chapter 9 Quiz STAT 2300",
    "due_at_utc": "2026-11-02T05:59:00Z",
    "submitted": false,
    "points": 20.0,
    "url": "/courses/7135/assignments/175844"
   },
   {
-   "course": "2026FA MATH3391 20937 - Probability and Statistics I",
+   "course": "2026FA STAT2300 10001 - Probability and Statistics I",
    "course_id": 7135,
    "type": "assignment",
    "canvas_id": 170646,
@@ -654,7 +654,7 @@
    "url": "/courses/7135/assignments/170646"
   },
   {
-   "course": "2026FA MATH3391 20937 - Probability and Statistics I",
+   "course": "2026FA STAT2300 10001 - Probability and Statistics I",
    "course_id": 7135,
    "type": "discussion_topic",
    "canvas_id": 109384,
@@ -665,18 +665,18 @@
    "url": "/courses/7135/discussion_topics/109384"
   },
   {
-   "course": "2026FA MATH3391 20937 - Probability and Statistics I",
+   "course": "2026FA STAT2300 10001 - Probability and Statistics I",
    "course_id": 7135,
    "type": "assignment",
    "canvas_id": 175845,
-   "title": "Chapter 10 Quiz MATH 3391",
+   "title": "Chapter 10 Quiz STAT 2300",
    "due_at_utc": "2026-11-09T05:59:00Z",
    "submitted": false,
    "points": 20.0,
    "url": "/courses/7135/assignments/175845"
   },
   {
-   "course": "2026FA MATH3391 20937 - Probability and Statistics I",
+   "course": "2026FA STAT2300 10001 - Probability and Statistics I",
    "course_id": 7135,
    "type": "assignment",
    "canvas_id": 170648,
@@ -687,7 +687,7 @@
    "url": "/courses/7135/assignments/170648"
   },
   {
-   "course": "2026FA COSC4320 26653 MAIN - Software Engineering",
+   "course": "2026FA CSCI3400 10003 MAIN - Software Engineering",
    "course_id": 7761,
    "type": "discussion_topic",
    "canvas_id": 110376,
@@ -698,7 +698,7 @@
    "url": "/courses/7761/discussion_topics/110376"
   },
   {
-   "course": "2026FA COSC4320 26653 MAIN - Software Engineering",
+   "course": "2026FA CSCI3400 10003 MAIN - Software Engineering",
    "course_id": 7761,
    "type": "assignment",
    "canvas_id": 173269,
@@ -709,7 +709,7 @@
    "url": "/courses/7761/assignments/173269"
   },
   {
-   "course": "2026FA COSC4320 26653 MAIN - Software Engineering",
+   "course": "2026FA CSCI3400 10003 MAIN - Software Engineering",
    "course_id": 7761,
    "type": "quiz",
    "canvas_id": 49229,
@@ -720,7 +720,7 @@
    "url": "/courses/7761/quizzes/49229"
   },
   {
-   "course": "2026FA MATH3391 20937 - Probability and Statistics I",
+   "course": "2026FA STAT2300 10001 - Probability and Statistics I",
    "course_id": 7135,
    "type": "discussion_topic",
    "canvas_id": 109385,
@@ -731,7 +731,7 @@
    "url": "/courses/7135/discussion_topics/109385"
   },
   {
-   "course": "2026FA COSC4305 27931 - Computer Science Internship",
+   "course": "2026FA CSCI3300 10002 - Computer Science Internship",
    "course_id": 7748,
    "type": "assignment",
    "canvas_id": 178579,

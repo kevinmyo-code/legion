@@ -56,7 +56,7 @@ Rebuild `/` (`routes/_authed.index.tsx`) to direction A, on real data, for membe
 - Desk Home (`/` at 1024 px and up) is the briefing: `screens/home-briefing.tsx`, sections in
   `components/briefing/`, pure rules in `lib/briefing.ts` (day sentence, service due ported from
   `brief/compose.py`, running total, balances, next up, closing line). The family Home below
-  1024 px is unchanged (ADR 0053: two trees; ticket 10 owns Mia's Home).
+  1024 px is unchanged (ADR 0053: two trees; ticket 10 owns Member B's Home).
 - Slim labelled icon rail on the desk (`workbench-shell.tsx`), the companion and the theme as rail entries.
 - Data: `/api/changes`, ledger transactions, spend, `ledger/statements` (read-only table, new on the
   web), fleet vehicles / service history / schedules, ingest files and the bank link (members

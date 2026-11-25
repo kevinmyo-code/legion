@@ -43,7 +43,7 @@ unambiguous wins.
 2. **Calendar event locations** ("my next appointment", "the dentist", an event title). The
    event's location text is then resolved through search at trip time. An event with no location
    says so in words; it never guesses one.
-3. **Contact addresses** ("Mia's mom"). The address string is resolved through search at trip
+3. **Contact addresses** ("a relative's place"). The address string is resolved through search at trip
    time. No address on the contact is said in words.
 4. **Mapbox search**, through the Search SDK only (ToS 2.9.1, research 01), proximity-biased by
    the live fix. Covers addresses, businesses, "nearest X", and "X along the route" (`via`).

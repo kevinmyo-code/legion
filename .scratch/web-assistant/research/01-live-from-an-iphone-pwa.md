@@ -30,7 +30,7 @@ report (bug commenter, forum post, blog), not confirmed by the vendor. `reasoned
 - **Cost is dominated by re-billing, not by minutes.** About $0.23 for a 5-minute chat, $3.50 to
   $7.50 per hour of continuous talk depending on the compression threshold. A typed turn is about
   half a cent fresh.
-- **Verdict: viable with caveats.** Build it, but spike on Mia's actual iPhone before ticket 08
+- **Verdict: viable with caveats.** Build it, but spike on Member B's actual iPhone before ticket 08
   commits, and keep a record-per-turn fallback designed.
 
 ---
@@ -128,7 +128,7 @@ dated **2026-09-17**, so iOS 27 is current as of today. `sourced` (webkit.org bl
 | Screen lock / app switch | **Treat as end of conversation.** Reports for Home Screen web apps: mic stops when backgrounded (2024-10-19: "Safari: Works. Add to Home Screen: Microphone stopped working."). Safari tabs may keep capture with the status-bar indicator (2022 forum). iOS suspends a backgrounded web app's process; the WebSocket dies with it. Safari 27.0 fixed "the WebProcess AudioSession to remain active while microphone capture is live" (180505014), which may improve this; untested. | secondary + sourced (27.0 note) | bugs.webkit.org/226620 last comment; developer.apple.com/forums/thread/689182; Safari 27.0 notes |
 | Incoming phone call | iOS interrupts the audio session: the `AudioContext` goes to `"interrupted"` (supported in Safari per BCD) and the mic track mutes. The WebSocket survives only if the app stays foreground. Resume needs a user tap. | sourced (state exists) + reasoned (sequence) | MDN BCD `BaseAudioContext.state.interrupted`; WebAudio issue 2585 |
 | Bluetooth (AirPods) | With the mic open iOS uses the call route: Bluetooth HFP, playout limited to 16 kHz mono; reports of output jumping to the speaker when capture starts. iOS 26's `bluetoothHighQualityRecording` is a native `AVAudioSession` option; no evidence WebKit uses it. | secondary | livekit client-sdk-react-native issue 467 (iOS 26); Medium write-up |
-| CarPlay | A web app is not a CarPlay app. With the phone's mic open the car would get the HFP call route at best. Out of scope; Mia's use is not a car use. | reasoned | - |
+| CarPlay | A web app is not a CarPlay app. With the phone's mic open the car would get the HFP call route at best. Out of scope; Member B's use is not a car use. | reasoned | - |
 | USB/external mics | Bug 211192 "USB microphone not recognized iOS Safari" REOPENED (2026-04-07). Irrelevant for a phone. | sourced | bugs.webkit.org/211192 |
 | iOS 26.1 beta mic break | `getUserMedia` failed with "No AVAudioSessionCaptureDevice device" in 26.1 beta 1, fixed in beta 2 (Oct 2025). Shows how fragile this path is per release. | secondary | developer.apple.com/forums/thread/802555 |
 
@@ -148,7 +148,7 @@ dated **2026-09-17**, so iOS 27 is current as of today. `sourced` (webkit.org bl
 | Google Search grounding | 5,000 free/month across Gemini 3.x, then $14 per 1,000 | - |
 
 Free tier is free but "Used to improve our products: Yes"; paid is "No". **The household key must be
-on a billed project** (Mia's conversations otherwise feed Google training). `sourced`.
+on a billed project** (Member B's conversations otherwise feed Google training). `sourced`.
 
 **Billing mechanics** (`sourced`, live-api/best-practices "Pricing and billing"): ~25 audio tokens
 per second; "The API charges you per turn for all tokens present in the session context window ...
@@ -216,7 +216,7 @@ before trusting the hour figure; it records `usageMetadata` per Live turn.
 |---|---|
 | Ephemeral tokens are Preview; SDKs disagree with the docs on v1alpha vs v1beta | Use raw REST from the engine and a raw WebSocket in the browser (both v1beta, as Google's own example does). Re-check before ticket 07 lands. |
 | Full config lock may break resumption | Lock with a field mask; prove resume-with-same-token in ticket 07's tests. |
-| iOS output quality with mic open (311451) and a fresh iOS 27 crackle report (326286) | Spike on Mia's real iPhone and iOS version before ticket 08 commits. Watch 326286. |
+| iOS output quality with mic open (311451) and a fresh iOS 27 crackle report (326286) | Spike on Member B's real iPhone and iOS version before ticket 08 commits. Watch 326286. |
 | Mic permission re-prompts on each cold launch of the web app | Say so in the UI; never ask on load, only on the talk button. |
 | Lock screen / app switch kills the conversation | End the conversation on `visibilitychange` hidden, say so in words, offer resume (handle valid 2 h). |
 | Each tool call is a phone-to-engine round trip, and BLOCKING means silence meanwhile | Keep engine tool handlers fast; a spoken "one moment" is the model's job, prompt-side. |
@@ -227,10 +227,10 @@ before trusting the hour figure; it records `usageMetadata` per Live turn.
 
 ## Forks for Kevin
 
-1. **Which iPhone and iOS does Mia run?** If iOS 27, bug 326286 decides whether live voice is
+1. **Which iPhone and iOS does Member B run?** If iOS 27, bug 326286 decides whether live voice is
    pleasant at all today. A 20-minute spike on her phone answers it.
 2. **Spike first, or build live voice and fallback together?** Recommended: a throwaway page on the
-   engine that mints a token and holds a 2-minute conversation, run on Mia's phone, before ticket 08.
+   engine that mints a token and holds a 2-minute conversation, run on Member B's phone, before ticket 08.
 3. **Typed chatbox engine:** typed turns into the Live session (one conversation, spoken answers,
    ~$0.006 per fresh turn and rising with history) or a separate text model on the engine (~$0.004,
    text answers, no WebSocket needed to type). Same question as ticket 06.
@@ -249,7 +249,7 @@ before trusting the hour figure; it records `usageMetadata` per Live turn.
 |---|---|
 | Real token mint + v1beta Constrained connect with `gemini-3.8-live` | Ticket 07 test with the household key |
 | Field-masked lock keeps `sessionResumption.handle` usable | Ticket 07 test: drop socket, resume with the same token |
-| Mic permission prompt frequency on Mia's iPhone | Spike: cold launch twice, background and return |
+| Mic permission prompt frequency on Member B's iPhone | Spike: cold launch twice, background and return |
 | EC on: speaker or earpiece, clean or crackling, on her iOS version | Spike |
 | What happens on screen lock and on an incoming call | Spike |
 | Barge-in works on the loudspeaker without the model hearing itself | Spike |
@@ -282,7 +282,7 @@ before trusting the hour figure; it records `usageMetadata` per Live turn.
 | `speechSynthesis.speak()` needs a gesture on iOS | secondary |
 | MediaRecorder AAC on iOS; ALAC/PCM since 26.0 | sourced (WebKit blog) |
 | Cost figures in section 5 | reasoned from sourced prices and billing rules; not measured |
-| Household key must be on a paid project for Google not to train on Mia's audio | sourced (pricing table row) |
+| Household key must be on a paid project for Google not to train on Member B's audio | sourced (pricing table row) |
 
 ## Sources (all read 2026-10-04)
 

@@ -57,5 +57,5 @@ synced. It is the one ticket here that turns Kevin's sentence into something usa
 
 - Against real data on the A25, not a fixture: the count it reports has to match what the three
   stores actually hold on the day it runs.
-- The overdue case explicitly - there was one on 2026-09-12 (WK02: Bio Video Presentation, MKTG 3303)
+- The overdue case explicitly - there was one on 2026-09-12 (WK02: Bio Video Presentation, BUSN 2400)
   that the phone showed nowhere.

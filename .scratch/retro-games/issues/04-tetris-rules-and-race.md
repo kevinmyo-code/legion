@@ -1,7 +1,7 @@
 ---
 map: retro-games
 ticket: "04"
-title: "Decision: built-in Tetris, score race with Mia, transient engine match"
+title: "Decision: built-in Tetris, score race with Member B, transient engine match"
 type: decision
 status: resolved
 status-detail: "Kevin 2026-10-18: score race, transient only, invites both ways always. ADR 0060"

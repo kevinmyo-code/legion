@@ -37,7 +37,7 @@ results, a hands path calling the same controller (ADR 0035), the Groceries list
   matched entry, lists several matches and says "no record" for none, plus the Log it form (item,
   date, store, price "entered by hand", note, private). "Logged by: not recorded" for backfilled rows.
   Unreachable engine: the sentence and a Retry, never an empty log.
-- **Groceries label:** the item editor shows "Last bought Sep 20 (dot) Mia" on the list named
+- **Groceries label:** the item editor shows "Last bought Sep 20 (dot) Member B" on the list named
   Groceries and keeps "Last ticked" on every other list (`rememberLastItemLabel`).
 - **Untick:** every untick sent to the engine carries `?today=<local epoch day>`; a queued untick keeps
   the day it was made in its outbox payload.

@@ -32,7 +32,7 @@ legion as well"*
 
 ## Orchestrator calls, changeable
 
-- **Sync is per person, not per household.** Mia's place in a book is hers. Rows are scoped by
+- **Sync is per person, not per household.** Each member's place in a book is their own. Rows are scoped by
   household at the tenancy choke point and keyed by user.
 - **What is synced is a locator, not text.** A position row holds the book's hash, which variant
   (`original` or `resizable`), a locator (Readium Locator JSON for EPUB, page index for PDF/CBZ), a

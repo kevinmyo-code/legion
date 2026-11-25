@@ -39,7 +39,7 @@ Kevin ruled the shape (fields, shared with optional private, Groceries tick = bo
 The rest is Opus's proposal on the same day, built unless Kevin vetoes:
 
 - **A typed Django table `purchases`**, not an aspect-engine record type: the engine has no server
-  half, and Mia's PWA must see it.
+  half, and Member B's PWA must see it.
 - **Columns:** `item` (text as written), `bought_on` (local epoch day), `logged_at` (instant),
   `created_by` (nullable: null = "not recorded", only for backfilled rows), `store` (nullable text),
   `price_cents` (nullable `Long`, entered by hand), `quantity_note` (nullable text), `owner_user`

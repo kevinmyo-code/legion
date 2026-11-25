@@ -1,7 +1,7 @@
 ---
 map: mapbox-plus
 ticket: "07"
-title: "Decision: LEGION-only extras (ETA to Mia, leave-by, fuel-aware stops)"
+title: "Decision: LEGION-only extras (ETA to a household member, leave-by, fuel-aware stops)"
 type: decision
 status: open
 blockers: ["02"]
@@ -11,6 +11,6 @@ ready: false
 tags: [ticket]
 ---
 
-# Decision: LEGION-only extras (ETA to Mia, leave-by, fuel-aware stops)
+# Decision: LEGION-only extras (ETA to a household member, leave-by, fuel-aware stops)
 
-Share a live ETA with Mia (how: push to her PWA?), 'leave by' from calendar and Canvas (a proactive raise: must pass the §7 compulsion test), and a fuel stop on the route when OBD says fuel is low. Which, in what order.
+Share a live ETA with a household member (how: push to their PWA?), 'leave by' from calendar and Canvas (a proactive raise: must pass the §7 compulsion test), and a fuel stop on the route when OBD says fuel is low. Which, in what order.

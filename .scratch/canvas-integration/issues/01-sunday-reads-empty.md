@@ -29,23 +29,23 @@ He is right that it is wrong, and the cause is not an empty calendar.
 
 ## What is actually due Sunday
 
-From `research/planner-2026-09-01.json`, Canvas's own `due_at_utc`, converted to Houston (CDT,
+From `research/planner-2026-09-01.json`, Canvas's own `due_at_utc`, converted to the device's local zone (CDT,
 UTC-5):
 
 | `due_at_utc` | Local | Course | Item |
 |---|---|---|---|
-| `2026-09-14T04:59:00Z` | **Sun 2026-09-13 23:59** | MATH3391 | Chapter 2 Quiz |
-| `2026-09-14T04:59:59Z` | **Sun 2026-09-13 23:59** | MKTG3303 | Quiz 3: Ch 8-11 |
-| `2026-09-14T04:59:59Z` | **Sun 2026-09-13 23:59** | MATH3391 | Module 3: Assignment (WebAssign) |
-| `2026-09-14T04:59:59Z` | **Sun 2026-09-13 23:59** | COSC4320 | Discussion-2-Incremental Advantage Delivery |
-| `2026-09-14T04:59:59Z` | **Sun 2026-09-13 23:59** | COSC4320 | Module 2: Assignment 2 - Waterfall Model |
-| `2026-09-14T04:59:59Z` | **Sun 2026-09-13 23:59** | COSC4320 | Software Engineering Quiz 2 - Ch 2 (submitted) |
-| `2026-09-14T04:59:59Z` | **Sun 2026-09-13 23:59** | COSC3334 | Module1: Assignment |
+| `2026-09-14T04:59:00Z` | **Sun 2026-09-13 23:59** | STAT2300 | Chapter 2 Quiz |
+| `2026-09-14T04:59:59Z` | **Sun 2026-09-13 23:59** | BUSN2400 | Quiz 3: Ch 8-11 |
+| `2026-09-14T04:59:59Z` | **Sun 2026-09-13 23:59** | STAT2300 | Module 3: Assignment (WebAssign) |
+| `2026-09-14T04:59:59Z` | **Sun 2026-09-13 23:59** | CSCI3400 | Discussion-2-Incremental Advantage Delivery |
+| `2026-09-14T04:59:59Z` | **Sun 2026-09-13 23:59** | CSCI3400 | Module 2: Assignment 2 - Waterfall Model |
+| `2026-09-14T04:59:59Z` | **Sun 2026-09-13 23:59** | CSCI3400 | Software Engineering Quiz 2 - Ch 2 (submitted) |
+| `2026-09-14T04:59:59Z` | **Sun 2026-09-13 23:59** | CSCI2200 | Module1: Assignment |
 
 **Not one row in that file carries the date `2026-09-13`.** Every Sunday deadline is stored as
 Monday in UTC, because Canvas writes an 11:59pm local deadline as `04:59Z the next day`.
 
-Also worth saying out loud: `2026-09-12T04:59:59Z` is **Friday 2026-09-11 23:59 local** - MATH3391's
+Also worth saying out loud: `2026-09-12T04:59:59Z` is **Friday 2026-09-11 23:59 local** - STAT2300's
 "Module 3: Discussion - What Are the Odds?" was due the night Kevin asked, and would read as
 Saturday under the same fault.
 
@@ -86,8 +86,8 @@ queried. Everything above is from Canvas's own snapshot plus source reading:
   `NotesController.kt:929`: *"nothing writes one yet - Canvas is its own ticket"*).
 
 **First step for whoever takes this: get one row.** `adb shell run-as com.kevin.legion` against the
-Room DB, or the Django `events` endpoint, and read `startsAt` / `allDay` for "Chapter 2 Quiz MATH
-3391". That single row decides which fix this ticket is.
+Room DB, or the Django `events` endpoint, and read `startsAt` / `allDay` for "Chapter 2 Quiz STAT
+2300". That single row decides which fix this ticket is.
 
 ## The structural half: there is no Canvas sync at all
 
