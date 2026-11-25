@@ -28,8 +28,8 @@ Pulled `legion_database` from the A25 and read it. **The data is correct and con
 | Vehicle | baseline | trip | total |
 |---|---|---|---|
 | 1998 Jeep Cherokee | 199,494 | 117.5 | **199,612** |
-| Ford F-150 | 161,470 | 220.9 | 161,691 |
-| Mitsubishi Outlander | 73,577 | 12.6 | 73,590 |
+| Ford F-150 | 133,470 | 220.9 | 133,691 |
+| Mitsubishi Outlander | 45,577 | 12.6 | 45,590 |
 
 - **No vehicle is near 142k**, so it did not report the wrong car.
 - **142k appears nowhere in the database.** Every text column of every table was searched; the only

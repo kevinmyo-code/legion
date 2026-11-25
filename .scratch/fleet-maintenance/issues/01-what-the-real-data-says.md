@@ -102,7 +102,7 @@ Every mileage-based due calculation on the car is computing against an odometer 
 | `obdMac` | `name` | make | model | year | conf | onbd | arch | odoBaseline | tripMiles |
 |---|---|---|---|---|---|---|---|---|---|
 | `12:34:56:11:22:33` | **`1998 Jeep Cherokee`** | **empty** | **empty** | **0** | 1 | **0** | 0 | **0** | 0.0 |
-| `imported-mitsubishi-outlander-2020` | `Outlander` | Mitsubishi | Outlander | 2020 | 1 | 1 | 0 | 73577 | 12.61 |
+| `imported-mitsubishi-outlander-2020` | `Outlander` | Mitsubishi | Outlander | 2020 | 1 | 1 | 0 | 45577 | 12.61 |
 | `car:c352c532-...` | `F-150` | Ford | F-150 | 2017 | 1 | 1 | 0 | 0 | 158.53 |
 | `78:9A:BC:11:22:33` | `this car` | empty | empty | 0 | 0 | 0 | **1** | 0 | 0.02 |
 | `default` | `this car` | empty | empty | 0 | 0 | 0 | **1** | 0 | 0.0 |
