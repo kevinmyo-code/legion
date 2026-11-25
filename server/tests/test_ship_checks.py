@@ -154,36 +154,100 @@ def test_frozen_files_never_change():
 
 def test_schema_files_added_pinned_and_never_destructive():
     m = "server/agents/migrations/0004_notes.py"
-    assert sc.migration_problems([("A", m)], {m: A}, set(), {m: "AddField(...)"}) == []
-    assert sc.migration_problems([("M", m)], {m: A}, set(), {}) == [
+    assert sc.migration_problems([("A", m)], {m: A}, set(), {m: "AddField(...)"}, {m: A}) == []
+    assert sc.migration_problems([("M", m)], {m: A}, set(), {}, {}) == [
         f"schema file {m} is M, not added",
         f"pinned schema file not added by this ship: {m}",
     ]
-    assert sc.migration_problems([("A", m)], {}, set(), {m: ""}) == [
+    assert sc.migration_problems([("A", m)], {}, set(), {m: ""}, {m: A}) == [
         f"schema file added but not pinned: {m}"
     ]
-    assert sc.migration_problems([("A", m)], {m: A}, set(), {m: "migrations.RemoveField('x')"}) == [
-        f"{m} holds a destructive database operation (RemoveField)"
-    ]
+    destructive = sc.migration_problems(
+        [("A", m)], {m: A}, set(), {m: "migrations.RemoveField('x')"}, {m: A}
+    )
+    assert len(destructive) == 1
+    assert destructive[0].startswith(f"{m} holds a destructive database operation (RemoveField;")
     init = "server/newapp/migrations/__init__.py"
-    assert sc.migration_problems([("A", init)], {}, {"newapp"}, {}) == []
-    assert sc.migration_problems([("A", init)], {}, set(), {}) == [
+    assert sc.migration_problems([("A", init)], {}, {"newapp"}, {}, {}) == []
+    assert sc.migration_problems([("A", init)], {}, set(), {}, {}) == [
         f"unexpected file under migrations/: {init}"
     ]
-    assert sc.migration_problems([], {m: A}, set(), {}) == [
+    assert sc.migration_problems([], {m: A}, set(), {}, {}) == [
         f"pinned schema file not added by this ship: {m}"
     ]
 
 
-def _one_migration(source: str) -> list[str]:
-    m = "server/widgets/migrations/0003_state_only.py"
-    return sc.migration_problems([("A", m)], {m: A}, set(), {m: source})
+# The two reviewed state-only migrations, read from the checked-in list rather than retyped here, so
+# this file cannot drift from tools/checks/state_only_migrations.txt.
+LISTED = sorted(sc.migration_ops.STATE_ONLY.items())
 
 
-def test_a_state_only_migration_ships():
-    """No `database_operations` means no SQL, so there is nothing destructive to refuse - however
-    many DeleteModels the state operations and the docstring name."""
-    assert _one_migration(STATE_ONLY) == []
+def _one_migration(
+    source: str, path: str = "server/widgets/migrations/0003_state_only.py", blob: str = A
+) -> list[str]:
+    return sc.migration_problems([("A", path)], {path: A}, set(), {path: source}, {path: blob})
+
+
+def test_the_state_only_list_holds_the_two_reviewed_migrations():
+    """The exemption is a reviewed file content, so the list is data a test can read. Both entries
+    are Django migration paths at a full 40-hex blob."""
+    assert len(LISTED) == 2
+    assert [p for p, _ in LISTED] == [
+        "server/checklists/migrations/0002_household.py",
+        "server/homes/migrations/0003_retire_user_records_state.py",
+    ]
+    for path, blob in LISTED:
+        assert sc.MIGRATION_PATH.match(path), path
+        assert sc.migration_ops.BLOB.match(blob), (path, blob)
+
+
+def test_a_state_only_migration_needs_a_reviewed_listing():
+    """Rounds 1 to 3 tried to recognise this shape from the source and were beaten each time, so the
+    shape earns nothing on its own: an unlisted file is judged by the old text match, and the STOP
+    says how a reviewer grants the exemption."""
+    problems = _one_migration(STATE_ONLY)
+    assert len(problems) == 1
+    assert "is not in tools/checks/state_only_migrations.txt" in problems[0]
+    assert "itself a RED change" in problems[0]
+
+
+def test_a_listed_state_only_migration_ships():
+    """The whole point of the change: redesign step 1's migration reaches the engine."""
+    for path, blob in LISTED:
+        assert _one_migration(STATE_ONLY, path, blob) == [], path
+
+
+def test_one_changed_byte_voids_the_listing():
+    """The exemption is bound to the content, not the path: a different blob is a different file,
+    and the STOP prints both shas so an operator can see which."""
+    path, blob = LISTED[0]
+    edited = blob[:-1] + ("0" if blob[-1] != "0" else "1")
+    problems = _one_migration(STATE_ONLY, path, edited)
+    assert len(problems) == 1
+    assert f"lists {path} at blob {blob}" in problems[0]
+    assert f"but this is blob {edited}" in problems[0]
+
+
+def test_a_listing_is_bound_to_its_own_path():
+    """A reviewed blob excuses that path and no other."""
+    other = "server/widgets/migrations/0003_state_only.py"
+    assert _one_migration(STATE_ONLY, other, LISTED[0][1]) != []
+
+
+def test_a_listed_migration_is_still_read_for_sql():
+    """Listing says the OPERATIONS are state-only. The gate reads the strings itself, so no line in
+    the list can ever excuse a DROP."""
+    path, blob = LISTED[0]
+    problems = _one_migration(WITH_DDL, path, blob)
+    assert len(problems) == 1
+    assert "SQL running DROP TABLE" in problems[0]
+    assert "the SQL it runs still counts" in problems[0]
+
+
+def test_a_blob_is_required_not_just_a_listed_path():
+    """A caller with no blob (a hand-built Change, a probe harness) earns no exemption."""
+    path, _ = LISTED[0]
+    assert _one_migration(STATE_ONLY, path, "") != []
 
 
 def test_real_ddl_is_still_refused():
@@ -221,19 +285,38 @@ def test_sql_that_destroys_nothing_ships():
         assert _one_migration(source) == [], what
 
 
-def test_a_destructive_operation_outside_the_state_block_is_refused():
-    extra = '        migrations.AlterField(model_name="widget", name="name", field=None),\n'
-    mixed = STATE_ONLY.replace("    ]\n", f"{extra}    ]\n", 1)
-    assert _one_migration(mixed) == [
-        "server/widgets/migrations/0003_state_only.py holds a destructive database"
-        " operation (AlterField)"
-    ]
+def test_the_name_match_runs_on_the_raw_source_of_an_unlisted_file():
+    """What rounds 1 to 3 kept losing. The name match is the old regex over the undecoded text, with
+    no parse in front of it, so none of the regions an AST walk skipped can hide a name: a
+    docstring, a `bytes` constant, a dropped `reverse_sql` subtree, a file that does not parse."""
+    cases = {
+        "a name in the module docstring only": '"""DeleteModel"""\nx = 1\n',
+        "a name in a bytes constant": "x = b'DeleteModel'\n",
+        "a name parked in reverse_sql": (
+            "from django.db import migrations\n"
+            "S = migrations.RunSQL('select 1', reverse_sql=migrations.DeleteModel)\n"
+        ),
+        "a name in a file that does not parse": "class Migration(\nDeleteModel\n",
+        "a name in a comment": "# DeleteModel\n",
+    }
+    for what, source in cases.items():
+        problems = _one_migration(source)
+        assert len(problems) == 1, (what, problems)
+        assert "destructive database operation (DeleteModel" in problems[0], what
+
+
+def test_a_file_that_does_not_parse_is_refused_even_when_listed():
+    """Fail closed: the SQL half still has to read a listed file."""
+    path, blob = LISTED[0]
+    problems = _one_migration("class Migration(\n", path, blob)
+    assert len(problems) == 1
+    assert "does not parse" in problems[0]
 
 
 def test_an_operation_carried_out_of_the_state_block_is_refused():
-    """The shape of the smig-red F1 flips: the state-only exemption is the plain file's shape, so a
-    file that reads an operation back out of the exempt list loses it and the `DeleteModel` it
-    smuggles into `operations` is refused again."""
+    """The shape of the smig-red F1 flips. It is refused for a duller reason now: the file is not a
+    reviewed (path, blob) pair, so the raw-text name match reads its `DeleteModel` and that is the
+    end of it. Nothing has to recognise the carry-out."""
     carried = '''"""State only, it says."""
 
 from django.db import migrations
@@ -250,7 +333,8 @@ class Migration(migrations.Migration):
     operations = [getattr(S, "state_operations")[0]]
 '''
     problems = _one_migration(carried)
-    assert len(problems) == 1 and "(DeleteModel)" in problems[0], problems
+    assert len(problems) == 1, problems
+    assert "destructive database operation (DeleteModel;" in problems[0], problems
 
 
 def test_files_outside_the_image_are_named_not_counted():
@@ -267,14 +351,25 @@ def test_a_migration_that_does_not_parse_is_refused():
     assert "does not parse" in problems[0]
 
 
-def test_the_checklists_household_migration_is_judged_state_only():
-    """The precedent in the repo: `SeparateDatabaseAndState` with an empty `database_operations`,
-    holding AddField, AlterField and AddConstraint. It changed no schema, so it is not
-    destructive."""
-    path = Path(__file__).resolve().parents[1] / "checklists" / "migrations" / "0002_household.py"
-    source = path.read_text(encoding="utf-8")
+def test_the_listed_blob_is_the_checklists_migration_in_this_tree():
+    """The listing binds an exemption to a file's CONTENT, so it holds only while the listed sha
+    really is that file's blob. This is the check that reddens if either side moves: editing the
+    migration without relisting it, or listing a sha that is not its content.
+
+    The sha comes from git, not from hashing the working file: a checkout may translate line
+    endings, so the bytes on disk are not always the bytes git stored - and it is the git blob that
+    the ship and check (c) hand to the gate."""
+    root = Path(__file__).resolve().parents[2]
+    path = "server/checklists/migrations/0002_household.py"
+    blob = subprocess.run(
+        ["git", "-C", str(root), "rev-parse", f"HEAD:{path}"],
+        check=True, capture_output=True, text=True,
+    ).stdout.strip()
+    source = (root / path).read_text(encoding="utf-8")
     assert "SeparateDatabaseAndState" in source and "AlterField" in source
-    assert _one_migration(source) == []
+    assert blob == sc.migration_ops.STATE_ONLY[path]
+    # And so the real file, at its real blob, ships: redesign step 1's precedent in the repo.
+    assert _one_migration(source, path, blob) == []
 
 
 def test_switches_can_only_grow():
