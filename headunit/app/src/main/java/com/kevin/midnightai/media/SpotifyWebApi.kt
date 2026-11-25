@@ -354,10 +354,11 @@ object SpotifyWebApi {
 
         /**
          * Spotify answered with hits, but none passed [SpotifyMatch.pick] against the request.
-         * [closest] are the top hits as "Title by Artist" so the caller can say what it saw and let
-         * the driver choose. Nothing was picked: a refusal to guess, never a popularity fallback.
+         * [closest] are the top hits in Spotify's own relevance order, each carrying its URI, so the
+         * caller can say what it saw and the driver's "yes, that one" is playable without a second
+         * search. Nothing was picked: a refusal to guess, never a popularity fallback.
          */
-        data class Rejected(val closest: List<String>) : SearchOutcome
+        data class Rejected(val closest: List<ClosestHit>) : SearchOutcome
 
         /** An error this code does not map. [raw] is the untouched body, trimmed. */
         data class Failed(val code: Int, val detail: String?, val raw: String? = null) : SearchOutcome
@@ -472,7 +473,7 @@ object SpotifyWebApi {
             } else {
                 listOf(query)
             }
-            val closest = mutableListOf<String>()
+            val closest = mutableListOf<ClosestHit>()
             for (q in attempts) {
                 when (val raw = fetchCandidates(q, type, token)) {
                     is RawSearch.Error -> return@withContext raw.outcome
@@ -495,7 +496,7 @@ object SpotifyWebApi {
                     }
                 }
             }
-            val named = closest.distinct().take(SpotifyMatch.CLOSEST_COUNT)
+            val named = closest.distinctBy { it.label }.take(SpotifyMatch.CLOSEST_COUNT)
             if (named.isEmpty()) SearchOutcome.NoMatch else SearchOutcome.Rejected(named)
         } catch (e: Exception) {
             // A thrown IOException here is a transport failure, never a verdict on the query.

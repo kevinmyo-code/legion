@@ -1,6 +1,7 @@
 package com.kevin.midnightai.service
 
 import android.content.Context
+import com.kevin.midnightai.media.ClosestHit
 import com.kevin.midnightai.media.MixtapePlayer
 import com.kevin.midnightai.media.MusicController
 import com.kevin.midnightai.media.MusicRouter
@@ -100,14 +101,16 @@ internal object SpotifyVoice {
                 false,
                 "I couldn't find \"$query\"" + byArtist(artist) + " on Spotify, so I didn't play or queue anything.",
             ))
-            is SpotifyWebApi.SearchOutcome.Rejected -> Resolution.Failed(result(
-                false,
-                // Hits existed and none fit the request. Name them so the model can ask which was
-                // meant; nothing was started, and the message says so.
-                "I couldn't find \"$query\"" + byArtist(artist) + " on Spotify, so I didn't play or queue " +
-                    "anything. Closest hits: " + outcome.closest.joinToString("; ") +
-                    ". Ask the driver whether one of those is what they meant.",
-            ))
+            is SpotifyWebApi.SearchOutcome.Rejected -> Resolution.Failed(
+                result(
+                    false,
+                    // Hits existed and none fit the request. Name them so the model can ask which was
+                    // meant; nothing was started, and the message says so.
+                    "I couldn't find \"$query\"" + byArtist(artist) + " on Spotify, so I didn't play or queue " +
+                        "anything. Closest hits: " + outcome.closest.joinToString("; ") { it.label } +
+                        ". Ask the driver whether one of those is what they meant.",
+                ).put("closestHits", closestHitsJson(outcome.closest)),
+            )
             is SpotifyWebApi.SearchOutcome.Failed -> Resolution.Failed(result(
                 false,
                 "Spotify's search returned an error (${outcome.code})" + (outcome.detail?.let { ": $it" } ?: "."),
@@ -117,6 +120,30 @@ internal object SpotifyVoice {
 
     private fun byArtist(artist: String?): String =
         artist?.takeIf { it.isNotBlank() }?.let { " by $it" } ?: ""
+
+    /**
+     * The near-misses a rejection named, as playable rows (music-suggestions-1124 P3, phone parity).
+     *
+     * The result's own instruction is to ask the driver which of these they meant, and until this
+     * existed there was no way to honour a yes: the model had a name and no URI, so its only route
+     * was to search again for a title it would have to reproduce in the catalogue's own spelling.
+     * Each row carries `spotifyUri` exactly as every other playable row does, so "yes, that one"
+     * is one `play_music` call with the URI. Result-side only, so it costs no declaration tokens.
+     */
+    internal fun closestHitsJson(hits: List<ClosestHit>): JSONArray {
+        val arr = JSONArray()
+        hits.forEach { h ->
+            arr.put(
+                JSONObject()
+                    .put("name", h.name)
+                    .put("artist", h.artist ?: JSONObject.NULL)
+                    // A hit Spotify indexed without a playable URI can be NAMED but not played.
+                    .put("spotifyUri", h.uri ?: JSONObject.NULL)
+                    .put("playable", h.uri != null),
+            )
+        }
+        return arr
+    }
 
     /**
      * "Play my Roadtrip playlist": the driver's own playlists first, public catalogue only when
