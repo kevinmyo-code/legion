@@ -258,7 +258,7 @@ class VehicleControllerServiceWritesTest {
         VehicleController.logServiceDirect(context, "oil change", vehicleId = "V1")
         val id = FleetEngineStore.getRecentForVehicle(context, "V1", 1).single().id
 
-        val outcome = VehicleController.editServiceRecordDirect(context, id, mileageMiles = 227_500, costCents = 4599)
+        val outcome = VehicleController.editServiceRecordDirect(context, id, miles = 227_500, costCents = 4599)
 
         assertTrue("Was: $outcome", outcome.success)
         assertTrue("Read-back must state the new mileage. Was: ${outcome.message}", outcome.message.contains("227500") || outcome.message.contains("227,500"))
@@ -284,7 +284,7 @@ class VehicleControllerServiceWritesTest {
 
     @Test
     fun `editServiceRecordDirect against a nonexistent id reports failure rather than pretending it worked`() = runBlocking {
-        val outcome = VehicleController.editServiceRecordDirect(context, id = 999L, mileageMiles = 1, costCents = null)
+        val outcome = VehicleController.editServiceRecordDirect(context, id = 999L, miles = 1, costCents = null)
         assertFalse(outcome.success)
     }
 

@@ -37,7 +37,7 @@ internal fun ambiguousServiceQuestion(candidates: List<String>): String =
  * no mileage on the row the schedule cannot keep the mileage axis, so "I'll let you know when it's
  * due again" would promise something the row cannot hold. With no MONTHS interval it cannot time
  * the item by date either, so "I'm timing that one by date" names a schedule the item does not have
- * - the same rule in the other direction ([VehicleController.needsMileageReading] is the state such
+ * - the same rule in the other direction ([needsMileageReading] is the state such
  * an item lands in, and the due surfaces ask for the reading there). And an item with NEITHER
  * interval - the shape an earlier unmatched log creates - is timed by nothing at all and may not be
  * told it is on a mileage interval.
@@ -49,10 +49,12 @@ internal fun ambiguousServiceQuestion(candidates: List<String>): String =
 internal fun loggedServiceMessage(
     serviceName: String,
     statedMileage: Int?,
-    timedByDate: Boolean,
-    timedByMiles: Boolean,
-): String =
-    when {
+    intervalMonths: Int?,
+    intervalMiles: Int?,
+): String {
+    val timedByDate = intervalMonths != null
+    val timedByMiles = intervalMiles != null
+    return when {
         statedMileage != null -> listOf(
             "Nice, logged the $serviceName at $statedMileage miles. I'll let you know when it's due again.",
             "Got it - $serviceName done at $statedMileage. One less thing to worry about.",
@@ -80,6 +82,17 @@ internal fun loggedServiceMessage(
             "Logged: $serviceName, today. No interval on that item yet, so nothing is timing it.",
         ).random()
     }
+}
+
+/**
+ * What a stated reading outside the odometer's range answers: [odometerMessage] is `setOdometer`'s
+ * own refusal, and this adds the half it cannot know - the whole call was refused, so the SERVICE is
+ * not on file either. Without the second sentence the driver is left believing work he really had
+ * done was logged.
+ */
+internal fun serviceNotLoggedMessage(odometerMessage: String, serviceName: String): String =
+    "$odometerMessage I haven't logged the $serviceName either - say it again with the reading you " +
+        "meant, or just say it was done and I'll log it with no mileage."
 
 /**
  * [note] in front of [message], or [message] alone. The note is `setOdometer`'s own low-reading

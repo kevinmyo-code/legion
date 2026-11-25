@@ -56,7 +56,7 @@ class ServiceRecordNullMileageEditTest {
         VehicleController.logServiceDirect(context, "oil change", vehicleId = "V1")
         val id = FleetEngineStore.getRecentForVehicle(context, "V1", 1).single().id
 
-        val outcome = VehicleController.editServiceRecordDirect(context, id, mileageMiles = null, costCents = 4599)
+        val outcome = VehicleController.editServiceRecordDirect(context, id, miles = null, costCents = 4599)
 
         assertTrue("Was: $outcome", outcome.success)
         val after = FleetEngineStore.getServiceRecordById(context, id)!!
@@ -70,7 +70,7 @@ class ServiceRecordNullMileageEditTest {
         VehicleController.logServiceDirect(context, "oil change", vehicleId = "V1")
         val id = FleetEngineStore.getRecentForVehicle(context, "V1", 1).single().id
 
-        val outcome = VehicleController.editServiceRecordDirect(context, id, mileageMiles = 227_500, costCents = null)
+        val outcome = VehicleController.editServiceRecordDirect(context, id, miles = 227_500, costCents = null)
 
         assertTrue("Was: $outcome", outcome.success)
         assertEquals(227_500, FleetEngineStore.getServiceRecordById(context, id)!!.mileage)
@@ -84,7 +84,7 @@ class ServiceRecordNullMileageEditTest {
         VehicleController.logServiceDirect(context, "oil change", vehicleId = "V1", statedMileage = 227_500)
         val id = FleetEngineStore.getRecentForVehicle(context, "V1", 1).single().id
 
-        val outcome = VehicleController.editServiceRecordDirect(context, id, mileageMiles = null, costCents = null)
+        val outcome = VehicleController.editServiceRecordDirect(context, id, miles = null, costCents = null)
 
         assertTrue("Was: $outcome", outcome.success)
         assertNull(FleetEngineStore.getServiceRecordById(context, id)!!.mileage)

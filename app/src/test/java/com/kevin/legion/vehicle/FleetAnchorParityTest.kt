@@ -88,7 +88,7 @@ class FleetAnchorParityTest {
         // Engine: due_on = today + 6 months, due_at_miles None, needs_mileage False.
         val item = itemFrom("oil change", oilChange, intervalMiles = 5_000, intervalMonths = 6)
 
-        assertFalse("a months interval and a date still time it", VehicleController.needsMileageReading(item))
+        assertFalse("a months interval and a date still time it", needsMileageReading(item))
         assertFalse(
             "227,000 + 5,000 is an anchor this history no longer holds",
             VehicleController.isDue(item, currentMileage = 235_000, odometerUnset = false, now = today + 1),
@@ -100,7 +100,7 @@ class FleetAnchorParityTest {
         // Engine: needs_mileage == ["spark plugs"], and it is in neither `overdue` nor `by_miles`.
         val item = itemFrom("spark plugs", sparkPlugs, intervalMiles = 30_000, intervalMonths = null)
 
-        assertTrue(VehicleController.needsMileageReading(item))
+        assertTrue(needsMileageReading(item))
         assertFalse(VehicleController.isDue(item, currentMileage = 235_000, odometerUnset = false, now = today + 1))
     }
 
@@ -130,7 +130,7 @@ class FleetAnchorParityTest {
         )
         val item = itemFrom("spark plugs", withReading, intervalMiles = 30_000, intervalMonths = null)
 
-        assertFalse(VehicleController.needsMileageReading(item))
+        assertFalse(needsMileageReading(item))
         assertEquals(235_000, item.lastDoneMileage)
         val next = VehicleController.computeNextService(
             items = listOf(item), currentMileage = 235_000, now = today + 1, odometerBaseline = 235_000,
@@ -158,7 +158,7 @@ class FleetAnchorParityTest {
         assertEquals(42_000 to apr20, FleetRecordBridge.projectAnchorLegacy(rows))
         assertFalse(
             "a driver-stated anchor still times the item",
-            VehicleController.needsMileageReading(
+            needsMileageReading(
                 itemFrom("oil change", rows, intervalMiles = 5_000, intervalMonths = null),
             ),
         )
