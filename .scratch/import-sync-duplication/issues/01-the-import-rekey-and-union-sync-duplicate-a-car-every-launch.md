@@ -338,7 +338,7 @@ throughout so nothing else held the database:
 ### After
 
 App launches clean - no crash, no Room migration attempt, `user_version` 21 accepted as-is. FLEET
-renders, the Jeep reads `1998 JEEP CHEROKEE` / `about 227,495 mi` / `0 DUE - 7 UNKNOWN`, and
+renders, the Jeep reads `1998 JEEP CHEROKEE` / `about 199,495 mi` / `0 DUE - 7 UNKNOWN`, and
 `midnight_import gate: completed=true` still holds, so nothing re-runs the rekey.
 
 Counts re-read off the live device after several minutes of runtime: unchanged, 18,694 rows in

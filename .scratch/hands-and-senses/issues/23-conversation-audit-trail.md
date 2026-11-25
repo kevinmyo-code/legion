@@ -20,7 +20,7 @@ Kevin, 2026-08-21: *"i want a way to record all the voice conversations i have w
 
 This is the missing half of a defect this map already named.
 [Ticket 20](20-it-said-142k.md) - the assistant claiming the Jeep was at 142k when the record said
-227k - could not be closed for one reason, in its own words: **"nothing records what the assistant
+199k - could not be closed for one reason, in its own words: **"nothing records what the assistant
 SAID."** `memory_audit` (Room v27) fixed half of that and proved its worth tonight, when it showed
 the mileage spoken correctly, with its estimate caveat intact.
 

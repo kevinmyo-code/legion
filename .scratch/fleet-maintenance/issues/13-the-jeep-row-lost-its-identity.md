@@ -34,9 +34,9 @@ Surfaced by ticket 01, which pulled the real database. The active vehicle row
   `applyServiceIntervals` seeded ten maintenance items from a prompt built out of those three
   fields, and `onboardPendingVehicles` (`VehicleController.kt:653-659`) skips a vehicle with a
   blank make or model. Those ten rows are still on disk with that timestamp.
-- On **2026-08-12 15:50:02** it had an odometer of about 118,374. It must have: `logServiceDirect`
+- On **2026-08-12 15:50:02** it had an odometer of about 90,374. It must have: `logServiceDirect`
   (`:179`) derives a `ServiceRecord`'s mileage from `currentMileage(vehicle)`, and the record it
-  wrote that second says 118,374.
+  wrote that second says 90,374.
 
 So five fields were populated and are now empty, and `onboarded` went from true back to false.
 
@@ -72,7 +72,7 @@ odometer is worthless if the same thing happens again next month.
    VIN `1FAKEVIN000000001`: 6-cylinder, 4.0L in-line, FCA, Toledo, SUV, decoded 2026-07-26. That is
    enough to restore make and model. The **year** is in the VIN's 10th character (`W`) and is not
    stored as a field. The odometer is recoverable only as an approximation from the service records
-   (118,374 on 2026-08-12) - **and an approximation must not be written as if it were a reading.**
+   (90,374 on 2026-08-12) - **and an approximation must not be written as if it were a reading.**
    §4 rule 5 applies: a restored odometer Kevin did not state is an estimate.
 4. **Why the decode never wrote back at all.** `vehicle_specs` and `vehicles` have disagreed for
    three weeks with nothing noticing. Is the write-back missing by design (specs are a separate
@@ -113,7 +113,7 @@ Those two facts cannot both be true of a row that was never overwritten. The row
 
 Corroborating, independently: `log_service` (`LiveToolbox.kt:808-817`) takes **no mileage
 parameter** - only `service` and `vehicle`. So `ServiceRecord.mileage` can only come from
-`currentMileage(vehicle)` (`VehicleController.kt:179`). The two records read 118,331 and 118,374.
+`currentMileage(vehicle)` (`VehicleController.kt:179`). The two records read 90,331 and 90,374.
 **The odometer baseline existed and is now zero.**
 
 ### The mechanism
@@ -193,7 +193,7 @@ year/make/model as non-identifying. `a09aa68` made all seeding blank, which ends
    class, found while hunting this, fixed with it.
 3. **`TelemetryRecorder`'s accumulation moves into SQL** (`tripMilesSinceBaseline = tripMilesSinceBaseline
    + :delta`), removing a read-modify-write race on the app's highest-frequency vehicle write.
-4. **Kevin's odometer is restored as ~118,374, derived from the 2026-08-12 service record** - his
+4. **Kevin's odometer is restored as ~90,374, derived from the 2026-08-12 service record** - his
    choice over typing a dash reading. **It is not a reading and must never render as one.**
    `odometerBaselineAt` is set to that record's own timestamp rather than to now, so the figure
    carries its own staleness and ticket 10's disclosure work has something true to describe.

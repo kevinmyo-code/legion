@@ -120,7 +120,7 @@ his two existing service records on a screen.
   goes** - Kevin's `Brake Fluid` and `Brake Pads` orphans were created by this exact path and he
   learned of them from a database pull three days later. Matching is **deterministic**, using ticket
   07's comparator, never an LLM - which would make two identical utterances match differently.
-  New finding: **a backfill silently overwrote a precise record's anchor** (118,374 -> 118,483,
+  New finding: **a backfill silently overwrote a precise record's anchor** (90,374 -> 90,483,
   fourteen seconds apart, date nulled), so **a backfill may not overwrite an anchor a `ServiceRecord`
   supports without saying so.** The titlecase fix is a prerequisite here too.
 
@@ -218,7 +218,7 @@ his two existing service records on a screen.
   2026-08-15, two days late.** Six suspects eliminated by evidence, including `DatabaseSnapshot.restore`
   - **that file did not exist yet.** Kevin took the deepest fix: seeding never persists, whole-row
   REPLACE stops being how a vehicle is edited, `registerDirect`'s silent field loss goes with it, and
-  trip miles accumulate in SQL. Odometer restored as **~118,374 derived from the service record,
+  trip miles accumulate in SQL. Odometer restored as **~90,374 derived from the service record,
   stamped with that record's own date so it carries its staleness** - an estimate, never a reading.
   **No schema change.** Also records a confound: the old placeholder was itself a 1998 Jeep Cherokee,
   so **no row written before 2026-08-15 can be told from a placeholder by make/model/year.**
@@ -249,9 +249,9 @@ his two existing service records on a screen.
   Jeep has no identity and no odometer.** `make`/`model`/`year` are empty and `odometerBaseline` is
   0, so `displayLabel` returns blank (that is the `THIS CAR` bug - **not** resolution order, and
   **not** the wrong active car, which is an explicit pick and correct) and **`currentMileage`
-  evaluates to 0 against service anchors at 118,483**. The maintenance drilldown therefore renders
+  evaluates to 0 against service anchors at 90,483**. The maintenance drilldown therefore renders
   **three rows out of ten** - `buildDueRows` silently drops all seven unanchored items - and reports
-  **the oil due in 121,450 miles**. The identity is not lost, only unwritten: `vehicle_specs` holds
+  **the oil due in 93,450 miles**. The identity is not lost, only unwritten: `vehicle_specs` holds
   a fully decoded VIN from 2026-07-26 that never wrote back to `vehicles`, **so `check_recalls`
   passes its `confirmed` gate and then returns an empty list that reads exactly like "no open
   recalls"** (corrected 2026-08-15: `fetchRecalls` guards on blank year/make/model and makes no

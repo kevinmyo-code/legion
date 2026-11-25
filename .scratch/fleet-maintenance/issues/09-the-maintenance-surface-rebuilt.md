@@ -25,7 +25,7 @@ MAINTENANCE half-tile on FLEET (`ui/FleetScreen.kt:442-447`). Top to bottom:
 
 1. `< BACK`, title `MAINTENANCE`, hairline
 2. A flat `LazyColumn` of due rows - `DeckRow(label, value)` plus a sub-line reading
-   `"every 3,000 mi - last at 132,400"`. **None of these rows is clickable.**
+   `"every 3,000 mi - last at 104,400"`. **None of these rows is clickable.**
 3. Two dead ghost lines: `"2 service records on file, no screen yet"` and
    `"N build sheet entries on file, no screen yet"` - **not tappable**
 4. `Recaps` row -> recaps drilldown, with an inline miles sparkline

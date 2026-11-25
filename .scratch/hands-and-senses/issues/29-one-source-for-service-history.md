@@ -21,7 +21,7 @@ ticket described a symptom - a read that ignores a table. This is the disease: `
 (the events) and `maintenance_items.lastDoneMileage`/`lastDoneDate` (the clock) are two
 independent stores of one fact, kept in step by hand. Every symptom falls out of the split:
 
-- The clock says 227,483 mi with no date; the record says 227,374 mi on 12 Aug. Both about one oil
+- The clock says 199,483 mi with no date; the record says 199,374 mi on 12 Aug. Both about one oil
   change. Nothing reconciled them because nothing had to.
 - A mileage-only write nulls the clock's date, and the record it contradicts sits untouched.
 - The Service History screen and the voice answer read different tables, so the app can show a
@@ -49,7 +49,7 @@ independent stores of one fact, kept in step by hand. Every symptom falls out of
   already trusts.
 - Or does the anchor keep its columns and gain a flag meaning "asserted, not derived"? Cheaper
   migration, keeps the split alive in a smaller form.
-- **What happens to existing rows** - the Jeep's dateless 227,483 clock is a real user assertion or
+- **What happens to existing rows** - the Jeep's dateless 199,483 clock is a real user assertion or
   a wiped date, and the migration cannot know which. **A migration that guesses is worse than one
   that asks**: prefer preserving both facts and letting the surfaces state them (28's honesty rule)
   over silently picking a winner.

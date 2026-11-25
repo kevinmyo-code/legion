@@ -102,7 +102,7 @@ is not solid, this feature multiplies the existing defect rather than fixing it.
 On the device, on Kevin's real Jeep: run a populate, confirm the diff shows the oil interval moving
 3,000 -> 7,500 and flags `Brake Fluid Flush` as not-in-schedule, confirm nothing writes until
 accepted, accept it, force-stop, reopen, and pull the DB to confirm the rows. **The service anchors
-at 118,483 must survive untouched** - that is the check that matters most, because losing them is
+at 90,483 must survive untouched** - that is the check that matters most, because losing them is
 the failure this map already suffered once.
 
 ---
@@ -200,7 +200,7 @@ Both call the same function.
 1. On Kevin's real Jeep: run a populate, confirm the diff shows **oil moving 3,000 -> 7,500** and
    lists `Brake Fluid Flush` under "not in the factory schedule".
 2. **Confirm nothing is written until accepted** - pull the database mid-diff.
-3. Accept, force-stop, reopen, pull again. **The service anchors at 118,483 must survive untouched** -
+3. Accept, force-stop, reopen, pull again. **The service anchors at 90,483 must survive untouched** -
    losing them is the failure this map already suffered once, and it is the check that matters most.
 4. Re-run the populate immediately and confirm it produces **no duplicates** - the risk this ticket
    was charted against.

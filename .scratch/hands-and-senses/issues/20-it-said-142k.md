@@ -1,7 +1,7 @@
 ---
 map: hands-and-senses
 ticket: "20"
-title: "It said the Jeep was at 142k when the record says 227k"
+title: "It said the Jeep was at 142k when the record says 199k"
 type: task
 status: closed
 status-detail: "Closed 2026-08-22 (Kevin): mileage is reported correctly now."
@@ -11,12 +11,12 @@ open-blockers: 0
 ready: false
 tags: [ticket]
 ---
-# It said the Jeep was at 142k when the record says 227k
+# It said the Jeep was at 142k when the record says 199k
 
 ## Question
 
-Kevin, 2026-08-20: *"ai just said jeep was at 142k miles. its clearly not, the fleet tab says 227k"*
-(227,621 mi).
+Kevin, 2026-08-20: *"ai just said jeep was at 142k miles. its clearly not, the fleet tab says 199k"*
+(199,621 mi).
 
 ### What was ruled out, by reading his real database off the phone
 
@@ -24,18 +24,18 @@ Pulled `legion_database` from the A25 and read it. **The data is correct and con
 
 | Vehicle | baseline | trip | total |
 |---|---|---|---|
-| 1998 Jeep Cherokee | 227,494 | 117.5 | **227,612** |
+| 1998 Jeep Cherokee | 199,494 | 117.5 | **199,612** |
 | Ford F-150 | 161,470 | 220.9 | 161,691 |
 | Mitsubishi Outlander | 73,577 | 12.6 | 73,590 |
 
 - **No vehicle is near 142k**, so it did not report the wrong car.
 - **142k appears nowhere in the database.** Every text column of every table was searched; the only
-  matches were unix timestamps. The seven mileage-bearing `companion_memories` all say 227,4xx for
-  the Cherokee, and both `service_records` say 227,3xx.
+  matches were unix timestamps. The seven mileage-bearing `companion_memories` all say 199,4xx for
+  the Cherokee, and both `service_records` say 199,3xx.
 - **The tool chain returns the right number.** `list_vehicles` puts `odometer` on every vehicle from
-  `VehicleController.mileageLabel`, which renders `"227,612 mi"` with its own estimate caveat
+  `VehicleController.mileageLabel`, which renders `"199,612 mi"` with its own estimate caveat
   attached as a string precisely so the model cannot restate an estimate as bare fact.
-- **A km/mile mix-up does not explain it either.** 227,612 km would be 141,437 mi, close enough to
+- **A km/mile mix-up does not explain it either.** 199,612 km would be 141,437 mi, close enough to
   "142k" to be worth checking, but nothing in the codebase converts distance - `setOdometer` takes
   miles, `tripMilesSinceBaseline` is miles, `mileageLabel` renders "mi".
 - **The prompt already forbids this, explicitly and at file scope.** `AriaBrain`: *"NEVER state a
@@ -102,10 +102,10 @@ hits.
 
 What it did say, verbatim, in a sitrep on 08-21 at 19:27:
 
-> "The Jeep's odometer is **estimated to be around 227,620 miles**. No maintenance is due, though
+> "The Jeep's odometer is **estimated to be around 199,620 miles**. No maintenance is due, though
 > there are several items with no last done date. There are five unresolved trouble codes..."
 
-That is correct against the database (227,612 at the time of the earlier pull), **and it carried the
+That is correct against the database (199,612 at the time of the earlier pull), **and it carried the
 estimate caveat** - `VehicleController.mileageLabel` attaches that as a string precisely so the model
 cannot restate an estimate as a bare fact, and the model kept it.
 

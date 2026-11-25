@@ -21,9 +21,9 @@ change. but it didnt register too."*
 
 ```
 22:38:37  tool_result log_past_service {"success":true,"message":"Got it, filed Brake Fluid Flush into the record."}
-22:38:26  tool_result ask_fleet      {"success":true,"message":"The last brake fluid flush ... was logged at 227,483 miles."}
+22:38:26  tool_result ask_fleet      {"success":true,"message":"The last brake fluid flush ... was logged at 199,483 miles."}
 ```
-`maintenance_items`: `Brake Fluid Flush  mileage=227374  date=NULL  deleted=0`
+`maintenance_items`: `Brake Fluid Flush  mileage=199374  date=NULL  deleted=0`
 
 The app did what he asked and showed him nothing that said so. **A silent success is worse than a
 visible failure**: a failure he can retry, this he can only distrust.
@@ -49,7 +49,7 @@ guess, not a re-read that races. Same disease as 28/29 - one fact, two sources -
 
 ### 2. A voice "same time as the oil change" writes an anchor and no record
 
-`log_past_service` moved the maintenance clock to 227,374 and created no `service_records` row, so
+`log_past_service` moved the maintenance clock to 199,374 and created no `service_records` row, so
 the flush has a mileage and still no date, and Service History shows nothing. Ticket 07 fixed this
 for the hands path; the voice path still writes only the anchor.
 
