@@ -14,6 +14,17 @@ by mistake opens nothing.
 | `agents-turn-cancel` | POST | the stop button of that turn (same switch) |
 | `device-logs-upload` | POST | its own drive log; GET (the household's list) is refused |
 | `fleet-obd-samples-batch` | POST | append-only OBD telemetry; no read, no edit |
+| `releases-latest` | GET | its own OTA: the newest `headunit` release, never another app's |
+| `releases-download` | GET | the signed link for a `headunit` release id, never another app's |
+
+**Why the two release routes are on the list (2026-11-24).** A unit paired over the car link held
+no member sign-in, so its updater could not ask for a release at all and the unit could never
+take an OTA without his engine password typed on a car touchscreen - which is the thing the car
+link exists to avoid. These two routes read no household data: `releases/models.py` rows are
+engine-wide, carry no member, and the unit verifies the APK's checksum, package and signer itself
+before anything installs (`update/UpdateRules.verifyRefusal`). `releases_refusal` below keeps a
+unit token to its OWN app, so it can never list or fetch the phone's APK. Publishing
+(`releases-publish`) stays off the list and owner-only.
 
 **Tools.** Inside a turn, a tool runs as the member, either through
 `engine_mcp.dispatch.call_route` (forced authentication: the class above never runs, and
@@ -34,7 +45,16 @@ ROUTES: frozenset[tuple[str, str]] = frozenset(
         ("agents-turn-cancel", "POST"),
         ("device-logs-upload", "POST"),
         ("fleet-obd-samples-batch", "POST"),
+        ("releases-latest", "GET"),
+        ("releases-download", "GET"),
     }
+)
+
+# `AppRelease.app` a head unit may read. Its own client only (`update/UpdateAndroid.APP_KEY`).
+OWN_APP = "headunit"
+
+RELEASE_OTHER_APP = (
+    "Nothing was read. A head unit reads only its own app's releases, never another client's."
 )
 
 TOOLS: frozenset[str] = frozenset({"next_service", "vehicle_recalls", "check_conditions"})
@@ -107,6 +127,19 @@ def tool_arguments(request, name: str, args: dict) -> tuple[dict, str | None]:
             return args, NO_BOUND_VEHICLE
         return {**args, "vehicle": str(bound)}, None
     return args, None
+
+
+def releases_refusal(request, app: str) -> str | None:
+    """The second fence on the two release routes: a unit token reads its OWN app only.
+
+    The route allow-list says WHICH doors open; this says what may come back through them. Without
+    it a unit token could list and fetch the phone's APK, which is a build of another client with
+    another client's baked constants in it. None for anyone but a head unit, and for a head unit
+    asking about its own app.
+    """
+    if not is_headunit(request):
+        return None
+    return None if app == OWN_APP else RELEASE_OTHER_APP
 
 
 def route_name(request) -> str | None:
