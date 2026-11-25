@@ -321,7 +321,7 @@ same names and units (ms unless named). The engine adds its own stage times in `
 
 ## 14. Kevin's rulings on the open questions (2026-11-19)
 
-Kevin, about 23:30: *"1 ok 2 ok 3 ok 4 ok 5 later 6 ok 7 later"*.
+Kevin, late that night: *"1 ok 2 ok 3 ok 4 ok 5 later 6 ok 7 later"*.
 
 - **Q1. Turn models fail:** every client falls back to the 1.2 s silence rule (section 2); the conversation does not end.
 - **Q2. Barge-in verdict grace:** per client (web 320 ms, phone none), to be unified after a measurement in the car.

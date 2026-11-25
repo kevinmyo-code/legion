@@ -61,7 +61,7 @@
 
       <div style="display: flex; align-items: flex-start; gap: 12px; padding: 11px 0; border-bottom: 1px solid oklch(0.93 0.006 80)">
         <div style="width: 52px; flex-shrink: 0; font-size: 13px; font-variant-numeric: tabular-nums; color: oklch(0.52 0.012 70); padding-top: 1px">09:30</div>
-        <div style="flex-grow: 1; font-size: 15px; line-height: 1.35">COSC 4320 lecture</div>
+        <div style="flex-grow: 1; font-size: 15px; line-height: 1.35">CSCI 3400 lecture</div>
         <div style="width: 8px; height: 8px; border-radius: 999px; background: oklch(0.58 0.12 45); margin-top: 6px; flex-shrink: 0"></div>
       </div>
       <div style="display: flex; align-items: flex-start; gap: 12px; padding: 11px 0; border-bottom: 1px solid oklch(0.93 0.006 80)">
@@ -132,9 +132,9 @@ class Component extends DCLogic {
   }
   renderVals() {
     const rows = [
-      { id: 'quiz', title: 'Chapter 2 Quiz', meta: 'MATH 3391 - due Sun 23:59' },
-      { id: 'waterfall', title: 'Module 2: Assignment 2 - Waterfall Model', meta: 'COSC 4320 - due Sun 23:59' },
-      { id: 'discussion', title: 'Discussion-2-Incremental Advantage Delivery', meta: 'COSC 4320 - due Sun 23:59' },
+      { id: 'quiz', title: 'Chapter 2 Quiz', meta: 'STAT 2300 - due Sun 23:59' },
+      { id: 'waterfall', title: 'Module 2: Assignment 2 - Waterfall Model', meta: 'CSCI 3400 - due Sun 23:59' },
+      { id: 'discussion', title: 'Discussion-2-Incremental Advantage Delivery', meta: 'CSCI 3400 - due Sun 23:59' },
     ];
     const left = rows.filter((r) => !this.state.done[r.id]).length;
     return {

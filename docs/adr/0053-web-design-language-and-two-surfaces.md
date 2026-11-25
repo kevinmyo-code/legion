@@ -22,7 +22,7 @@ The web shipped in stock shadcn grey with a PWA manifest in the phone's mission-
 Kevin reopened the look on 2026-10-03 and picked from three clickable prototypes (family warm, calm
 Apple, soft Material light): **C**. It is the light sibling of the phone's soft Material dark
 ([[0051-design-language-soft-material]]), so the two clients now read as one product. The surfaces
-split because the users differ: Kevin reviews and edits records at the desk, Mia glances and ticks on
+split because the users differ: Kevin reviews and edits records at the desk, a second member glances and ticks on
 her iPhone, and ADR 0045 allows no roles to separate them any other way.
 
 ## Decision
@@ -50,7 +50,7 @@ her iPhone, and ADR 0045 allows no roles to separate them any other way.
 
 ## Consequences
 
-- Mia on a laptop gets the workbench and Kevin on a narrow window gets the family view. Accepted:
+- The second member on a laptop gets the workbench and Kevin on a narrow window gets the family view. Accepted:
   there is no permission difference to protect.
 - The PWA manifest and icons stop deriving from the phone's `Color.kt`.
 - `docs/design/canvas/` (the 2026-09-12 family-warm drawing) and `docs/design/today.md`'s "no

@@ -21,8 +21,8 @@ This narrows ADR 0049 for one list. It does not replace it.
 
 ## Context
 
-Kevin, 2026-10-04: *"wife wants to be able to keep track when we bought certain household items.
-like shampoo etc. ... either from groceries checklist, or by her manually logging"*. Asked whether a
+Kevin, 2026-10-04: a second member wants to keep track of when the household bought certain items,
+shampoo and the like, either from the Groceries checklist or by logging it by hand. Asked whether a
 Groceries tick should log a purchase by itself, ask each time, or never, he picked by itself.
 
 ADR 0049's rule exists because the question people ask ("when did I last BUY toothpaste") is not

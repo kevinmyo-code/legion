@@ -50,7 +50,7 @@ and a charging screensaver. Nothing here writes system settings, so no adb step 
 
 ## Context
 
-Kevin's ADHD. No social media, no doomscrolling; only Mia and his parents reach him. He designed it
+Kevin's ADHD. No social media, no doomscrolling; only a second member and his parents reach him. He designed it
 through an interview and clickable prototypes and picked home layout A over the tile layouts.
 
 ## Consequences
@@ -95,8 +95,8 @@ Kevin, approving the matrix batch on 2026-10-23.
 
 ## Amendment, 2026-10-24: Matrix mode blocks feeds, not everything
 
-Kevin: *"i just need to stop the social media apps... everything thats not a distraction or causes me
-to doomscroll should stay."* This replaces the Standing section's **"Allowlist, not blocklist"**
+Kevin: what he needs blocked is the social media apps; everything that is not a distraction should
+stay. This replaces the Standing section's **"Allowlist, not blocklist"**
 paragraph, including "the browser" being hidden.
 
 - **Blocked:** an app Android tags Social, Video or News, or one on a seed list of known feed apps
@@ -113,8 +113,8 @@ paragraph, including "the browser" being hidden.
 
 ## Amendment, 2026-11-02: LEGION never leaves a Do Not Disturb of its own on
 
-Kevin: *"when i take it off quiet mode, its still in do not disturb and i dont get calls or message
-notifications"*. On the A25 (Android 15, One UI) Quiet's rule was off, but the system's MANUAL DND rule
+Kevin reported that taking the phone off Quiet mode left it in Do Not Disturb, with no call or
+message notifications. On the A25 (Android 15, One UI) Quiet's rule was off, but the system's MANUAL DND rule
 had been on for six days with `enabler=com.kevin.legion`.
 
 - **Cause (traced, from the A25's `dumpsys audio`):** Quiet "off" restores the saved ringer. When that

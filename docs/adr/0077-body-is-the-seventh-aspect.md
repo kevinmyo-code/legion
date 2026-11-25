@@ -29,7 +29,7 @@ trend and proposals to it. Kevin, 2026-11-05, to the question whether Body is th
   (energy estimate, trend, adjustment proposals, the weekly line's facts) live in Django once
   (`server/body_coach/`), and the phone reads them.
 - **Its rows are household-shared**, like the other aspects' hand-made rows (ADR 0052), because
-  only Kevin logs body data (Kevin, 2026-11-05, *"8 no"* to his wife using it). **This rests on that
+  only Kevin logs body data (Kevin, 2026-11-05, *"8 no"* to a second member using it). **This rests on that
   ruling**: before a second member logs weight, meals or waist, those tables need an owner column.
   The body profile (height, sex, birth year, activity) is one row per member, private to that
   member, from the start.

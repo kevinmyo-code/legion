@@ -16,7 +16,7 @@ own private rows. Tenancy is still by household; privacy is a filter inside it, 
 
 ## Context
 
-ADR 0045 made the household the only boundary: every member saw every row. With Mia on the web,
+ADR 0045 made the household the only boundary: every member saw every row. With a second member on the web,
 that put Kevin's Canvas coursework and class schedule into her day. Kevin, 2026-10-03: *"canvas
 and my class schedules should be only mine no? shared ones give it a distinct color like pink"*,
 then chose server-enforced privacy over a client-side filter.

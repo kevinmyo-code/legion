@@ -45,8 +45,8 @@ Games and not a shared sheet.
 
 ## Amendment, 2026-10-23: PDFs pass through the engine to become resizable EPUBs
 
-Kevin: *"i wanna make it bigger but its just a zoom on the pdf screen. how can we make the fonts refit
-instead?"* "Everything stays on the phone" now has one exception. Every PDF in the granted folder is
+Kevin asked how to make the text bigger when the PDF screen only zooms, and whether the fonts could
+refit instead. "Everything stays on the phone" now has one exception. Every PDF in the granted folder is
 sent, automatically and in the background, to the household engine, which converts it to EPUB and
 returns it in the same response. **Nothing is kept on the server**: no row, no file, no content in a
 log. The EPUB lives in LEGION's app-private storage, never in the books folder. A PDF with no text

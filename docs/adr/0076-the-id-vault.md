@@ -19,8 +19,8 @@ ticket 05, not deployed); the phone screen is ticket 12; web entry is ticket 15 
 Some identifiers must be at hand and must never reach a model: a passport number at a counter, a
 bank account number on a form. Memory ([[0075-memory-lives-on-the-engine]]) is read back to a
 model on every recall, so they cannot live there. Kevin, 2026-11-05: *"centralized memory. and
-the id vault"*; later the same day, *"can i enter it on the pc man, but later. not important
-now"*.
+the id vault"*; later the same day, he asked to be able to enter them on the PC, but later: not a
+priority now.
 
 ## Decision
 

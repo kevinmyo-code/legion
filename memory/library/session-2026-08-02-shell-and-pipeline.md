@@ -156,7 +156,7 @@ Three additional commits pushed to origin; all code is tested / on-device verifi
 
 ### The headline result (tested on device, CPH2471)
 
-**Treatment B rendered for the first time.** A synthetic receipt was generated, imported through the real pantry flow, and a REAL Gemini vision call on Kevin's own key extracted it. It RECONCILED - "Logged 5 item(s) from TRADER JOES #452", printed total 29.82 matching the sum of five line items exactly. The segregated layout then rendered correctly: prices and macros never share a row, the sentence sits between the two blocks. **Tag: tested.**
+**Treatment B rendered for the first time.** A synthetic receipt was generated, imported through the real pantry flow, and a REAL Gemini vision call on Kevin's own key extracted it. It RECONCILED - "Logged 5 item(s) from STORE NAME #000", printed total 29.82 matching the sum of five line items exactly. The segregated layout then rendered correctly: prices and macros never share a row, the sentence sits between the two blocks. **Tag: tested.**
 
 ### THE CRITICAL BUG FOUND (commit 0ee27e9)
 

@@ -83,7 +83,7 @@ Test date: 2026-07-16. Test vehicle: 1998 Jeep Cherokee XJ. Tester: Kevin.
 
 **Findings:**
 
-1. **OBD and voice work fine.** Kevin verified on the Cherokee: "all obd and voice and stuff works fine." **Recorded as PARTIAL** - he has not confirmed which of the specific MEMORY.md checklist items (B13-B17, B8/F4, B1/B2, C1's five canonical voice tests, M1/M2/M3, Companion Badge, Lights Out backlight) he exercised. Do not mark those individually verified from this session. Next drive should isolate each.
+1. **OBD and voice work fine.** Kevin reported OBD and voice working on the Cherokee. **Recorded as PARTIAL** - he has not confirmed which of the specific MEMORY.md checklist items (B13-B17, B8/F4, B1/B2, C1's five canonical voice tests, M1/M2/M3, Companion Badge, Lights Out backlight) he exercised. Do not mark those individually verified from this session. Next drive should isolate each.
 
 ## Pending validation
 

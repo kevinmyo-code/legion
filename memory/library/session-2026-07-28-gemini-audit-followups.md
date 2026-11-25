@@ -66,7 +66,7 @@ pushing `main`.
 
 **Fabricated data on screen (impact: false state display):**
 `GarageHub.kt` rendered hardcoded literal strings as if they were live state:
-- Static lat/lng (Houston, ~29.76°N, 95.37°W) displayed as "current location"
+- A static lat/lng literal displayed as "current location"
 - "MAPBOX READY" hardcoded (whether the user had a token or not)
 - "SPOTIFY ACTIVE" hardcoded (whether Spotify was connected or not)
 - "DRIVE SYNC" hardcoded (whether sync was enabled)

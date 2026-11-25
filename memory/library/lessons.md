@@ -398,8 +398,8 @@ read never is.** Applies to any claim-then-act path in this codebase.
 
 ## L17 (2026-08-13) - a declared tool the system prompt never mentions is reached only by luck
 
-Kevin, on the day the advisors landed: *"i asked the ai what are my goals, i already set some with
-it, and also i manually typed in a goal in bio, but it couldnt see the goal."*
+Kevin, on the day the advisors landed, reported that the assistant could not see his goals: he had
+set some with it and typed one into Bio by hand, and asking for them returned nothing.
 
 The goal tools were correct. `list_goals` with no aspect returns every aspect; the handler was
 fine; the rows were really in Room. The transcript (`episodic_turns`) showed what actually
@@ -432,7 +432,7 @@ model when to call it, so the entire five-advisor feature would have sat unreach
 
 ## L18 (2026-08-13) - a tool is only real when it is BOTH dispatchable and DECLARED to the right session
 
-Same day, same feature, second report from Kevin: *"it still doesnt see goals."* The transcript:
+Same day, same feature, a second report from Kevin: it still did not see goals. The transcript:
 
 > driver: No, no. I have one goal, don't I?
 > companion: I do not seem to have any recorded goals for you, sir.
@@ -472,7 +472,7 @@ of a 4,000-line file, and the nearest enclosing function was the wrong one.
 
 ## L19 - A layout claim is `on-device` or it is nothing (2026-08-14)
 
-Kevin: "i cant scroll down anymore. the visual obscures the scroll interface." The LOG tab's inbox
+Kevin reported the LOG tab would no longer scroll, the chart above it having taken the space. The LOG tab's inbox
 list had become unreachable. The cause was mine: quant-viz ticket 13 put a 180dp `DeckBarChart`
 plus labels and a caption at the top of `ui/NotesScreen.kt`, whose root is a **non-scrolling
 `Column`**. Children take their heights in order and the LAST child gets only the remainder, so the
