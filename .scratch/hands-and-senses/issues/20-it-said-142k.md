@@ -35,9 +35,10 @@ Pulled `legion_database` from the A25 and read it. **The data is correct and con
 - **The tool chain returns the right number.** `list_vehicles` puts `odometer` on every vehicle from
   `VehicleController.mileageLabel`, which renders `"199,612 mi"` with its own estimate caveat
   attached as a string precisely so the model cannot restate an estimate as bare fact.
-- **A km/mile mix-up does not explain it either.** 199,612 km would be 141,437 mi, close enough to
-  "142k" to be worth checking, but nothing in the codebase converts distance - `setOdometer` takes
-  miles, `tripMilesSinceBaseline` is miles, `mileageLabel` renders "mi".
+- **A km/mile mix-up does not explain it either.** A unit slip is the cheap way one six-figure
+  odometer becomes a different six-figure odometer, so it was worth ruling out, and it is ruled out:
+  nothing in the codebase converts distance - `setOdometer` takes miles, `tripMilesSinceBaseline` is
+  miles, `mileageLabel` renders "mi".
 - **The prompt already forbids this, explicitly and at file scope.** `AriaBrain`: *"NEVER state a
   fact about the driver's own record unless a tool call in THIS conversation returned it...
   figures, dates, car details."* That rule was added on 2026-08-18 after an invented dentist
