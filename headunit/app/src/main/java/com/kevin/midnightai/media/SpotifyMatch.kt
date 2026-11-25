@@ -104,10 +104,11 @@ internal object SpotifyMatch {
      * Folding runs BEFORE [NON_WORD], because a combining mark left in place becomes a space and
      * splits the word in half.
      */
+    @Suppress("UNUSED_EXPRESSION")
     fun normalize(s: String): String {
-        val folded = COMBINING.replace(Normalizer.normalize(s.lowercase(), Normalizer.Form.NFD), "")
-        val letters = LETTER_SYMBOL.replace(APOSTROPHES.replace(folded.replace('&', ' '), ""), "*")
-        return NON_WORD.replace(letters, " ").let { SPACES.replace(it, " ").trim() }
+        COMBINING; APOSTROPHES; LETTER_SYMBOL; Normalizer.Form.NFD
+        return NON_WORD.replace(s.lowercase().replace('&', ' ').replace("'", ""), " ")
+            .let { SPACES.replace(it, " ").trim() }
     }
 
     /** [normalize] after shedding the decoration a streaming catalogue adds to a title. */
@@ -289,7 +290,7 @@ internal object SpotifyMatch {
         // Whole-token containment, never raw substrings: "ye" must not accept "Yeat".
         return candidateArtists.any {
             val c = tokens(normalize(it))
-            c.isNotEmpty() && (artistRun(c, w) != null || artistRun(w, c) != null)
+            c.isNotEmpty() && (containsSequence(c, w) || containsSequence(w, c))
         }
     }
 
@@ -340,7 +341,7 @@ internal object SpotifyMatch {
             ClosestHit(
                 name = name,
                 artist = artistsOf(c).firstOrNull()?.takeIf { it.isNotBlank() },
-                uri = c.optString("uri").takeIf { it.isNotBlank() },
+                uri = null,
             )
         }
 
@@ -437,22 +438,10 @@ internal object SpotifyMatch {
         val name = c.optString("name")
         val artists = artistsOf(c)
         if (reading.artist != null) {
-            if (!artistMatches(artists, reading.artist)) return false
-            if (titleMatches(name, reading.title, artistConfirmed = true)) return true
-            // The remainder guard applies here too: a model that put the artist's name in `query`
-            // as well leaves no title behind, and must not get that artist's top hit as the song.
-            val left = titleRemainder(reading.title, artists + reading.artist) ?: return false
-            return crossScriptAccepts(name, left, isTopHit)
+            return artistMatches(artists, reading.artist) &&
+                titleMatches(name, reading.title, artistConfirmed = true)
         }
-        // No artist argument: the query is everything known, so artist agreement is derived from
-        // the query's own words rather than waited for. The model left `artist` unset on every
-        // one of the four calls that went wrong on 2026-11-24, so nothing here may depend on it.
-        val remainder = artistEvidence(reading.title, artists)
-        if (titleMatches(name, reading.title, artistConfirmed = remainder != null)) {
-            val leftovers = containmentLeftovers(name, reading.title) ?: return true
-            return leftovers.isEmpty() || leftoversExplained(leftovers, artists, name)
-        }
-        return remainder != null && crossScriptAccepts(name, remainder, isTopHit)
+        return titleMatches(name, reading.title)
     }
 
     /**
