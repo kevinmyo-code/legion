@@ -685,7 +685,9 @@ object VehicleController {
                     // would be a sentence about a schedule it does not have. Both anchors are the
                     // row just inserted, so the intervals are the whole question.
                     val matched = existingItems.firstOrNull { it.serviceName == matchedName }
-                    val said = loggedServiceMessage(matchedName, statedMileage, matched?.intervalMonths, matched?.intervalMiles)
+                    val said = loggedServiceMessage(
+                        matchedName, statedMileage, matched?.intervalMonths, matched?.intervalMiles,
+                    )
                     WriteOutcome(true, noteThen(questionNote, said))
                 }
             }
