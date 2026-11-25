@@ -83,6 +83,53 @@ class RewakeCarryTest {
         assertNotNull("the driver must not lose context to a dead socket", carry.take(1_100))
     }
 
+    /**
+     * The bug a park used to hide. `turn()` appends across a park by design, and while the end
+     * stamp survived a resume, the resumed conversation's own completed turns sat under the old
+     * park's stamp and `abandoned()` was a no-op. A drop, an error or a teardown then left a
+     * torn-down conversation behind for the next cold connect to replay. [RewakeCarry.running],
+     * called when a conversation starts or resumes on the socket, is what fixes it.
+     */
+    @Test
+    fun `a conversation resumed after a park and then torn down leaves nothing`() {
+        val carry = RewakeCarry()
+        carry.turn("what should I put on", "The live record.")
+        carry.ended(1_000)
+        // The driver taps and the warm socket resumes, so a conversation is running again.
+        carry.running()
+        carry.turn("and the other side", "Side B it is.")
+        // The socket drops, errors, or the controller replaces it mid-conversation.
+        carry.abandoned()
+        assertNull("nothing of a torn-down conversation, its own turns included", carry.take(1_100))
+    }
+
+    @Test
+    fun `a crisis wipes it whether the conversation ended or not`() {
+        val ended = RewakeCarry()
+        conversation(ended)
+        ended.ended(1_000)
+        ended.wipe()
+        assertNull("not replayed into the next greeting prompt", ended.take(1_100))
+        val running = RewakeCarry()
+        conversation(running)
+        running.running()
+        running.wipe()
+        assertNull(running.take(1_100))
+    }
+
+    @Test
+    fun `a resumed conversation that ends properly still carries`() {
+        val carry = RewakeCarry()
+        carry.turn("the first one", "sure")
+        carry.ended(1_000)
+        carry.running()
+        carry.turn("the second one", "fine")
+        carry.ended(2_000)
+        val block = carry.take(2_100)!!
+        assertTrue("both exchanges, as the park rule intends", block.contains("the first one"))
+        assertTrue(block.contains("the second one"))
+    }
+
     @Test
     fun `turns accumulate across a park, so a proactive line does not replace his conversation`() {
         val carry = RewakeCarry()

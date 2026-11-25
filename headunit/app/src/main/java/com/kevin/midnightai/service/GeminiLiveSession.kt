@@ -501,6 +501,11 @@ class GeminiLiveSession(
             audit.interrupted("barge_in")
         }
         conversationActive = true
+        // A conversation is running again on this socket, so what is held is no longer an ENDED
+        // conversation: a teardown from here leaves nothing, this conversation's own turns included
+        // ([RewakeCarry.running]). Without this a resume after a park kept the park's stamp, and a
+        // drop, an error or a crisis teardown left the torn-down conversation behind.
+        rewake?.running()
         vadMode = true
         suppressMicNextTurn = false
         ConversationState.setBusy(true)
