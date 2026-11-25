@@ -475,7 +475,10 @@ class CarLinkController(
 
     private fun finish(end: PairingStage, unitHost: String) {
         if (end is PairingStage.Paired) {
-            store.setUnitDeviceId(handover.mintedId())
+            // Only when this pairing minted one. A re-pair whose mint failed must keep the handle for
+            // the credential before it: the unit drops that one as it commits the new pairing, so the
+            // phone is the only thing left that can revoke it, and [forget] reads this id.
+            handover.mintedId()?.let { store.setUnitDeviceId(it) }
             handover.keep()
             if (!recordNetwork(unitHost)) _status.update { it.copy(note = CarLinkNote.NETWORK_NOT_RECORDED) }
             // A new pairing replaces any revoke-only record (its key is no longer the unit's current one).

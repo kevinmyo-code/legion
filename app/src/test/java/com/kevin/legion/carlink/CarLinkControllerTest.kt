@@ -440,6 +440,22 @@ class CarLinkControllerTest {
         assertEquals(MINTED_ID, store.unitDeviceId())
     }
 
+    /**
+     * A re-pair whose mint fails must not lose the revoke handle for the credential before it: the
+     * unit drops that one when it commits the new pairing, so the phone is the only thing that can
+     * still revoke it, and "Forget head unit" reads this id.
+     */
+    @Test fun `a pairing that mints nothing keeps the previous unit's revoke handle`() = runBlocking {
+        assertTrue(store.setUnitDeviceId("hu-before"))
+        val unit = FakePairingUnit()
+        transport = com.kevin.legion.carlink.protocol.PairingTransport { _, _ -> unit }
+        val c = controller()
+        c.pair(unit.qrText())
+        waitFor("the pairing") { c.status.value.pairing == com.kevin.legion.carlink.protocol.PairingStage.Paired }
+        assertEquals(null, field(unit.handovers.single(), "engine_token"))
+        assertEquals("hu-before", store.unitDeviceId())
+    }
+
     private companion object {
         const val DAY = 86_400_000L
         const val MINTED_ID = "hu-for-tests-1"
