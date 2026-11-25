@@ -29,7 +29,12 @@ import com.kevin.legion.service.TextChatEngine
  *   (`ownConversation`) calls [take] or [ended] at all, so a proactive line, Brief me or a ring
  *   window neither spends the context nor wipes it.
  * - **"New chat" wipes it** ([WIPES]): he asked to start fresh, and that is the one close that
- *   means the last conversation is not to be carried.
+ *   means the last conversation is not to be carried. The tap reaches [wipe] directly as well,
+ *   because with no conversation open there is no close to carry the reason.
+ * - **A crisis wipes it** ([wipe], from the controller's one crisis handler): the conversation that
+ *   signalled distress is torn down and nothing of it is replayed into the next one. It is wiped
+ *   there rather than by a close reason because a crisis can land in a conversation that never
+ *   calls [ended] at all (a ring window, a line Alfred opened, the typed panel).
  * - **Nothing from a conversation that read outside text (ADR 0090).** Such a conversation empties
  *   the holder, so neither the text (a read-through opener's prompt sits in `history` in clear) nor
  *   its one-turn write taint can outlive it. The write guard is therefore never weaker for a carry:
@@ -56,10 +61,20 @@ internal class RewakeCarry {
      */
     fun ended(reason: String, turns: List<ChatTurn>, test: Boolean, outsideTextRead: Boolean, nowMs: Long) {
         if (wipes(reason, test, outsideTextRead)) {
-            kept = null
+            wipe()
             return
         }
         if (keeps(reason, turns)) kept = Kept(TextChatEngine.capHistory(turns), nowMs)
+    }
+
+    /**
+     * Forget the last conversation outright, with no close to carry a reason: his "new chat" tap
+     * (`LiveSessionController.newConversation`, which reaches no session when none is open) and a
+     * crisis teardown (that controller's one crisis handler, whichever kind of conversation it
+     * landed in). Unconditional, as the panel and the typed recorder beside it are.
+     */
+    fun wipe() {
+        kept = null
     }
 
     /**

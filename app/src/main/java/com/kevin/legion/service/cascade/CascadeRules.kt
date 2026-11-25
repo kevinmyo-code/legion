@@ -294,9 +294,14 @@ object CascadePrompt {
         if (agenda.isBlank()) preamble else "$preamble(${agenda.trim()})\n\n"
 
     /**
-     * A turn's contents: [history] plus [heard], capped as typed chat caps it, with [preamble] in
-     * the first user turn (never in the cached instruction). Shared by [CascadeSession] and the
-     * laptop voice eval (`voiceeval/VoiceEvalHarness`), so the eval sends what a spoken turn sends.
+     * A turn's contents: [history] plus [heard], capped as typed chat caps it, with [preamble] on
+     * the FIRST content the cap kept (never in the cached instruction). That content is a user
+     * turn, because [TextChatEngine.capHistory] drops leading model lines, but it is not always
+     * [heard]: when [history] opens with a re-wake's carried turns ([RewakeCarry]) the preamble
+     * rides the oldest carried turn of his instead. Same role, and the cap can drop carried turns,
+     * so the context block is put where it survives rather than where it reads best. Shared by
+     * [CascadeSession] and the laptop voice eval (`voiceeval/VoiceEvalHarness`), so the eval sends
+     * what a spoken turn sends.
      */
     fun contents(history: List<ChatTurn>, heard: String, preamble: String): JSONArray {
         val capped = TextChatEngine.capHistory(history + ChatTurn(fromUser = true, text = heard))

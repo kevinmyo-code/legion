@@ -54,14 +54,33 @@ class RewakeCarryTest {
         assertTrue(carry.take(nowMs = 1_000 + RewakeCarry.WINDOW_MS).isNotEmpty())
     }
 
+    /**
+     * With the turns the WIRING really passes. `CascadeSession.shutdown` hands over
+     * `carried + history`, so a re-wake that heard nothing closes with an EMPTY history and a
+     * non-empty carry, never the empty list a holder test can invent. Which means the close keeps
+     * the turns again and re-stamps them: the window runs from the last close, failed wakes
+     * included. That slide is accepted (he is plainly still trying to talk) and pinned here, both
+     * halves, so it cannot change unnoticed.
+     */
     @Test
-    fun `a re-wake that goes nowhere does not spend the context`() {
+    fun `a re-wake that goes nowhere does not spend the context, and slides the window`() {
         val carry = RewakeCarry()
         ended(carry, atMs = 1_000)
-        assertTrue("he wakes Alfred", carry.take(nowMs = 2_000).isNotEmpty())
-        // It heard nothing and closed on noise with nothing of its own to leave.
-        ended(carry, atMs = 3_000, reason = "noise", turns = emptyList())
+        val carriedIn = carry.take(nowMs = 2_000)
+        assertEquals("he wakes Alfred", turns, carriedIn)
+        // It heard nothing and closed on noise, passing what was in front of the model: the carry.
+        ended(carry, atMs = 3_000, reason = "noise", turns = carriedIn)
         assertEquals("his next try still has it", turns, carry.take(nowMs = 4_000))
+        assertEquals(
+            "the window now runs from the failed wake, not the conversation that had the turns",
+            turns,
+            carry.take(nowMs = 1_000 + RewakeCarry.WINDOW_MS + 1),
+        )
+        assertEquals(
+            "and it does expire, a minute after that last close",
+            emptyList<ChatTurn>(),
+            carry.take(nowMs = 3_000 + RewakeCarry.WINDOW_MS + 1),
+        )
     }
 
     @Test
@@ -97,6 +116,50 @@ class RewakeCarryTest {
             carry.take(nowMs = 1_200),
         )
         assertTrue(RewakeCarry.wipes("new conversation", test = false, outsideTextRead = false))
+    }
+
+    /**
+     * The case the close could not reach: he taps "new chat" with no conversation open, so there is
+     * no [RewakeCarry.ended] call to carry the reason, and the holder is exactly where it has
+     * something in it. `LiveSessionController.newConversation` clears it directly instead
+     * ([RewakeCarryWiringTest] pins that it does so unconditionally).
+     */
+    @Test
+    fun `a wipe with no conversation open forgets the last one`() {
+        val carry = RewakeCarry()
+        ended(carry, atMs = 1_000)
+        carry.wipe()
+        assertEquals("he asked to start fresh", emptyList<ChatTurn>(), carry.take(nowMs = 1_100))
+    }
+
+    /** And the crisis teardown uses the same door, whatever kind of conversation it landed in. */
+    @Test
+    fun `a wipe after a conversation already carried its turns forward forgets those too`() {
+        val carry = RewakeCarry()
+        ended(carry, atMs = 1_000)
+        val carriedIn = carry.take(nowMs = 2_000)
+        ended(carry, atMs = 3_000, turns = carriedIn + ChatTurn(fromUser = true, text = "and after that"))
+        carry.wipe()
+        assertEquals(emptyList<ChatTurn>(), carry.take(nowMs = 3_100))
+    }
+
+    /**
+     * The seam where the carried conversation meets this one. A kept conversation ends on a reply
+     * (`fromUser = false`) and [RewakeCarry.NOTE] is another model line, so a one-to-one mapping
+     * would send two `model` contents in a row. `TextChatEngine.capHistory` merges consecutive
+     * same-role lines, which is what keeps the request alternating; this pins that it does.
+     */
+    @Test
+    fun `the carried turns, the note and his words reach the model as alternating roles`() {
+        val carriedBlock = turns + ChatTurn(fromUser = false, text = RewakeCarry.NOTE)
+        val contents = CascadePrompt.contents(carriedBlock, "play the other one", preamble = "")
+        val roles = (0 until contents.length()).map { contents.getJSONObject(it).getString("role") }
+        assertEquals(listOf("user", "model", "user"), roles)
+        val reply = contents.getJSONObject(1).getJSONArray("parts").getJSONObject(0).getString("text")
+        assertTrue("the note rides the last model line, merged into it", reply.endsWith(RewakeCarry.NOTE))
+        assertTrue("and the reply it was merged with is still there", reply.contains("studio one"))
+        val last = contents.getJSONObject(2).getJSONArray("parts").getJSONObject(0).getString("text")
+        assertEquals("his new words are the last content", "play the other one", last)
     }
 
     @Test
