@@ -156,6 +156,10 @@ def schedule_status(viewer, vehicle) -> list[ItemStatus]:
                 # anchor, and no date timing. `last_on is not None` is the half that keeps the two
                 # lists disjoint the way the phone's `isUnknown` check does - a row carrying
                 # NEITHER a date nor a mileage leaves the item unknown, not waiting for a reading.
+                # No live row has that shape today, which is why nothing here renders it: an
+                # OBSERVED row is inserted with a non-null date (`insertObserved`'s signature), and
+                # an assertion with neither axis soft-deletes its row rather than writing a
+                # null/null one (`writeAssertedAnchorLegacy`). Traced, not assumed.
                 needs_mileage=(
                     bool(done)
                     and schedule.interval_miles is not None
@@ -183,9 +187,13 @@ def _stated_at(row) -> dt.datetime:
     So: an ASSERTED row, and an OBSERVED row whose service date is the day it was written, rank by
     when the row was written; a BACKDATED observation ranks by the day the work happened. No row
     is pushed to the bottom for lacking a date, which is what round 2's blocker A was - an undated
-    ASSERTED anchor written today (the mileage-only backfill, `log_past_service` with a mileage and
-    no date) lost to a dated OBSERVED row from last year here while winning on the phone, so this
-    side called a just-anchored service overdue by name in the spoken brief.
+    ASSERTED anchor written today lost to a dated OBSERVED row from last year here while winning on
+    the phone, so this side called a just-anchored service overdue by name in the spoken brief.
+    Two writers produce that undated row: the hands "mark done" save with a mileage and no date
+    (`ui/fleet/MaintenanceWrites.kt`'s `writeSetAnchor`, which passes the form's date through as
+    given), and a mileage-only `log_past_service` on an item with no logged record yet - that call
+    refuses once a record exists, so the hands path is the one that reaches the shape this fixture
+    holds.
 
     The server's own `updated_at` cannot stand in for the phone's. An INSERT stamps
     `STATEMENT_TIMESTAMP()` (advancing) while the `touch_updated_at` trigger stamps `now()`
@@ -193,23 +201,32 @@ def _stated_at(row) -> dt.datetime:
     it - measured, and it picked a two-services-old row as the anchor the first time this was
     written that way. `created_at` is only ever stamped once, so it is the honest write time.
 
-    Narrow gap left open, and it is the edit path, not the voice one: the phone re-stamps
-    `updatedAt` with the wall clock when the history screen EDITS a row's mileage, which this
-    cannot see (the edit lands on `mileage` alone over the wire). A backdated row edited today
-    therefore still ranks by its event date here. It only matters when a NEWER row for the same
-    item exists to lose to, and the edited row is normally the newest one; closing it needs the
-    phone's stamp on the wire."""
+    Gap left open: a DELAYED sync. These timestamps are when the engine was told, not when the
+    phone wrote, so two writes made offline in one order and synced in the other rank by the sync.
+    Closing it needs the phone's own stamp on the wire, which `ServiceHistoryWriteDto` does not
+    carry."""
     written = row.created_at
-    # An assertion is re-stated in place: `writeAssertedAnchorLegacy` keeps ONE ASSERTED row per
-    # item and rewrites it, so the sync's PUT updates that row rather than inserting another and
-    # `created_at` still names the FIRST statement. The later of the two timestamps is the last
-    # statement, which is what `setAnchor` stamps on the phone. `max` rather than `updated_at`
-    # alone because the trigger stamps transaction start while an INSERT stamps the statement
-    # timestamp, so on a freshly inserted row `updated_at` can sit just behind `created_at`.
-    if row.kind == "ASSERTED":
+    # An ASSERTED row is RE-STATED IN PLACE, so it ranks by the later of its two timestamps.
+    # `writeAssertedAnchorLegacy` keeps ONE ASSERTED row per item and rewrites it, so the sync's
+    # PUT updates that row and `created_at` still names the FIRST statement - and blocker B's own
+    # flow re-states exactly that row (a reading pinned onto an item anchored long ago). Without
+    # this, the brief would go on asking for a reading the phone had already taken.
+    #
+    # `max` and not `updated_at` alone because the trigger stamps transaction start while an INSERT
+    # stamps the statement timestamp, so on a freshly inserted row `updated_at` can sit just behind
+    # `created_at` - which picked a two-services-old row the first time this was written that way.
+    # Taking the later of the two can only move a row FORWARD, never behind rows inserted after it.
+    #
+    # It does mean any write to an old ASSERTED row makes it the anchor again. Checked rather than
+    # assumed: `syncAssertedAnchorToServer` has exactly two callers, `setAnchor` and
+    # `upsertNewItem`, both of them real anchor writes, so nothing re-PUTs an unchanged anchor row.
+    #
+    # An OBSERVED row is deliberately NOT ranked on `updated_at`: the phone's own edit of a row's
+    # mileage (`ServiceRecordDao.editMileageAndCost`) sets `mileage` and `costCents` and does NOT
+    # re-stamp `updatedAt`, so an edited row does not become the anchor there either. Promoting it
+    # here would be this side inventing an order the phone does not have.
+    if row.kind == "ASSERTED" or row.service_date is None:
         return max(written, row.updated_at)
-    if row.service_date is None:
-        return written
     # Written on the day it records (within a day): the row was stated at the event, so when it
     # was written IS the moment the phone stamps. The day of slack is deliberate - this side keeps
     # UTC timestamps while `service_date` is the household's own calendar day, so an evening log

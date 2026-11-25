@@ -362,3 +362,44 @@ def test_a_re_stated_anchor_is_the_newest_row_even_though_its_row_is_old(
     assert item.last_done_miles == 235_000, "the re-stated anchor is the newest statement"
     assert item.due_at_miles == 240_000
     assert not item.needs_mileage, "so this side stops asking, exactly when the phone does"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_logging_the_service_again_with_a_reading_supersedes_a_pinned_one(
+    auth_client, household_a, household_user
+):
+    """The remedy for a reading that got pinned at the wrong figure: log the
+    service again with the right one. A fresh OBSERVED row is the newest
+    statement on both sides, so it takes the anchor back from the assertion.
+    (Editing the row in the history screen does NOT do this on either side:
+    `ServiceRecordDao.editMileageAndCost` sets `mileage` and `costCents` and
+    leaves `updatedAt` alone, so the edited row does not out-rank a newer
+    assertion - the same on the phone and here, which is the point.)
+    `transaction=True` for real timestamps. The phone's half is
+    `FleetAnchorParityTest.a fresh log with a reading supersedes a pinned one`."""
+    from brief.maintenance import schedule_status
+    from legacy.models.fleet import Vehicle
+
+    vehicle = _car(auth_client)
+    _put(
+        auth_client,
+        f"maintenance_schedules/{vehicle}/oil change/",
+        {"interval_miles": 5_000, "interval_source": "SEEDED", "never_done": False},
+    )
+    today = dt.date.today()
+    _service(auth_client, "s1", vehicle, "oil change", today, None)
+    # set_odometer pinned a misheard reading onto the item.
+    _service(auth_client, "a1", vehicle, "oil change", today, 335_000, kind="ASSERTED")
+    first = schedule_status(
+        Viewer(user=household_user), Vehicle.objects.get(household=household_a)
+    )[0]
+    assert first.last_done_miles == 335_000, "the pin is the anchor until something newer lands"
+
+    # He logs it again, with the reading he meant.
+    _service(auth_client, "s2", vehicle, "oil change", today, 235_000)
+
+    item = schedule_status(
+        Viewer(user=household_user), Vehicle.objects.get(household=household_a)
+    )[0]
+    assert item.last_done_miles == 235_000, "the fresh log is the newest statement"
+    assert item.due_at_miles == 240_000

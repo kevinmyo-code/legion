@@ -22,7 +22,9 @@ import android.content.Context
  * stop; and asking instead for "what was it at when you had it done" routes a remembered figure
  * into `set_odometer`, which would rewind the live odometer, or into `log_past_service`, which
  * REFUSES a mileage-only backfill whenever a logged record exists for the item
- * (`hasRecordAtOrAfter` with `atOrAfterMs = 0`) - and the needs-a-reading state always has one.
+ * ([VehicleController.logPastServiceDirect]'s `hasRecordAtOrAfter` with `atOrAfterMs = 0`, pinned
+ * by `VehicleControllerServiceWritesTest`'s backfill-conflict case) - and the needs-a-reading
+ * state, by definition, always has one.
  *
  * **Why an ASSERTED row is the honest home for it.** The row records a driver statement, never an
  * observed event, and that is what this is: asked for a reading against a named service, he gave
@@ -30,8 +32,19 @@ import android.content.Context
  * so nothing that was known is dropped. The figure is the driver's own reading rather than the
  * estimator's guess, and [pinnedReadingNote] says in words which items took it, so a reading given
  * long after the service shows up as an anchor that times the item slightly late rather than as a
- * silent one - and `log_service` with a mileage, or editing the row in the history screen,
- * corrects it.
+ * silent one.
+ *
+ * **Correcting one.** Logging the service again with the right mileage does it: a fresh OBSERVED
+ * row is the newest statement and takes the anchor back, on the phone and on the engine alike
+ * (`FleetAnchorParityTest`). EDITING the row in the history screen does NOT, on either side -
+ * `ServiceRecordDao.editMileageAndCost` sets `mileage` and `costCents` and leaves `updatedAt`
+ * alone, so the edited row still loses to the newer assertion. The two sides agree about that,
+ * which is what matters here; that the hands path cannot undo a voice pin is written down as debt
+ * rather than fixed inside this change.
+ *
+ * **Known gap.** A reading pinned once leaves the item no longer waiting, so a SECOND stated
+ * reading does not replace it - the remedy above is the way out, and a re-pin that could only ever
+ * replace an anchor this route wrote would need a marker the row does not carry.
  *
  * Its own file because it is one job that belongs to neither side of the two it joins:
  * [VehicleController] sits on detekt's class-size ceiling (CLAUDE.md's 1000-line rule) and
