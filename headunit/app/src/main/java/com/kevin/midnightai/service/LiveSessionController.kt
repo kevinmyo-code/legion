@@ -268,8 +268,12 @@ class LiveSessionController(context: Context) {
      * NOT require NET_CAPABILITY_VALIDATED - head-unit captive-portal validation
      * is flaky, and a false "online" just falls through to the connect path,
      * which surfaces its own notice on failure.
+     *
+     * Internal, not private, because the proactive engine asks the same question before raising an
+     * urgent line it would otherwise re-ask for every scan ([AlertRetryBudget]), and a second copy
+     * of the test could disagree with the one the talk tap makes.
      */
-    private fun isOnline(): Boolean {
+    internal fun isOnline(): Boolean {
         val cm = appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
             ?: return true
         val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return false

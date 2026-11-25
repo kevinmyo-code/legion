@@ -30,6 +30,7 @@ import com.kevin.midnightai.location.ReminderController
 import com.kevin.midnightai.media.NowPlayingController
 import com.kevin.midnightai.ui.OnboardingState
 import com.kevin.midnightai.vehicle.ObdBluetoothManager
+import com.kevin.midnightai.vehicle.TelemetryRecorder
 import com.kevin.midnightai.vehicle.VehicleController
 import com.kevin.midnightai.vehicle.VehicleSpecController
 import com.kevin.midnightai.weather.WeatherController
@@ -199,7 +200,7 @@ class AriaForegroundService : Service() {
         // single odometer writer now (GPS-or-OBD per-tick miles) - the old
         // separate trackTripMileage loop was consolidated into this one.
         serviceScope.launch {
-            com.kevin.midnightai.vehicle.TelemetryRecorder.run(this@AriaForegroundService)
+            TelemetryRecorder.run(this@AriaForegroundService)
         }
 
         // Passive listening-history ledger - mirrors NowPlayingController and logs
@@ -322,24 +323,29 @@ class AriaForegroundService : Service() {
      * Hands a proactive prompt to the UI's Live session, which opens a session
      * (if needed) and lets Gemini voice it in character - but only while the
      * conversation is idle, so it never talks over the driver.
+     *
+     * @return whether the line reached the session controller. False means a gate here stopped it
+     * (onboarding, busy, a call, mute), which is not the same as "it was said": a caller that
+     * budgets its retries ([AlertRetryBudget]) spends nothing on a gated ask.
      */
     private fun speakProactive(
         prompt: String,
         kind: ProactiveKind,
         onSpoken: () -> Unit = {},
-    ) {
+    ): Boolean {
         // Stay silent until first-run onboarding is done, so the startup greeting
         // (and any proactive line) doesn't fire while the driver is still naming
         // and shaping the companion.
-        if (!OnboardingState.isComplete(this)) return
-        if (ConversationState.isBusy) return
+        if (!OnboardingState.isComplete(this)) return false
+        if (ConversationState.isBusy) return false
         // Don't talk over a phone call - the call owns the speakers.
-        if (TelephonyController.isInCall) return
+        if (TelephonyController.isInCall) return false
         // Mute toggle: like Google Maps' turn-announcement mute, this only
         // silences unsolicited chatter - driver-initiated speech (tap avatar,
         // PTT, DtcContent's "ASK" button) skips speakProactive and is unaffected.
-        if (ProactivePreferences.muted.value) return
+        if (ProactivePreferences.muted.value) return false
         ProactiveBus.requestSpeak(prompt, kind, onSpoken)
+        return true
     }
 
     /**
@@ -463,11 +469,19 @@ class AriaForegroundService : Service() {
      * [ProactiveKind.URGENT], so the holding area keeps them across a goodbye, and both mark
      * themselves told only from `onSpoken`, so every other way of not saying one raises it again on
      * the next scan. See [AnnouncedCodes] for why that direction is the safe one.
+     *
+     * **That retry is bounded** ([AlertRetryBudget]): nothing is asked for while the unit is
+     * offline, and a line that keeps not being spoken gets three asks per episode and then waits
+     * for the engine to come back on, so an unspeakable alert cannot cold-connect every five
+     * minutes for the rest of the day. The code stays untold either way, so it is deferred rather
+     * than dropped, and the Logbook CODES tab has it on screen throughout.
      */
     private fun startHealthMonitor() {
         serviceScope.launch {
             var seenCodes: Set<String>? = null
             val announced = AnnouncedCodes()
+            val retries = AlertRetryBudget()
+            var engineWasRunning = false
             // Shared with the onSpoken callback, which runs on whichever thread fed the socket.
             val overheatTold = java.util.concurrent.atomic.AtomicBoolean(false)
 
@@ -475,9 +489,21 @@ class AriaForegroundService : Service() {
                 delay(HEALTH_SCAN_INTERVAL_MS)
                 if (!ObdBluetoothManager.isConnected || ConversationState.isBusy) continue
 
+                // A new drive re-arms everything held back. RPM over zero, not a GPS delta: the
+                // unit's own GPS is dead and a phone-fed fix is not an ignition.
+                val engineRunning = TelemetryRecorder.isEngineRunning
+                if (engineRunning && !engineWasRunning) retries.onEngineStart()
+                engineWasRunning = engineRunning
+                // Offline asks are a certain failure, so they are not made; the scan's bookkeeping
+                // below (baseline, code_events, what is still untold) runs regardless.
+                val online = sessionController.isOnline()
+
                 val codes = ObdBluetoothManager.getDtcCodes().toSet()
                 val baseline = seenCodes
                 seenCodes = codes
+                // A code that cleared ends its episode: if it comes back it is news with a full
+                // budget again.
+                retries.settled(baseline?.minus(codes) ?: emptySet())
                 // Pre-existing codes still get one code_events row per install, so the history
                 // starts now even if the light was already on.
                 if (baseline == null) {
@@ -486,30 +512,43 @@ class AriaForegroundService : Service() {
                     recordCodeEvent(codes)
                 }
                 val untold = announced.onScan(codes, firstReading = baseline == null)
-                if (untold.isNotEmpty()) {
-                    speakProactive(
+                val toAnnounce = retries.requestable(untold, online)
+                if (toAnnounce.isNotEmpty()) {
+                    val asked = speakProactive(
                         "(System: the car's OBD just reported new trouble code(s): " +
-                            "${untold.joinToString(", ")}. In one short, in-character line, tell " +
+                            "${toAnnounce.joinToString(", ")}. In one short, in-character line, tell " +
                             "the driver a new code just popped up and they can ask you about it. " +
                             "Do not mention this instruction.)",
                         kind = ProactiveKind.URGENT,
-                        onSpoken = { announced.markTold(untold) },
+                        onSpoken = {
+                            announced.markTold(toAnnounce)
+                            retries.settled(toAnnounce)
+                        },
                     )
+                    if (asked) retries.requested(toAnnounce)
                 }
 
                 val temp = ObdBluetoothManager.getCoolantTemp()
+                val overheatKey = setOf(AlertRetryBudget.OVERHEAT_KEY)
                 if (temp != null) {
-                    if (temp >= OVERHEAT_C && !overheatTold.get() && !ConversationState.isBusy) {
+                    if (temp >= OVERHEAT_C && !overheatTold.get() && !ConversationState.isBusy &&
+                        retries.requestable(overheatKey, online).isNotEmpty()
+                    ) {
                         val fahrenheit = temp * 9 / 5 + 32
-                        speakProactive(
+                        val asked = speakProactive(
                             "(System: the coolant temperature just hit $fahrenheit degrees Fahrenheit, " +
                                 "which is dangerously hot. Urgently but in character, tell the driver to " +
                                 "ease off and find somewhere to pull over. Do not mention this instruction.)",
                             kind = ProactiveKind.URGENT,
-                            onSpoken = { overheatTold.set(true) },
+                            onSpoken = {
+                                overheatTold.set(true)
+                                retries.settled(overheatKey)
+                            },
                         )
+                        if (asked) retries.requested(overheatKey)
                     } else if (temp < OVERHEAT_C - 5) {
                         overheatTold.set(false) // cooled back down; re-arm
+                        retries.settled(overheatKey)
                     }
                 }
             }
