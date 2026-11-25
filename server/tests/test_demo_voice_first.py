@@ -78,7 +78,8 @@ def test_the_named_tools_say_what_they_are_doing():
 def test_the_lines_a_first_turn_needs_are_fetched_first():
     """2026-11-18: a live turn soon after the greeting spoke no filler. The greeting warms every
     line, one request each, and the acknowledgement lines came LAST. Now: the acknowledgement,
-    then one line for each slow tool, then the fallback, then the rest."""
+    then one line for each slow tool, then the fallback, then the chained holding lines, then the
+    rest."""
     order = fillers.all_lines()
     assert order[: len(fillers.ACK)] == fillers.ACK
     firsts = [lines[0] for slow, lines in fillers.FILLERS.values() if slow and lines]
@@ -87,6 +88,7 @@ def test_the_lines_a_first_turn_needs_are_fetched_first():
     assert set(order) == {
         *fillers.ACK,
         *fillers.FALLBACK,
+        *fillers.WAIT,
         *(line for _slow, lines in fillers.FILLERS.values() for line in lines),
     }
     assert len(order) == len(set(order))
