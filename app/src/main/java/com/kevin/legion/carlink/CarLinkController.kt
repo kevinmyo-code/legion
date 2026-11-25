@@ -107,6 +107,8 @@ class CarLinkController(
     private val vehicles: suspend () -> List<VehicleOption> = { emptyList() },
     /** Keeps the process sending with the screen off (a foreground service of type location). */
     private val locationService: LocationServiceHost = LocationServiceHost.NONE,
+    /** Renews the car's own engine sign-in over the live link (5.6); null = not wired (tests). */
+    private val renewal: LinkRenewal? = null,
 ) {
     private val _status = MutableStateFlow(CarLinkStatus())
     val status: StateFlow<CarLinkStatus> = _status.asStateFlow()
@@ -273,6 +275,7 @@ class CarLinkController(
         sender = s
         var delivered = false
         val tell = RevokeTelling(sentAny = false, heardAt = s.nowMs())
+        if (!revokeOnly && mode.healOn == null) renewal?.session()
         try {
             while (!delivered && keepListening(feedRing, mode)) {
                 if (!stepContained(s)) break
@@ -281,8 +284,10 @@ class CarLinkController(
                     if (s.acceptedHellos() >= HEAL_HELLOS) healed(mode.healOn)
                 } else if (revokeOnly) {
                     delivered = revokeStep(s, tell)
-                } else if (inRange != _status.value.unitInRange) {
-                    _status.update { it.copy(unitInRange = inRange) }
+                } else {
+                    if (inRange != _status.value.unitInRange) _status.update { it.copy(unitInRange = inRange) }
+                    // 5.6: the car's own sign-in is renewed here, where the unit is reachable.
+                    if (inRange) renewal?.step(s)
                 }
             }
         } finally {
@@ -513,6 +518,9 @@ class CarLinkController(
         ensureLoaded()
         val sentRevoke = sender?.revoke() == true
         store.unitDeviceId()?.let { handover.revoke(it) }
+        // 5.6: a renewal waiting for the unit's answer is a live credential too, and the record that
+        // holds it is about to go, so it is revoked here or it is never revoked at all.
+        store.pendingUnitToken()?.let { handover.revoke(it.id) }
         val key = ring.current?.copyOf()
         // In range or not, a key becomes a REVOKE-only record: REVOKE goes again on every HELLO under it
         // until the car goes quiet (R1), so one lost datagram never leaves the car paired.

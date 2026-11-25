@@ -67,6 +67,19 @@ class CarLinkControllerTest {
     @Volatile private var keyReads = 0
     private var cars = listOf(VehicleOption("car-a-id", "Car A"), VehicleOption("car-b-id", "Car B"))
     private val service = FakeServiceHost()
+    private val renewal = FakeRenewal()
+
+    /** Records what the controller asks of the renewal, and hands a token over when told to. */
+    private class FakeRenewal : LinkRenewal {
+        @Volatile var sessions = 0
+        @Volatile var steps = 0
+        @Volatile var hand: String? = null
+        override fun session() { sessions++ }
+        override fun step(sender: TokenCarrier) {
+            steps++
+            hand?.let { sender.handToken(it, "veh-1") }
+        }
+    }
 
     /** Records the foreground service's starts and stops. */
     private class FakeServiceHost : LocationServiceHost {
@@ -112,6 +125,7 @@ class CarLinkControllerTest {
         ownHotspotNow = { hotspotNow },
         vehicles = { carReads++; cars },
         locationService = service,
+        renewal = renewal,
     )
 
     // A generous bound: the controller runs on real threads, and a loaded machine must not turn a slow pass red.
@@ -140,6 +154,35 @@ class CarLinkControllerTest {
                 false
             }
         }
+    }
+
+    @Test fun `the renewal runs on the live link, and what it hands over reaches the unit`() = runBlocking {
+        assertTrue(store.write(key, null))
+        renewal.hand = "hu1_renewed-for-the-car"
+        val c = controller()
+        c.start()
+        val unit = FakeUnit(key)
+        helloUntil("the renewal to run with the unit in range", { unit.hello(intervalMs = 5000) }) {
+            c.status.value.unitInRange && renewal.steps > 0
+        }
+        assertEquals("one session per socket", 1, renewal.sessions)
+        waitFor("the token on the wire") {
+            port.sent.mapNotNull { Mnai2.openFromPhone(DirectionKeys(key).p2u, it) }.any { it.type == Mnai2.TOKEN }
+        }
+        c.forget()
+        Thread.sleep(100)
+        assertTrue("loop errors: $errors", errors.isEmpty())
+    }
+
+    @Test fun `a revoke-only listener renews nothing`() = runBlocking {
+        assertTrue(store.writeRevokeOnly(key, wallNow))
+        val c = controller()
+        c.start()
+        waitFor("the revoke-only listener") { senders > 0 }
+        val unit = FakeUnit(key)
+        helloUntil("a REVOKE", { unit.hello(intervalMs = 5000) }) { port.sent.isNotEmpty() }
+        assertEquals(0, renewal.steps)
+        assertEquals(0, renewal.sessions)
     }
 
     @Test fun `forget sends REVOKE before the keys go, and the blocked loop ends without an error`() = runBlocking {
