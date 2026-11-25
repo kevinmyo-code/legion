@@ -133,7 +133,9 @@ internal fun engineCategoryStatus(
     !configured -> CategoryStatus("No engine address")
     !signedIn -> CategoryStatus("Not signed in", SettingsDot.WARN)
     carLink && refusal -> CategoryStatus("Car's sign-in refused: pair again", SettingsDot.ERROR)
-    carLink -> CategoryStatus("Car's own sign-in (uploads only)")
+    // 2026-11-24: it also reaches this app's own update check (CarLinkScope), so no longer
+    // "uploads only".
+    carLink -> CategoryStatus("Car's own sign-in (uploads and updates)")
     refusal -> CategoryStatus("Sign-in no longer valid", SettingsDot.ERROR)
     verifiedEmail != null -> CategoryStatus("Signed in as $verifiedEmail", SettingsDot.OK)
     else -> CategoryStatus("Signed in")
