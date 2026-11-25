@@ -27,3 +27,6 @@ See `.scratch/web-revamp/spec.md` D10 (workbench).
 - [x] vitest: overlapping events lay out side by side; an all-day event sits in the lane; a skip hides
       that occurrence; the done toggle PATCHes; private rows show "Only you".
 - [x] Shots at 1440x900 in `research/shots/13/`.
+- Some shots in that set were REMOVED in the 2026-11-24 privacy pass: they rendered a
+  household member's real first name, the household's own real surname or a real course
+  code. Screenshot removed; the states they covered are the ones listed above.

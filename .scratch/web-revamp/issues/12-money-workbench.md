@@ -32,6 +32,9 @@ See `.scratch/web-revamp/spec.md` D9.
       "unverified" in the status column and beside any total containing one; Files states in words;
       the not-spending switch PUTs `excluded_from_spend`.
 - [x] Shots at 1440x900 light and dark in `research/shots/12/` (and the 390x844 bigger-screen card).
+- Some shots in that set were REMOVED in the 2026-11-24 privacy pass: they rendered a
+  household member's real first name, the household's own real surname or a real course
+  code. Screenshot removed; the states they covered are the ones listed above.
 - [ ] Owed on live (Kevin): categorise one row on the web, see it on the phone after its mirror.
 
 ## Resolution (2026-10-03)

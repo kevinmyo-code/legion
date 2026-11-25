@@ -31,3 +31,6 @@ See `.scratch/web-revamp/spec.md` D8, D4.
       "just this one" sends only the skip; "all of them" PATCHes/DELETEs the series; a server 400
       sentence shows and the sheet stays open; reminder and visibility round-trip.
 - [x] Shots in `research/shots/09/`.
+- Some shots in that set were REMOVED in the 2026-11-24 privacy pass: they rendered a
+  household member's real first name, the household's own real surname or a real course
+  code. Screenshot removed; the states they covered are the ones listed above.
