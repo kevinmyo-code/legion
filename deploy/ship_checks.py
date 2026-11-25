@@ -326,6 +326,35 @@ def blob_at(sha: str, path: str) -> str | None:
     return r.stdout.strip() if r.returncode == 0 else None
 
 
+def image_blobs(live_code: str, fix: str) -> dict[str, str | None]:
+    """Every image-path file this ship changes, LIVE_CODE..FIX -> its blob at FIX (None = deleted).
+
+    The names are read with `-z`, because `.split()` on `--name-only` output cuts a path with a
+    space into fragments whose `blob_at` is None for each. While a deletion could not be pinned
+    that was fail-closed (no pin matched None); with a deletion pin each fragment became
+    satisfiable and the real added file was pinned by nothing, so `scope` passed a file nobody
+    reviewed (delpin RED review, finding 1, probes 1 and 2). A whole spaced path cannot be
+    expressed in the pins file at all, so the ship STOPs naming the real file."""
+    paths = [
+        p
+        for p in git(
+            "diff", "-z", "--no-renames", "--name-only", live_code, fix, "--", *IMAGE_PATHS
+        ).split("\0")
+        if p
+    ]
+    return {p: blob_at(fix, p) for p in paths}
+
+
+def migration_pin_problems(fix: str, pinned: dict[str, str]) -> list[str]:
+    """Every pinned schema file is at its pinned blob at FIX. No sentinel: a migration pinned to
+    `DELETED_PIN` is refused here, which is what keeps the deletion pin out of `--migrations`."""
+    return [
+        f"{path} at FIX is not the pinned blob {blob[:8]}"
+        for path, blob in pinned.items()
+        if blob_at(fix, path) != blob
+    ]
+
+
 def schema_status(live_code: str, fix: str) -> list[tuple[str, str]]:
     """(letter, path) for every Django migration file this ship changes, LIVE_CODE..FIX.
 
@@ -346,10 +375,7 @@ def cmd_scope(a) -> list[str]:
     if subprocess.run(["git", "merge-base", "--is-ancestor", a.live_code, a.fix]).returncode != 0:
         return [f"the live code {a.live_code[:8]} is not an ancestor of {a.fix[:8]}"]
     pinned = parse_pins(open(a.image_files, encoding="utf-8").read())
-    paths = git(
-        "diff", "--no-renames", "--name-only", a.live_code, a.fix, "--", *IMAGE_PATHS
-    ).split()
-    changed = {p: blob_at(a.fix, p) for p in paths}
+    changed = image_blobs(a.live_code, a.fix)
     problems = image_problems(changed, pinned)
     all_changed = git("diff", "--no-renames", "--name-only", a.live_code, a.fix).split()
     problems += frozen_problems(all_changed)
@@ -376,9 +402,7 @@ def cmd_scope(a) -> list[str]:
     }
     sources = {p: git("show", f"{a.fix}:{p}") for p in blobs}
     problems += migration_problems(status, mig_pins, new_apps, sources, blobs)
-    for path, blob in mig_pins.items():
-        if blob_at(a.fix, path) != blob:
-            problems.append(f"{path} at FIX is not the pinned blob {blob[:8]}")
+    problems += migration_pin_problems(a.fix, mig_pins)
     print(
         f"image change {a.live_code[:8]}..{a.fix[:8]}: {len(changed)} files (pinned {len(pinned)})"
     )

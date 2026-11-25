@@ -164,18 +164,18 @@ def test_a_deleted_image_file_ships_only_on_a_deletion_pin():
     assert sc.parse_pins(f"server/homes/records.py {D}\n") == {"server/homes/records.py": D}
 
 
-def test_the_deletion_pin_buys_a_migration_nothing():
-    """`parse_pins` is shared with --migrations, so the sentinel must stay a plain blob there: a
-    deleted migration is still 'not added', and one pinned to the sentinel still fails the
-    caller's blob comparison (cmd_scope), which has no sentinel."""
+def test_a_deleted_migration_is_not_added_whatever_it_is_pinned_to():
+    """`parse_pins` is shared with --migrations, so the sentinel must stay a plain blob there.
+    This is the half `migration_problems` owns; `migration_pin_problems` owns the refusal."""
     path = "server/widgets/migrations/0002_more.py"
     assert sc.migration_problems([("D", path)], {}, set(), {}, {}) == [
         f"schema file {path} is D, not added"
     ]
-    # Added and pinned to the sentinel: migration_problems only checks the path is pinned, and the
-    # blob comparison that refuses it lives in cmd_scope against the file's real blob at FIX.
-    assert sc.migration_problems([("A", path)], {path: sc.DELETED_PIN}, set(), {path: "ops = []\n"},
-                                 {path: A}) == []
+    # It only checks the path is pinned, never the blob, so the sentinel passes HERE and the
+    # refusal has to come from migration_pin_problems against the file's real blob at FIX.
+    assert sc.migration_problems(
+        [("A", path)], {path: sc.DELETED_PIN}, set(), {path: "ops = []\n"}, {path: A}
+    ) == []
 
 
 def test_frozen_files_never_change():
@@ -533,4 +533,94 @@ def test_schema_status_collects_django_migrations_only(tmp_path, monkeypatch):
     assert sorted(sc.schema_status(live, fix)) == [
         ("A", "server/pkg/inner/migrations/0002_deep.py"),
         ("A", "server/widgets/migrations/0002_more.py"),
+    ]
+
+
+def _repo(tmp_path):
+    """A throwaway git repo with `server/`, and a commit(msg) that stages all, returning its sha."""
+    def run(*args: str) -> str:
+        return subprocess.run(
+            ["git", *args], cwd=tmp_path, check=True, capture_output=True, text=True
+        ).stdout
+
+    run("init", "-q", "-b", "main")
+    run("config", "user.email", "t@example.invalid")
+    run("config", "user.name", "t")
+    run("config", "core.quotePath", "false")
+    (tmp_path / "server").mkdir()
+
+    def commit(msg: str) -> str:
+        run("add", "-A")
+        run("commit", "-qm", msg)
+        return run("rev-parse", "HEAD").strip()
+
+    return commit
+
+
+def test_a_path_with_a_space_arrives_whole_so_no_fragment_can_be_pinned(tmp_path, monkeypatch):
+    """`.split()` on `--name-only` cut `server/a b.py` into `server/a` and `b.py`, whose blob at
+    FIX is None for each. That was fail-closed while no pin matched None; with a deletion pin each
+    fragment became satisfiable and the real ADDED file was pinned by nothing, so scope passed a
+    file nobody reviewed (delpin RED review, finding 1, probe 1)."""
+    commit = _repo(tmp_path)
+    (tmp_path / "server" / "x.py").write_text("x = 1\n")
+    live = commit("base")
+    (tmp_path / "server" / "a b.py").write_text("unreviewed = 1\n")
+    fix = commit("fix")
+
+    monkeypatch.chdir(tmp_path)
+    changed = sc.image_blobs(live, fix)
+    assert list(changed) == ["server/a b.py"], "the path must not fragment"
+    assert changed["server/a b.py"] is not None, "an added file is not a deletion"
+    # So the two fragments a generator would emit are pinned-but-not-changed and the real file is
+    # named unpinned. The pins file cannot express the real path: its format is space-separated.
+    assert sc.image_problems(changed, {"server/a": sc.DELETED_PIN, "b.py": sc.DELETED_PIN}) == [
+        "changed but not pinned: server/a b.py",
+        "pinned but not changed: b.py",
+        "pinned but not changed: server/a",
+    ]
+
+
+def test_a_spaced_path_whose_fragments_are_real_deletions_is_still_named(tmp_path, monkeypatch):
+    """The counterexample that sank 'a deletion pin's path must also exist at LIVE_CODE': here the
+    fragments ARE files that really were deleted, so that guard passes them and the added file
+    still ships (delpin RED review, finding 1, probe 2). Only `-z` on the names closes it."""
+    commit = _repo(tmp_path)
+    (tmp_path / "server" / "x").write_text("x\n")
+    (tmp_path / "server" / "y.py").write_text("y = 1\n")
+    live = commit("base")
+    (tmp_path / "server" / "x").unlink()
+    (tmp_path / "server" / "y.py").unlink()
+    # The added path is `server/x server/y.py`: a folder whose name holds a space, so
+    # `--name-only` prints a row that `.split()` cuts into the two deleted paths above.
+    (tmp_path / "server" / "x server").mkdir()
+    (tmp_path / "server" / "x server" / "y.py").write_text("unreviewed = 1\n")
+    fix = commit("fix")
+
+    monkeypatch.chdir(tmp_path)
+    changed = sc.image_blobs(live, fix)
+    assert sorted(changed) == ["server/x", "server/x server/y.py", "server/y.py"]
+    assert changed["server/x"] is None and changed["server/y.py"] is None
+    assert changed["server/x server/y.py"] is not None
+    # Pinning both genuine deletions leaves the added file named, not silently deployed.
+    assert sc.image_problems(
+        changed, {"server/x": sc.DELETED_PIN, "server/y.py": sc.DELETED_PIN}
+    ) == ["changed but not pinned: server/x server/y.py"]
+
+
+def test_a_migration_pinned_to_the_deletion_sentinel_is_refused(tmp_path, monkeypatch):
+    """The rule the mutant survived: `migration_pin_problems` has no sentinel, so the deletion pin
+    buys a schema file nothing (delpin RED review, Debt)."""
+    commit = _repo(tmp_path)
+    folder = tmp_path / "server" / "widgets" / "migrations"
+    folder.mkdir(parents=True)
+    (folder / "0002_more.py").write_text("ops = []\n")
+    fix = commit("fix")
+    path = "server/widgets/migrations/0002_more.py"
+
+    monkeypatch.chdir(tmp_path)
+    real = sc.blob_at(fix, path)
+    assert sc.migration_pin_problems(fix, {path: real}) == []
+    assert sc.migration_pin_problems(fix, {path: sc.DELETED_PIN}) == [
+        f"{path} at FIX is not the pinned blob 00000000"
     ]
