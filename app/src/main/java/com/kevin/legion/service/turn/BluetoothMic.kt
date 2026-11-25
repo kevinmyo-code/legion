@@ -1,5 +1,7 @@
 package com.kevin.legion.service.turn
 
+import com.kevin.legion.service.MicSignal
+
 /**
  * Whether a conversation listens through the car's (or a headset's) own microphone over Bluetooth
  * hands-free, and which hands-free device (Kevin, 2026-11-10: "when i connect via bluetooth, it
@@ -26,6 +28,49 @@ package com.kevin.legion.service.turn
  */
 internal object BluetoothMic {
     const val SCO_SETTLE_MS = 2_000L
+
+    /**
+     * How long a hands-free capture may stay at digital silence before the phone's own mic takes the
+     * conversation over ([fallBack]). Past [SCO_SETTLE_MS], which is the wait BEFORE capture, so a
+     * link still finding its feet is not called deaf; short enough that he repeats one sentence
+     * instead of a whole conversation. **GUESSED**, exactly as [MicSignal]'s own thresholds are and
+     * for the same reason: no level from a real deaf hands-free capture has ever been measured. The
+     * `mic_peak=` line this change adds is what closes that gap for the next one.
+     */
+    const val DEAF_MS = 2_500L
+
+    /**
+     * The phone's own mic takes this conversation over, because the hands-free device it is listening
+     * through has delivered nothing audible at all. [DeafMicFallback] holds the window this reads.
+     *
+     * Kevin, 2026-11-24, in the car: with the head unit's Bluetooth connected, Alfred did not hear
+     * him at all, while the phone's own log read `bluetooth mic routed=true` on every turn and
+     * speech-to-text saw either no speech onset or `stt_voiced ms=0`. That readback says the platform
+     * SELECTED the link, never that the link carries his voice. A head unit whose hands-free
+     * microphone is absent, unplugged or muted routes perfectly and sends silence, and until this
+     * check nothing noticed and there was no way back to the phone's mic inside the conversation.
+     *
+     * Three gates, each for its own reason:
+     * - [onBluetoothMic]: on the phone's own mic a silent window is a quiet room or a man saying
+     *   nothing, and there is nowhere further to fall.
+     * - [inLiveCall]: a Call Alfred call in the car takes the hands-free branch of the route too
+     *   ([VoiceOutputRule.outlet] answers BLUETOOTH before it considers the earpiece), and leaving
+     *   call audio mid-call would drop the call's own route. A call has its Mute and Speaker controls
+     *   and he is holding the phone; the rescue is for a conversation, not for a call in progress.
+     * - [alreadyFellBack]: once per conversation, so a quiet room on the phone's mic after the switch
+     *   cannot bounce the route back and forth.
+     *
+     * [MicSignal.isDeafMic] is the level decision itself, and it reads levels, never content.
+     */
+    fun fallBack(
+        onBluetoothMic: Boolean,
+        inLiveCall: Boolean,
+        alreadyFellBack: Boolean,
+        elapsedMs: Long,
+        peakSinceOpen: Int,
+    ): Boolean =
+        onBluetoothMic && !inLiveCall && !alreadyFellBack &&
+            MicSignal.isDeafMic(elapsedMs, peakSinceOpen, DEAF_MS)
 
     /** True when this conversation should listen through a Bluetooth hands-free device. */
     fun wanted(settingOn: Boolean, route: AudioRoute, inCall: Boolean, handsFreeAvailable: Boolean): Boolean =

@@ -13,8 +13,6 @@ import android.media.audiofx.NoiseSuppressor
 import android.os.Build
 import android.util.Log
 import androidx.core.content.ContextCompat
-import com.kevin.legion.service.MicLevel
-import com.kevin.legion.service.MicSignal
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -96,7 +94,8 @@ internal class CascadeMic(private val ctx: Context) {
                 }
                 readErrors = 0
                 if (n == 0) continue
-                MicLevel.publish(MicSignal.peakAmplitude(buffer, n))
+                // The level is read once, where every buffer passes (a test conversation's too):
+                // [CascadeSession.onMicBuffer] publishes it and the deaf-mic fallback reads it.
                 onBuffer(buffer, n)
             }
         } catch (e: CancellationException) {
