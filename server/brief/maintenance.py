@@ -223,10 +223,9 @@ def _stated_at(row, anchor_days: frozenset[dt.date]) -> dt.datetime:
 
     Gap left open: a DELAYED sync. These timestamps are when the engine was told, not when the
     phone wrote, so two writes made offline in one order and synced in the other rank by the sync.
-    A live log whose PUT crosses UTC midnight is the same gap in its smallest form: its stated day
-    is then one behind the day it arrives, so it ranks by the event day rather than by arrival.
-    Closing either needs the phone's own stamp on the wire, which `ServiceHistoryWriteDto` does not
-    carry.
+    The one day of slack below is what keeps an in-order sync that crosses UTC midnight out of that
+    gap. Closing the gap itself needs the phone's own stamp on the wire, which
+    `ServiceHistoryWriteDto` does not carry.
 
     Gap NOT closable from one row at all, and the reason [anchor_days] is a parameter: a dated
     backfill of the write's own day and a LIVE log of the same day arrive with identical fields.
@@ -273,12 +272,22 @@ def _stated_at(row, anchor_days: frozenset[dt.date]) -> dt.datetime:
     # the brief then said the service was "not timed at all" while the phone had it timed and due.
     if row.mileage is None and row.service_date in anchor_days:
         return event_day
-    # Written on the day it records: the row was stated at the event, so when it was written IS the
-    # moment the phone stamps. An exact comparison, because a live log's `service_date` already IS
-    # the day it arrives (`logServiceDirect` passes `now`, `fleetDate` converts at UTC) - a day of
-    # slack here bought nothing and widened the branch above's window by a day, which is what
-    # flipped a backdated log carrying a figure over an assertion stated after it.
-    if row.service_date == timezone.localtime(written).date():
+    # Written on the day it records (within a day): the row was stated at the event, so when it was
+    # written IS the moment the phone stamps. The day of slack covers a sync that lands on a later
+    # UTC day than the log it carries - a log at 17:50 local is 23:50Z, and a PUT of it that queues
+    # offline for twenty minutes arrives on the next UTC day. Without the slack that log ranks at
+    # midnight of its own day, below every row that synced promptly, which is a reachable
+    # regression; with it, a live log ranks by arrival either way.
+    #
+    # Traced for round 3's review, which asked whether the slack only widens the window: it no
+    # longer widens anything that matters, because the branch ABOVE runs first and that is the pair
+    # the width was costing. A live log's `service_date` is the day it ARRIVES
+    # (`logServiceDirect` passes `now` and `DjangoFleetBackend.fleetDate` converts at UTC), while a
+    # dated backfill's is the UTC day of LOCAL midnight of the stated day
+    # (`VehicleServiceToolbox.parseIsoDate` is `ZoneId.systemDefault()`), so the two are only
+    # confusable for a stated day within one day of the write - exactly the window the branch above
+    # resolves from the siblings.
+    if row.service_date >= timezone.localtime(written).date() - dt.timedelta(days=1):
         return written
     return event_day
 
