@@ -23,7 +23,8 @@ import org.robolectric.RuntimeEnvironment
 
 /**
  * The car's own sign-in (a token handed over the car link, T3b). The engine accepts it ONLY on the
- * car's own uploads (device logs, the OBD batch) and the agents turn the unit does not call yet, so
+ * car's own uploads (device logs, the OBD batch), its own two release reads (2026-11-24, so a
+ * paired unit can take its own OTA) and the agents turn the unit does not call yet, so
  * the unit never sends anything else on it, never loops on a 401 and never signs itself out. The
  * member sign-in typed on the unit works exactly as before. Made-up tokens.
  */
@@ -64,10 +65,31 @@ class EngineCarLinkSignInTest {
 
     @Test fun aRouteOutsideTheFenceIsNeverSent() = runBlocking {
         val http = EngineHttp(carLinked(), OkHttpClient())
-        val r = http.get("/api/releases/latest")
+        val r = http.get("/api/events/")
         assertTrue(r.isFailure)
         assertTrue(r.failure().sentence, r.failure().sentence.contains("car's own sign-in"))
         assertEquals(0, server.requestCount)
+    }
+
+    /**
+     * 2026-11-24: the unit's own updater must work on the car's sign-in, or a paired unit can only
+     * be updated by typing an engine password on a car touchscreen. Both reads
+     * `update/DjangoUpdateBackend` makes go out; a release WRITE never does.
+     */
+    @Test fun theUpdatersOwnReadsAreSentOnTheCarsSignIn() = runBlocking {
+        val http = EngineHttp(carLinked(), OkHttpClient())
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"id":"r"}"""))
+        assertTrue(http.get("/api/releases/latest", mapOf("app" to "headunit")).isSuccess)
+        val id = "0c2f5b4a-1111-4222-8333-444455556666"
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"url":"https://x/y"}"""))
+        assertTrue(http.get("/api/releases/$id/download").isSuccess)
+        assertEquals(2, server.requestCount)
+        // Publishing, and anything that is not one of those two reads, still never leaves.
+        assertTrue(http.post("/api/releases/", "{}").isFailure)
+        assertTrue(http.get("/api/releases/").isFailure)
+        assertTrue(http.get("/api/releases/$id/download/extra").isFailure)
+        assertTrue(http.get("/api/releases/not-a-uuid/download").isFailure)
+        assertEquals(2, server.requestCount)
     }
 
     @Test fun aFenceRouteIsSentAndA401NeitherLoopsNorSignsOut() = runBlocking {

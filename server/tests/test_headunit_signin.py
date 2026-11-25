@@ -773,12 +773,68 @@ def test_each_allow_listed_route_accepts_a_unit_token(phone, on, monkeypatch):
     assert log.status_code == 400 and log.data["detail"].startswith("Nothing was stored")
     obd = unit.post("/api/fleet/obd_samples/batch/", {}, format="json")
     assert obd.status_code == 400, obd.data
+    # The unit's own OTA reads (2026-11-24). Nothing is published on this engine in this test, so
+    # `latest` stops at its own "no release" answer, past authentication and the household fence.
+    latest = unit.get("/api/releases/latest?app=headunit")
+    assert latest.status_code == 404 and "No release has been published" in latest.data["detail"]
+    download = unit.get(f"/api/releases/{uuid.uuid4()}/download")
+    assert download.status_code == 404 and "no such release" in download.data["detail"]
     assert {name for name, _m in scope.ROUTES} == {
         "agents-turn",
         "agents-turn-cancel",
         "device-logs-upload",
         "fleet-obd-samples-batch",
+        "releases-latest",
+        "releases-download",
     }
+
+
+def test_a_unit_token_reads_only_its_own_apps_releases(phone, on):
+    """The second fence (`scope.releases_refusal`): the route is open, the other app's rows are
+    not. A unit must never list or fetch the PHONE's APK, and a member still reads both."""
+    from releases.models import AppRelease
+
+    _id, raw = _paired(phone)
+    unit = unit_client(raw)
+
+    def _release(app: str) -> AppRelease:
+        return AppRelease.objects.create(
+            app=app,
+            version_code=263_282_217 if app == "headunit" else 263_261_832,
+            version_name=f"1.0+{app}",
+            sha256="ab" * 32,
+            size_bytes=1_000,
+            object_name=f"{app}/x.apk",
+            signer_sha256="cd" * 32,
+        )
+
+    hu, ph = _release("headunit"), _release("phone")
+
+    mine = unit.get("/api/releases/latest?app=headunit")
+    assert mine.status_code == 200 and mine.data["id"] == str(hu.id)
+    assert unit.get(f"/api/releases/{hu.id}/download").status_code in (200, 503)
+
+    theirs = unit.get("/api/releases/latest?app=phone")
+    assert theirs.status_code == 403 and theirs.data["detail"] == scope.RELEASE_OTHER_APP
+    # The default `app` is "phone", so asking with no parameter at all is refused too.
+    assert unit.get("/api/releases/latest").status_code == 403
+    byid = unit.get(f"/api/releases/{ph.id}/download")
+    assert byid.status_code == 403 and byid.data["detail"] == scope.RELEASE_OTHER_APP
+    # Publishing is not on the list at any app.
+    assert unit.post("/api/releases/", {}, format="json").status_code in (401, 403)
+    # A member reads both apps, exactly as before.
+    assert phone.get("/api/releases/latest?app=phone").data["id"] == str(ph.id)
+    assert phone.get("/api/releases/latest?app=headunit").data["id"] == str(hu.id)
+
+
+def test_the_release_routes_refuse_a_unit_token_while_the_switch_is_off(phone, on, monkeypatch):
+    """With `LEGION_HEADUNIT_SIGNIN` unset the class 401s every `hu1_` key, so adding it to these
+    two views changes nothing for anyone until the switch is turned on."""
+    _id, raw = _paired(phone)
+    monkeypatch.delenv(SIGNIN_ENV, raising=False)
+    unit = unit_client(raw)
+    assert unit.get("/api/releases/latest?app=headunit").status_code == 401
+    assert unit.get(f"/api/releases/{uuid.uuid4()}/download").status_code == 401
 
 
 def test_the_household_fence_refuses_a_unit_credential_a_tool_dispatches(
