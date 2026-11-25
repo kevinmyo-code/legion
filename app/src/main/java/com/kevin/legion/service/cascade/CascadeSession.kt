@@ -330,7 +330,8 @@ internal class CascadeSession(
     /** The laptop's running transcript, by utterance id: what the acknowledgement can tell at end of turn. */
     @Volatile private var heardSoFar: Pair<Int, String>? = null
 
-    private var turnJob: Job? = null
+    /** @Volatile because [readLevel] reads it from the mic thread, as it reads [player]. */
+    @Volatile private var turnJob: Job? = null
     private var speaker: ReplySpeaker? = null
     @Volatile private var speaking = false
     private val history = mutableListOf<ChatTurn>()
@@ -4047,7 +4048,14 @@ internal class CascadeSession(
         val peak = MicSignal.peakAmplitude(buf, n)
         MicLevel.publish(peak)
         val nowMs = System.currentTimeMillis()
-        val judging = !playbackActive && !micMuted && !callPaused && backend != null && player != null
+        // A line of code's or the model's own, fetched or playing: [playbackActive] only goes true at
+        // its FIRST audio, so a greeting or an opener still being fetched reads as silence. Judging
+        // under one would have the switch rebuild the player beneath it, and [ReplyPlayer.rebuild]
+        // does not bump the generation, so the old speaker and the fallback's line would share the
+        // next track. A moment Alfred is mid-utterance in is not a moment he could be heard in.
+        val alfredHasTheFloor = playbackActive || turnJob?.isActive == true
+        val voiceReady = backend != null && player != null
+        val judging = !alfredHasTheFloor && !micMuted && !callPaused && voiceReady
         val deaf = deafMic.read(
             bufferPeak = peak,
             nowMs = nowMs,
@@ -4083,7 +4091,9 @@ internal class CascadeSession(
      * second capture inside it. [startMic] hands [callWatch] the new capture's session id.
      */
     private suspend fun fallBackToPhoneMic(peak: Int, heldMs: Long) {
-        if (closing.get()) return
+        // Checked again here, not only at the verdict: Call may have been pressed in between, and a
+        // call's hands-free route is not this fallback's to take down ([BluetoothMic.fallBack]).
+        if (closing.get() || callLineUp.get()) return
         LiveLatency.log(
             TurnTaker.BARGE_TAG,
             "hands-free mic deaf peak=$peak held_ms=$heldMs: the phone's own mic takes over (cascade)",
