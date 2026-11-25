@@ -70,6 +70,35 @@ class SpotifyWebApiParsingTest {
         assertEquals(0, SpotifyWebApi.pageTotal(JSONObject("""{"total": 0, "items": []}""")))
     }
 
+    // --- which sources carry a stated total, and which must not pretend to (P8) ---------------
+
+    @Test
+    fun `the offset-paged sources carry Spotify's own total`() {
+        val paged = JSONObject(
+            """
+            {"total": 23, "items": [
+                {"album": {"name": "Tape Deck Nine", "uri": "spotify:album:a", "artists": [{"name": "North Sail"}]}}
+            ]}
+            """.trimIndent(),
+        )
+        assertEquals(23, SpotifyWebApi.savedAlbumsPage(paged).total)
+        assertEquals(1, SpotifyWebApi.savedAlbumsPage(paged).items.size)
+        assertEquals(7, SpotifyWebApi.topArtistsPage(JSONObject("""{"total": 7, "items": []}""")).total)
+        assertEquals(7, SpotifyWebApi.topTracksPage(JSONObject("""{"total": 7, "items": []}""")).total)
+        assertEquals(412, SpotifyWebApi.likedSongsPage(JSONObject("""{"total": 412, "items": []}""")).total)
+    }
+
+    @Test
+    fun `a source that states no comparable total reports none`() {
+        // The queue is not paged at all. An artist's own total counts market and edition
+        // duplicates that the parser collapses, so it is not a figure about what came back.
+        assertEquals(null, SpotifyWebApi.queuePage(JSONObject("""{"queue": [], "total": 99}""")).total)
+        assertEquals(null, SpotifyWebApi.artistAlbumsPage(JSONObject("""{"items": [], "total": 99}""")).total)
+        // And a paged body that simply omits it stays null rather than inventing the page size.
+        assertEquals(null, SpotifyWebApi.savedAlbumsPage(JSONObject("""{"items": []}""")).total)
+        assertEquals(null, SpotifyWebApi.recentlyPlayedPage(JSONObject("""{"items": []}""")).total)
+    }
+
     @Test
     fun `parseSavedAlbums skips an item with no album name rather than throwing`() {
         val json = JSONObject("""{"items": [{"album": {"uri": "spotify:album:abc", "artists": []}}]}""")

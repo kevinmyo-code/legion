@@ -854,6 +854,44 @@ object SpotifyWebApi {
         }
     }
 
+    // --- One page reader per source (music-suggestions-1124 P8) --------------------------------
+    // Which sources STATE a total is a fact about Spotify's own response shapes, not a choice, so
+    // each one is named here rather than inferred: the offset-paged reads carry `total`, and a
+    // cursor-paged or unpaged read does not. A source that states none yields null, and the tool
+    // layer then emits no total and no truncated flag at all.
+
+    internal fun savedAlbumsPage(json: JSONObject): Page<SavedAlbum> =
+        Page(parseSavedAlbums(json), pageTotal(json))
+
+    internal fun topArtistsPage(json: JSONObject): Page<TopArtist> =
+        Page(parseTopArtists(json), pageTotal(json))
+
+    internal fun topTracksPage(json: JSONObject): Page<TopTrack> =
+        Page(parseTopTracks(json), pageTotal(json))
+
+    internal fun likedSongsPage(json: JSONObject): Page<LikedTrack> =
+        Page(parseLikedSongs(json), pageTotal(json))
+
+    /**
+     * Recently-played is CURSOR-paged: Spotify documents a `total` field but does not reliably
+     * send a meaningful one, so this reads whatever is there and stays null when it is absent. It
+     * must never be made to report the page size as a history length.
+     */
+    internal fun recentlyPlayedPage(json: JSONObject): Page<RecentlyPlayedTrack> =
+        Page(parseRecentlyPlayed(json), pageTotal(json))
+
+    /** The queue is not paged and states nothing to compare against: no total, ever. */
+    internal fun queuePage(json: JSONObject): Page<QueuedTrack> = Page(parseQueue(json), null)
+
+    /**
+     * An artist's albums state no COMPARABLE total. Spotify's own figure counts market and
+     * edition duplicates, which [parseArtistAlbums] then collapses and the caller truncates
+     * again, so reporting it beside the de-duplicated rows would invite "you have N albums" off a
+     * number counting something else. Null is the honest answer here, not a missing feature.
+     */
+    internal fun artistAlbumsPage(json: JSONObject): Page<ArtistAlbum> =
+        Page(parseArtistAlbums(json), null)
+
     /**
      * Shared token-gate-then-GET-then-parse shape for the four reads below. [parse] runs only on
      * a 2xx body; a parse failure (Spotify changing its response shape under us) becomes
@@ -867,11 +905,21 @@ object SpotifyWebApi {
      */
     internal fun pageTotal(json: JSONObject): Int? = json.optInt("total", -1).takeIf { it >= 0 }
 
+    /**
+     * One page of a Spotify list read: the rows, and how many Spotify says exist, when its
+     * response states that at all.
+     *
+     * The two travel together because they are read from one body, and a reader that returns only
+     * the rows cannot be asked for the total later - which is exactly how a five-row page came to
+     * be spoken as a five-row library (music-suggestions-1124 P8). Every page reader below is pure
+     * and `internal`, so what each source does or does not state is a plain JVM test.
+     */
+    internal data class Page<T>(val items: List<T>, val total: Int?)
+
     private suspend fun <T> libraryGet(
         context: Context,
         url: String,
-        parse: (JSONObject) -> List<T>,
-        total: (JSONObject) -> Int? = { null },
+        parse: (JSONObject) -> Page<T>,
     ): LibraryOutcome<T> = withContext(Dispatchers.IO) {
         val token = when (val outcome = accessToken(context)) {
             is TokenOutcome.Token -> outcome.value
@@ -895,14 +943,13 @@ object SpotifyWebApi {
                     else -> LibraryOutcome.Failed(code, detail, body.trim().take(300))
                 }
             }
-            val (items, stated) = try {
-                val json = JSONObject(body)
-                parse(json) to total(json)
+            val page = try {
+                parse(JSONObject(body))
             } catch (e: Exception) {
                 Log.w(TAG, "Library parse error: ${e.message}")
                 return@withContext LibraryOutcome.Failed(code, "Could not read Spotify's response", body.trim().take(300))
             }
-            LibraryOutcome.Found(items, stated)
+            LibraryOutcome.Found(page.items, page.total)
         } catch (e: Exception) {
             Log.w(TAG, "Library read error: ${e.message}")
             LibraryOutcome.Unreachable
@@ -914,7 +961,7 @@ object SpotifyWebApi {
         val url = Uri.parse(ALBUMS_URL).buildUpon()
             .appendQueryParameter("limit", limit.toString())
             .build().toString()
-        return libraryGet(context, url, ::parseSavedAlbums)
+        return libraryGet(context, url, ::savedAlbumsPage)
     }
 
     /**
@@ -925,7 +972,7 @@ object SpotifyWebApi {
         val url = Uri.parse(RECENTLY_PLAYED_URL).buildUpon()
             .appendQueryParameter("limit", limit.toString())
             .build().toString()
-        return libraryGet(context, url, ::parseRecentlyPlayed)
+        return libraryGet(context, url, ::recentlyPlayedPage)
     }
 
     /** Spotify's own top-artists ranking for this account. Requires `user-top-read`. */
@@ -933,7 +980,7 @@ object SpotifyWebApi {
         val url = Uri.parse("$TOP_URL/artists").buildUpon()
             .appendQueryParameter("limit", limit.toString())
             .build().toString()
-        return libraryGet(context, url, ::parseTopArtists)
+        return libraryGet(context, url, ::topArtistsPage)
     }
 
     /** Spotify's own top-tracks ranking for this account. Requires `user-top-read`. */
@@ -941,7 +988,7 @@ object SpotifyWebApi {
         val url = Uri.parse("$TOP_URL/tracks").buildUpon()
             .appendQueryParameter("limit", limit.toString())
             .build().toString()
-        return libraryGet(context, url, ::parseTopTracks)
+        return libraryGet(context, url, ::topTracksPage)
     }
 
     // --- Liked songs (music-suggestions-1124 P7) ----------------------------------------------
@@ -981,7 +1028,7 @@ object SpotifyWebApi {
         val url = Uri.parse(LIKED_SONGS_URL).buildUpon()
             .appendQueryParameter("limit", limit.toString())
             .build().toString()
-        return libraryGet(context, url, ::parseLikedSongs, ::pageTotal)
+        return libraryGet(context, url, ::likedSongsPage)
     }
 
     // --- Queue read (ticket 04, 2026-08-19) ---------------------------------------------------
@@ -1010,7 +1057,7 @@ object SpotifyWebApi {
      * can return its entire queue.
      */
     suspend fun getQueue(context: Context, limit: Int = LIBRARY_LIMIT): LibraryOutcome<QueuedTrack> =
-        when (val outcome = libraryGet(context, QUEUE_URL, ::parseQueue)) {
+        when (val outcome = libraryGet(context, QUEUE_URL, ::queuePage)) {
             is LibraryOutcome.Found -> LibraryOutcome.Found(outcome.items.take(limit))
             else -> outcome
         }
@@ -1467,7 +1514,7 @@ object SpotifyWebApi {
             // albums before dedup runs.
             .appendQueryParameter("limit", LIBRARY_LIMIT.toString())
             .build().toString()
-        return when (val outcome = libraryGet(context, url, ::parseArtistAlbums)) {
+        return when (val outcome = libraryGet(context, url, ::artistAlbumsPage)) {
             is LibraryOutcome.Found -> LibraryOutcome.Found(outcome.items.take(limit))
             else -> outcome
         }
