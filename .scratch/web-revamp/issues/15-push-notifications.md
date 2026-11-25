@@ -4,7 +4,7 @@ ticket: 15
 title: Push notifications
 type: build
 status: built
-status-detail: "both halves built; owed: VAPID keys, schedule installed, Mia subscribes on her iPhone, a real push arrives"
+status-detail: "both halves built; owed: VAPID keys, schedule installed, Member B subscribes on her iPhone, a real push arrives"
 blockers: ["05", "08", "14"]
 blocked-by: ["[[05-join-signup-and-settings]]", "[[08-repeat-exceptions-on-the-engine]]", "[[14-reminder-lead-time-on-events]]"]
 open-blockers: 3
@@ -50,5 +50,5 @@ See `.scratch/web-revamp/spec.md` D7.
       Baseline) and I did not see the Safari cell, so on an iPhone the button may not render and the
       one-tap silence there would be the master off on this page. The click handler is tested; the OS
       pressing it is not.
-- [ ] Owed on live (Kevin): VAPID keys in env, `install_schedule.py` run for the new line, Mia
+- [ ] Owed on live (Kevin): VAPID keys in env, `install_schedule.py` run for the new line, Member B
       subscribes, a Groceries add and a 30-minute reminder both reach her phone.

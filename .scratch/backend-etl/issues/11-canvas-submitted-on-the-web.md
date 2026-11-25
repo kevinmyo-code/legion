@@ -88,7 +88,7 @@ elsewhere; building that banner was out of this ticket's scope (formatter + the 
 
 Verified in-browser (not the live site): `npm run dev` (port 5183) with Playwright
 intercepting `/api/auth/me`, `/api/households/me`, `/api/changes` to serve a fabricated
-`Event` shaped exactly like the one real open row Kevin traced ("COSC 3334 Intro to
+`Event` shaped exactly like the one real open row Kevin traced ("CSCI 2200 Intro to
 Cybersecurity - Module 2: Discussion - User Authentication", `canvas_submitted: true`,
 `done: false`), at a 384x800 viewport. "Canvas says submitted" rendered under the title in
 both the day-detail card and the "On today" list, wrapped cleanly at that width. Screenshot

@@ -4,7 +4,7 @@ ticket: 11
 title: "Spend on the engine: one figure, computed once"
 type: build
 status: built
-status-detail: "GET /api/ledger/spend ported from LedgerBudget/LedgerTransfers/BudgetMonth/MoneyMonth; 60 phone tests transcribed and green. Owed on live: Mia's card equals the phone to the cent."
+status-detail: "GET /api/ledger/spend ported from LedgerBudget/LedgerTransfers/BudgetMonth/MoneyMonth; 60 phone tests transcribed and green. Owed on live: Member B's card equals the phone to the cent."
 blockers: []
 blocked-by: []
 open-blockers: 0

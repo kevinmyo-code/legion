@@ -4,7 +4,7 @@ ticket: "08"
 title: "Web: chatbox and live voice"
 type: build
 status: built
-status-detail: "Built; vitest 585, playwright 6, tsc and check:api clean; owes a real mint, a real connect and Mia's iPhone"
+status-detail: "Built; vitest 585, playwright 6, tsc and check:api clean; owes a real mint, a real connect and Member B's iPhone"
 blockers: ["03", "05", "07"]
 blocked-by: ["[[03-one-prompt]]", "[[05-chat-and-voice-ui]]", "[[07-engine-endpoints]]"]
 open-blockers: 1

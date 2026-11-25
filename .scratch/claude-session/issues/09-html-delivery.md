@@ -56,4 +56,4 @@ html, the claude session somehow delivers it to the phone... push the html file 
 - [x] `tools/claude_session/test_worker.py`: page asked for, uploaded at finish; no page without it.
 - [x] `app/.../claude/ClaudePageDeliveryTest.kt` (7): deliver phone, work laptop refused, ask and
       hint, the 3 minute wait, open_page opened only on a load, no page opens nothing.
-- [ ] On the A25 after deploy: ticket 07 step 9 (the Atlanta day trip).
+- [ ] On the A25 after deploy: ticket 07 step 9 (the day-trip itinerary).

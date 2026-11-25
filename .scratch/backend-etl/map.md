@@ -77,7 +77,7 @@ rules are carried into tickets 03-05 by reference and bind unchanged.
 **Live on Cloud Run (deployed from `897fcb2`):** tickets 01-04. Scheduler: `heartbeat` and
 `canvas_poll` every 30 min, `backup_nightly` 03:00 UTC. Vault key and Gemini key are in Secret
 Manager (`LEGION_VAULT_KEY`, `LEGION_GEMINI_KEY`; the second is NOT yet in `SECRET_ENV_VARS`).
-Drive connected with `--backup`; Canvas connected (uhv.instructure.com). First backup and restore
+Drive connected with `--backup`; Canvas connected (the school's Canvas host). First backup and restore
 drill passed; Canvas wrote 7 new tasks. Google OAuth app published (privacy page on Pages).
 
 **Merged to dev:** everything through `502ffba` (tickets 01-04, vault key). Not on `main`.
@@ -116,7 +116,7 @@ line), ticket 09 (BofA daily + launcher), ticket 10; ticket 12 is the Android te
   (BofA parser, `6f6c391`, pending legion-2c's merge). One `deploy.py` + `deploy_job.py` puts both
   live. Deploying is Kevin's call.
 - **Owed by Kevin:** drop one real BofA checking and one card statement PDF in the folder (proves
-  06 and 10 on real files; pypdf on real BofA text is unmeasured); tick the COSC 3334 Module 2
+  06 and 10 on real files; pypdf on real BofA text is unmeasured); tick the CSCI 2200 Module 2
   discussion (Canvas shows it submitted 09-19); hand ticket 12 to the Android session.
 - **Next build:** ticket 09 (BofA daily pull + one-click launcher). Needs Kevin logged in to BofA
   once so the script's page selectors can be written against the real site.

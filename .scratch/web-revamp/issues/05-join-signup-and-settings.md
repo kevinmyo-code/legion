@@ -4,7 +4,7 @@ ticket: 05
 title: "Join, signup and settings"
 type: build
 status: built
-status-detail: "both halves built; owed: Mia signs up from a real invite on her iPhone"
+status-detail: "both halves built; owed: Member B signs up from a real invite on her iPhone"
 blockers: ["03"]
 blocked-by: ["[[03-the-shell-split-by-viewport]]"]
 open-blockers: 1
@@ -36,4 +36,4 @@ See `.scratch/web-revamp/spec.md` D12.
       (`-join.test.tsx`, `-settings.test.tsx`, `refusal.test.ts`; web half built 2026-10-03.)
 - [x] Shots in `research/shots/05/`: every join and Settings screen, 390x844 and 1440x900, light and
       dark, including the dead-code states, a refused signup, a member's household and each confirm.
-- [ ] Owed on live (Kevin): send Mia a real invite link; she signs up on her iPhone.
+- [ ] Owed on live (Kevin): send Member B a real invite link; she signs up on her iPhone.

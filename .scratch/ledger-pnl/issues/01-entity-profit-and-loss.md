@@ -279,7 +279,7 @@ Pure functions, plain JVM. Fixtures **invented**, never Kevin's real rows.
 6. A row whose partner sits outside the month but inside `pairingWindow` -> the in-period row is
    excluded, and the out-of-period row is NOT returned in either list.
 7. Unpaired `PAYMENT FROM SAV 2277` -> `SUSPECTED_TRANSFER`.
-8. `KROGER #115` -> not excluded (no keyword, no pair).
+8. `GROCERYCO #115` -> not excluded (no keyword, no pair).
 9. Reversing the input list order changes nothing (deterministic tie-break).
 
 `LedgerProfitAndLossTest`

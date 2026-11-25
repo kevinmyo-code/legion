@@ -12,7 +12,7 @@ tags: [map]
 
 # Dumb phone mode
 
-**Kevin, 2026-10-22:** help his ADHD. No social media, no doomscrolling; only Mia and his parents
+**Kevin, 2026-10-22:** help his ADHD. No social media, no doomscrolling; only his household and his parents
 reach him. A manual switch turns LEGION's HOME into a short text list, holds every other
 notification, silences every other caller, and bounces hidden apps back home. Prototype
 **A, text list** (`research/Main.dc.html`; leave flow `Leave.dc.html`, digest `Digest.dc.html`,

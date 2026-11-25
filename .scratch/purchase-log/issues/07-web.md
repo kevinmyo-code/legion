@@ -4,7 +4,7 @@ ticket: "07"
 title: "Web: the log screen, log-it form, last-bought on list items"
 type: build
 status: built
-status-detail: "Web built, Vitest 535 passed and Playwright 19 passed; owes a run on Mia's iPhone and the deploy"
+status-detail: "Web built, Vitest 535 passed and Playwright 19 passed; owes a run on Member B's iPhone and the deploy"
 blockers: ["05", "06"]
 blocked-by: ["[[05-where-it-lives-on-screen]]", "[[06-server]]"]
 open-blockers: 1
@@ -26,7 +26,7 @@ bought on Groceries items, private entries hidden from the other member. Vitest 
   `components/purchases/` (form, entry rows, Home pill), `screens/bought.tsx` (phone search and
   desk table with the form beside it), `screens/bought-log.tsx`, routes `/bought` and `/bought/log`.
 - Variant C: Home gets a "When did we last buy...?" pill; the search answers with the exact entry
-  ("Shampoo, bought Sep 20 by Mia"), then the other matches with source chips; no match is "No record
+  ("Shampoo, bought Sep 20 by Member B"), then the other matches with source chips; no match is "No record
   of buying X.". Search and the recent list read `GET /api/purchases/?q=` (the same matcher as
   `last-bought`), so the other matches are all there, not one per distinct text.
 - The untick sends `?today=<local epoch day>`. Groceries lines show "last bought <date> - <who>" from

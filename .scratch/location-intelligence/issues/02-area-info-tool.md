@@ -80,7 +80,7 @@ we deliberately did NOT write.
   by its `" Offenses"` suffix, never hardcoded. And **the latest year present is very often
   incomplete** (trailing nulls), so "most recent complete year" is computed, never assumed. That is
   the ticket's honesty requirement surviving contact with the actual data.
-- **`Geocoder.adminArea` returns "Texas", not "TX"**, and both FEMA and FBI filter on the
+- **`Geocoder.adminArea` returns the full state name, not the two-letter code**, and both FEMA and FBI filter on the
   abbreviation. Hence `UsStates` - there is no Android API for that conversion.
 
 ### Honest simplifications, stated rather than hidden

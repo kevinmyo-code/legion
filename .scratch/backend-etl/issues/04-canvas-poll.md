@@ -56,7 +56,7 @@ crontab: `*/30 * * * * manage.py canvas_poll`.
   date-restricted course).
 - `deploy/crontab`: `*/30 * * * * python manage.py canvas_poll`.
 - Live `structured_meta` keys read 2026-09-27 (pg MCP, read-only) and matched exactly:
-  `canvas_assignment_id` (a JSON number), `canvas_course` (a label, e.g. "COSC 3318"),
+  `canvas_assignment_id` (a JSON number), `canvas_course` (a label, e.g. "CSCI 2100"),
   `submission_state`, `submitted_at`, `score`, `grade`, `late`, `missing`, `excused`,
   `points_possible`, `submission_types` (a string), `read_at`, `match`,
   `matched_server_title`; sub-deadline rows carry `parent_canvas_assignment_id`,
@@ -114,17 +114,17 @@ crontab: `*/30 * * * * manage.py canvas_poll`.
     Canvas only when Canvas gives a due date. New rows: `origin_guid canvas:<id>`, title
     `<course label> · <assignment name>`.
   - **New rows use the short course label** (Kevin, 2026-09-27, after the live dry run titled
-    one `2026FA COSC3318 21007 MAIN - Python Programming · Module 2: Assignment`). The label is
+    one `2026FA CSCI2100 21007 MAIN - Python Programming · Module 2: Assignment`). The label is
     the title prefix (text before " · ") of the oldest live row of the same household with the
     same `canvas_course_id`, else one whose `canvas_course` equals the derived code; with no
     sibling it is derived from Canvas's name: term code, section number and `MAIN -` dropped,
-    `COSC3318` spaced, giving `COSC 3318 Python Programming`. A name that does not fit that
+    `CSCI2100` spaced, giving `CSCI 2100 Python Programming`. A name that does not fit that
     pattern is kept exactly as Canvas gave it. New rows' `canvas_course` is the short code
-    (`COSC 3318`). An existing row is never retitled (the RPC's UPDATE has no `title`). `read_at` is rewritten only when something else
+    (`CSCI 2100`). An existing row is never retitled (the RPC's UPDATE has no `title`). `read_at` is rewritten only when something else
     changed. `watermark` = max assignment `updated_at`, recorded only.
   - Course notices are not read: the assignments endpoint returns only assignments.
   - **New titles carry no stray whitespace** (the follow-up in status-detail). The live run
-    wrote `COSC 3318 Python Programming ·  Module 2: Assignment ` and a Module 3 twin: Canvas's
+    wrote `CSCI 2100 Python Programming ·  Module 2: Assignment ` and a Module 3 twin: Canvas's
     names had leading and trailing spaces. `canvas.tidy_name` trims the assignment name and
     collapses every whitespace run to one space before the title is built. Data migration
     `0006_tidy_canvas_title_whitespace.py` tidies rows already written, and ONLY rows the

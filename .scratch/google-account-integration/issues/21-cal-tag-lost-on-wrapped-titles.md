@@ -30,9 +30,9 @@ rather than stranding it at the far edge. Commented in place as load-bearing, no
 through `DeckRow`, whose label already carries `Modifier.weight(1f)` with the tag in a separate
 slot, so the tag can never be squeezed out there. No change made.
 
-**Verified on-device**, which is the only way this class of defect is visible: "Astros vs. Los
-Angeles Angels baseball game" and "F-150 recall appointment at AutoNation Ford Katy" both now render
-`CAL` on their wrapped rows, while the wrapped LOCAL item ("Pay school fees for the fall semester")
+**Verified on-device**, which is the only way this class of defect is visible: "Home team vs. visiting
+team, afternoon baseball game" and "Pickup truck recall appointment at the city dealership" both now render
+`CAL` on their wrapped rows, while the wrapped LOCAL item ("a long local to-do title")
 keeps its checkbox and REMOVE and stays tagless. 727 tests green - **and green before the fix too**,
 which is the point: no unit test could have caught this.
 
@@ -42,9 +42,9 @@ Nothing to decide. Seen on-device 2026-08-13, in the Notes stream, immediately a
 [ticket 17](17-read-all-calendars.md) widened the calendar set and more real events appeared.
 
 **The defect.** A Google event whose title fits one line renders its `CAL` tag correctly
-("Mara's bday `CAL`", "Recall appointment for the Outlander `CAL`"). A Google event whose title
-**wraps to two lines shows no tag at all** - observed on "Astros vs. Los Angeles Angels baseball
-game" and "F-150 recall appointment at AutoNation Ford Katy". Both are Google events: neither has a
+("a short birthday title `CAL`", "a short recall-appointment title `CAL`"). A Google event whose title
+**wraps to two lines shows no tag at all** - observed on "Home team vs. visiting team, afternoon baseball
+game" and "Pickup truck recall appointment at the city dealership". Both are Google events: neither has a
 checkbox or a REMOVE action.
 
 **Why it matters, and it is not cosmetic.** [Ticket 08](08-deck-surface.md) point 3 requires a

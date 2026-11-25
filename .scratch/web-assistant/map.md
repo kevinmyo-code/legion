@@ -16,16 +16,16 @@ tags: [map]
 
 ## Destination
 
-**Shipped and used.** Mia's iPhone PWA and Kevin's web workbench each have a chatbox and a live
+**Shipped and used.** Member B's iPhone PWA and Kevin's web workbench each have a chatbox and a live
 voice conversation with the household assistant, reaching everything the engine holds; Kevin's
 Android app gets a typed chatbox beside push-to-talk. Execution is in scope.
 
 ## Rulings at charting (Kevin, 2026-10-04)
 
-- **Where:** Mia's PWA (iPhone), Kevin's web desktop, and a typed box on Kevin's Android app.
+- **Where:** Member B's PWA (iPhone), Kevin's web desktop, and a typed box on Kevin's Android app.
 - **Web voice is a live conversation**, like the Android app (open mic, back and forth,
   interrupting), not walkie-talkie. Feasibility on an iPhone PWA is ticket 01.
-- **Scope: everything the engine has.** Private rows stay private to their owner (ADR 0052): Mia's
+- **Scope: everything the engine has.** Private rows stay private to their owner (ADR 0052): Member B's
   assistant never sees Kevin's private rows, and the reverse.
 - **Key: the household key on the server.** The engine already holds `LEGION_GEMINI_KEY`; it mints
   short-lived Live tokens per browser session and the real key never reaches a browser. ADR 0056.
@@ -44,7 +44,7 @@ Android app gets a typed chatbox beside push-to-talk. Execution is in scope.
   the `ask_engine` bridge to `/mcp`. `GeminiLiveSession.sendText()` exists; no user can type.
 - The prompt layer (`ai/AriaBrain.kt`: `ASSISTANT_FRAME`, `CANNOT_CLAUSE`, personas in
   `ai/Personas.kt`) lives only in Kotlin.
-- Mia is not yet invited to the web, and nobody has used the PWA on a real device (MEMORY.md
+- Member B is not yet invited to the web, and nobody has used the PWA on a real device (MEMORY.md
   2026-10-03). Web push is paused until VAPID keys exist.
 
 ## Notes
@@ -72,16 +72,16 @@ Android app gets a typed chatbox beside push-to-talk. Execution is in scope.
 | 07 | build | Engine: the token-minting endpoint and the session-authenticated tool path | 02, 04 |
 | 08 | build | Web: chatbox and live voice | 03, 05, 07 |
 | 09 | build | Android: the typed chatbox | 05, 06 |
-| 10 | test | Mia talks to it on her iPhone; Kevin on the desktop and the phone | 08, 09 |
+| 10 | test | Member B talks to it on her iPhone; Kevin on the desktop and the phone | 08, 09 |
 
 ## Decisions so far
 
 - [Gemini Live from an iPhone PWA](issues/01-live-from-an-iphone-pwa.md) - viable with caveats: tokens and locking are solid,
   iOS audio (mic re-prompt, WebKit playback bugs, screen lock) is the risk.
 - [Who runs the tools](issues/02-who-runs-the-tools.md) - the browser calls a session-authenticated engine endpoint
-  (never `/mcp`); same registry, `visible()`. Mia on iOS 27; build first, test after; screen lock ends it.
+  (never `/mcp`); same registry, `visible()`. Member B on iOS 27; build first, test after; screen lock ends it.
 - [One prompt](issues/03-one-prompt.md) - shared clauses generated from one file for Kotlin and TS; the engine
-  assembles the web prompt; companions per member on the engine; Mia gets Dorothy.
+  assembles the web prompt; companions per member on the engine; Member B gets Dorothy.
 - [Web tool surface](issues/04-web-tool-surface.md) - engine tools + bought log + tick history; phone-only things said so.
 - [Chat and voice UI](issues/05-chat-and-voice-ui.md) - C, the orb, opening to typing; mic switches to live voice.
 - [Android typed chat](issues/06-android-typed-chat.md) - typed turns into the same Live session, reply shown as text.
@@ -90,7 +90,7 @@ Android app gets a typed chatbox beside push-to-talk. Execution is in scope.
 
 - Wake word on the web (probably never on an iPhone).
 - Proactive raises on the web (§7 compulsion test applies).
-- Persona per member: does Mia get her own companion name and voice?
+- Persona per member: does Member B get her own companion name and voice?
 
 ## Out of scope
 

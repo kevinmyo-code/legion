@@ -43,14 +43,14 @@ path the browser calls, through `visible()`, leak-tested. pytest green.
   inside the token, so it needs none).
 - **Companions per member:** `public.assistant_companions` (name, persona key, optional custom
   register, voice). Personas copied from `Personas.kt` into `assistant/personas.py` under a drift
-  test. Migration 0002 seeds every existing member: first name "Mia" gets Dorothy, everyone else
+  test. Migration 0002 seeds every existing member: first name "Member B" gets Dorothy, everyone else
   Alfred; a member with no row gets the same rule computed on read. `GET /api/assistant/companion`
   reads it; `manage.py set_companion` changes it. No REST write path, and the phone does not push
   its roster yet.
 - **`last_ticked`** joins the registry (both doors): ADR 0049 wording, `TickMatch`'s exact
   normalised match, read through item and checklist tombstones, unticked taps excluded.
 - `manage.py mint_assistant_token --email X [--dry-run]` for the manual real mint.
-- Leak tests: `tests/test_assistant.py` (Mia vs Kevin's private rows, another household, phone-only
+- Leak tests: `tests/test_assistant.py` (Member B vs Kevin's private rows, another household, phone-only
   names) and `last_ticked` added to `test_tenancy.py`'s MCP sweep.
 
 Owed: deploy (two migrations, no `private.*`), a real mint with the household key

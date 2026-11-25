@@ -19,7 +19,7 @@ tags: [ticket]
 The public token is per household (ADR 0054). Where is it stored and entered?
 
 - On each phone, in `KeyVault`, pasted in Setup (the Gemini key's shape).
-- On the engine as a household setting, synced to every member's phone (Mia never pastes it).
+- On the engine as a household setting, synced to every member's phone (a second member never pastes it).
 - Which Setup screen, what it says before a token exists, and how a bad token is reported (said in
   words, not a blank map).
 
@@ -36,5 +36,5 @@ Delegated by Kevin (*"where the token lives is up to u"*).
 - **No token:** navigation surfaces say "navigation isn't set up, add a Mapbox token in Setup" in
   words. A token Mapbox rejects (HTTP 200 + `TokenInvalid`, research 01) is said as rejected, never
   rendered as a blank map.
-- **Not now:** syncing the token from the engine so Mia never pastes it. Fog, revisit if she
+- **Not now:** syncing the token from the engine so a second member never pastes it. Fog, revisit if they
   navigates with LEGION.

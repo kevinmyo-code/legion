@@ -26,8 +26,8 @@ caller apiece - a row on a Settings screen - and **not one of them compared a ti
 `updated_at_ms` was set faithfully on every local write and had never once been read.
 
 The cost was not theoretical. On 2026-09-02 the server held **120 coursework rows the phone had
-never displayed** - `COSC 3334 · Homework 1-6`, both midterms, `COSC 3318 · FINAL EXAM`,
-`COSC 4305 · Report 1/7` through `7/7`, the first due in two days. Kevin had been reading a phone
+never displayed** - `CSCI 2200 · Homework 1-6`, both midterms, `CSCI 2100 · FINAL EXAM`,
+`CSCI 3300 · Report 1/7` through `7/7`, the first due in two days. Kevin had been reading a phone
 that showed six reminders, of which none was schoolwork.
 
 `EventsReconcile` did not merely fail to fetch them. It **wiped** every local `kind='reminder'` row

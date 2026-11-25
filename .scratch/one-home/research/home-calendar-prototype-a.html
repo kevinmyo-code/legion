@@ -107,24 +107,24 @@ class Component extends DCLogic {
   data() {
     return {
       9: [
-        { when: 'All day', title: 'Cuero Turkeyfest', kind: 'sugg' },
+        { when: 'All day', title: 'Turkey Trot', kind: 'sugg' },
         { when: 'Due 11:59p', title: 'Ch. 6 quiz · Python', kind: 'task' },
-        { when: '7:00 PM', title: 'Terror on Tate Road', kind: 'sugg' }
+        { when: '7:00 PM', title: 'Haunted Barn', kind: 'sugg' }
       ],
       10: [
         { when: '9:00 AM', title: 'Oil change · Cherokee', kind: 'ev' },
-        { when: 'All day', title: 'Katy Rice Harvest Festival', kind: 'sugg' },
-        { when: 'All day', title: 'Korean Festival · Houston', kind: 'sugg' },
+        { when: 'All day', title: 'Harvest Festival', kind: 'sugg' },
+        { when: 'All day', title: 'Food Festival · downtown', kind: 'sugg' },
         { when: '7:00 PM', title: 'IceRays vs Rhinos · Corpus', kind: 'sugg' },
         { when: 'All day', title: 'Texas Renaissance Festival', kind: 'sugg' }
       ],
       11: [ { when: 'Due 11:59p', title: 'Sprint 2 report · Software Eng', kind: 'task' }, { when: 'All day', title: 'ACL Weekend 2', kind: 'sugg' } ],
       12: [ { when: 'All day', title: 'Columbus Day', kind: 'ev' } ],
-      13: [ { when: '9:30 AM', title: 'COSC 3334 Cybersecurity', kind: 'ev' }, { when: '11:00 AM', title: 'COSC 3318 Python', kind: 'ev' } ],
-      15: [ { when: '9:30 AM', title: 'COSC 3334 Cybersecurity', kind: 'ev' }, { when: '11:00 AM', title: 'COSC 3318 Python', kind: 'ev' }, { when: '2:30 PM', title: 'COSC 4320 Software Eng', kind: 'ev' } ],
+      13: [ { when: '9:30 AM', title: 'CSCI 2200 Cybersecurity', kind: 'ev' }, { when: '11:00 AM', title: 'CSCI 2100 Python', kind: 'ev' } ],
+      15: [ { when: '9:30 AM', title: 'CSCI 2200 Cybersecurity', kind: 'ev' }, { when: '11:00 AM', title: 'CSCI 2100 Python', kind: 'ev' }, { when: '2:30 PM', title: 'CSCI 3400 Software Eng', kind: 'ev' } ],
       17: [ { when: 'All day', title: 'Texas Jazz Festival', kind: 'sugg' }, { when: 'All day', title: 'Yorktown Western Days', kind: 'sugg' } ],
-      20: [ { when: '9:30 AM', title: 'COSC 3334 Cybersecurity', kind: 'ev' } ],
-      22: [ { when: '2:30 PM', title: 'COSC 4320 Software Eng', kind: 'ev' } ],
+      20: [ { when: '9:30 AM', title: 'CSCI 2200 Cybersecurity', kind: 'ev' } ],
+      22: [ { when: '2:30 PM', title: 'CSCI 3400 Software Eng', kind: 'ev' } ],
       24: [ { when: 'All day', title: 'Muertos Fest · San Antonio', kind: 'sugg' } ],
       31: [ { when: 'All day', title: 'Halloween', kind: 'ev' }, { when: 'All day', title: 'MECA Día de Muertos', kind: 'sugg' } ]
     };
@@ -166,7 +166,7 @@ class Component extends DCLogic {
       { title: 'Fix Cherokee fuel pump relay', sub: 'No date' }
     ];
     const lists = [ { title: 'Groceries', sub: '6 to get' }, { title: 'Todo', sub: '4 open' }, { title: 'Costco', sub: '3 to get' }, { title: 'Packing', sub: '8 items' } ];
-    const sugg = [ { title: 'Cuero Turkeyfest', sub: 'Fri–Sun · Cuero · Mia wants to go' }, { title: 'Terror on Tate Road', sub: 'Fri 7 PM · Victoria' }, { title: 'Katy Rice Harvest Festival', sub: 'Sat–Sun · Katy' }, { title: 'ACL Weekend 2', sub: 'Fri–Sun · Austin' } ];
+    const sugg = [ { title: 'Turkey Trot', sub: 'Fri–Sun · nearby · a household member wants to go' }, { title: 'Haunted Barn', sub: 'Fri 7 PM · Victoria' }, { title: 'Harvest Festival', sub: 'Sat–Sun · Katy' }, { title: 'ACL Weekend 2', sub: 'Fri–Sun · Austin' } ];
     const s = this.state.sheet;
     let sheetRows = [];
     if (s === 'todos') sheetRows = todos.map((t, i) => { const done = !!this.state.done[i]; return { ...t, markText: done ? '✓' : '', mark: 'width: 22px; height: 22px; border-radius: 6px; flex: none; display: flex; align-items: center; justify-content: center; font-size: 14px; ' + (done ? 'background: #5E636E; color: #121317;' : 'border: 2px solid #FFD36B;'), strike: done ? 'text-decoration: line-through; color: #8A8F9B;' : '', tap: () => this.setState({ done: { ...this.state.done, [i]: !done } }) }; });

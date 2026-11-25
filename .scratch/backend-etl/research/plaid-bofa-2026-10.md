@@ -91,7 +91,7 @@ exists on a third-party mirror; I did not treat it as current. **[unconfirmed]**
 the accounts picked under that login
 ([Trial article](https://support.plaid.com/hc/en-us/articles/39994173227159-What-is-the-Plaid-Trial-plan):
 "An Item represents one end-user connection to a financial institution"). Kevin's BofA checking
-plus cards under one BofA login is **one Item**. Mia's own BofA login would be a second. Kevin's
+plus cards under one BofA login is **one Item**. A second member's own BofA login would be a second Item. Kevin's
 parents on the same engine (ADR 0045) would spend Kevin's slots unless they bring their own Plaid
 team. A consent renewal through update mode does **not** create a new Item (§2). Budget: the
 slots go on mistakes (re-linking instead of update mode, test links in Production), not on years.

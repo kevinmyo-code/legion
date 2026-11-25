@@ -1,7 +1,7 @@
 ---
 map: web-assistant
 ticket: "10"
-title: "Mia talks to it on her iPhone; Kevin on the desktop and the phone"
+title: "Member B talks to it on her iPhone; Kevin on the desktop and the phone"
 type: test
 status: open
 status-detail: ""
@@ -12,9 +12,9 @@ ready: false
 tags: [ticket]
 ---
 
-# Mia talks to it on her iPhone; Kevin on the desktop and the phone
+# Member B talks to it on her iPhone; Kevin on the desktop and the phone
 
 ## Test
 
-Mia: live voice and typed chat in the PWA, asking about lists, events and the bought log. Kevin: the
+Member B: live voice and typed chat in the PWA, asking about lists, events and the bought log. Kevin: the
 desktop and the Android chatbox. Note anything it claimed that the screen does not show.

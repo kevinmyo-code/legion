@@ -359,16 +359,16 @@ html[data-eff=dark] .tt .sun{display:none}html[data-eff=dark] .tt .moon{display:
 
 <main class="board">
 <section class="grp">
-  <div class="grp-h"><h2>Phone</h2><span>Mia &middot; 390 &times; 844</span></div>
+  <div class="grp-h"><h2>Phone</h2><span>Member B &middot; 390 &times; 844</span></div>
   <div class="phones">
 
     <figure class="ab"><figcaption><b>1</b> Home</figcaption>
-    <div class="phone" id="ab1" data-who="Mia">
+    <div class="phone" id="ab1" data-who="Member B">
       <div class="status"><span>9:14</span><span class="si"><span class="sig"><i style="height:4px"></i><i style="height:6px"></i><i style="height:8px"></i><i style="height:11px"></i></span><span class="bat"></span></span></div>
       <div class="screen">
         <div class="scroll">
           <header class="hd">
-            <div><h1>Good morning, Mia</h1><p class="date">Saturday 3 October</p></div>
+            <div><h1>Good morning, Member B</h1><p class="date">Saturday 3 October</p></div>
             <button class="fab" data-act="open-sheet" aria-label="Add an event"><svg class="ic"><use href="#i-plus"/></svg></button>
           </header>
           <section class="blk"><h3 class="lab">Today</h3><div class="evs" data-render="events"></div></section>
@@ -395,7 +395,7 @@ html[data-eff=dark] .tt .sun{display:none}html[data-eff=dark] .tt .moon{display:
     </div></figure>
 
     <figure class="ab"><figcaption><b>2</b> List view</figcaption>
-    <div class="phone" id="ab2" data-who="Mia">
+    <div class="phone" id="ab2" data-who="Member B">
       <div class="status"><span>9:14</span><span class="si"><span class="sig"><i style="height:4px"></i><i style="height:6px"></i><i style="height:8px"></i><i style="height:11px"></i></span><span class="bat"></span></span></div>
       <div class="screen">
         <div class="scroll">
@@ -422,7 +422,7 @@ html[data-eff=dark] .tt .sun{display:none}html[data-eff=dark] .tt .moon{display:
     </div></figure>
 
     <figure class="ab"><figcaption><b>3</b> Event sheet</figcaption>
-    <div class="phone" id="ab3" data-who="Mia" data-clone-of="ab1">
+    <div class="phone" id="ab3" data-who="Member B" data-clone-of="ab1">
       <div class="status"><span>9:14</span><span class="si"><span class="sig"><i style="height:4px"></i><i style="height:6px"></i><i style="height:8px"></i><i style="height:11px"></i></span><span class="bat"></span></span></div>
       <div class="screen"></div>
       <div class="sheet-host" data-start-open></div><div class="toast" data-on="false"></div>
@@ -542,7 +542,7 @@ mq.addEventListener('change', paintTheme);
 addEventListener('message', e => { if (e.data && e.data.theme) setTheme(e.data.theme); });
 if (/dark|light/.test(location.hash)) setTheme(location.hash.replace('#', ''));
 
-/* ---------------- sample data (Kevin and Mia only) ---------------- */
+/* ---------------- sample data (Kevin and Member B only) ---------------- */
 const CATS = ['Groceries', 'Housing', 'Utilities', 'Dining', 'Transport', 'Health', 'Fun', 'Shopping', 'Income', 'Other'];
 const S = {
   todos: [
@@ -557,41 +557,41 @@ const S = {
   ],
   groceries: [
     { id: 'g1', name: 'Oat milk', meta: '2 cartons', by: 'Kevin', done: false },
-    { id: 'g2', name: 'Eggs', meta: 'One dozen', by: 'Mia', done: false },
-    { id: 'g3', name: 'Spinach', meta: '', by: 'Mia', done: false },
+    { id: 'g2', name: 'Eggs', meta: 'One dozen', by: 'Member B', done: false },
+    { id: 'g3', name: 'Spinach', meta: '', by: 'Member B', done: false },
     { id: 'g4', name: 'Bananas', meta: '', by: 'Kevin', done: false },
-    { id: 'g5', name: 'Greek yogurt', meta: 'The big tub', by: 'Mia', done: false },
-    { id: 'g6', name: 'Sourdough loaf', meta: '', by: 'Mia', done: false },
+    { id: 'g5', name: 'Greek yogurt', meta: 'The big tub', by: 'Member B', done: false },
+    { id: 'g6', name: 'Sourdough loaf', meta: '', by: 'Member B', done: false },
     { id: 'g7', name: 'Chicken thighs', meta: 'Bone-in', by: 'Kevin', done: false },
     { id: 'g8', name: 'Jasmine rice', meta: '', by: 'Kevin', done: false },
-    { id: 'g9', name: 'Olive oil', meta: '', by: 'Mia', done: false },
-    { id: 'g10', name: 'Lemons', meta: '', by: 'Mia', done: false },
+    { id: 'g9', name: 'Olive oil', meta: '', by: 'Member B', done: false },
+    { id: 'g10', name: 'Lemons', meta: '', by: 'Member B', done: false },
     { id: 'g11', name: 'Dish soap', meta: '', by: 'Kevin', done: false },
     { id: 'g12', name: 'Coffee beans', meta: 'Medium roast', by: 'Kevin', done: false },
     { id: 'g13', name: 'Butter', meta: '', by: 'Kevin', done: true, tickedBy: 'Kevin', tickedAt: 'at 8:40 this morning' },
-    { id: 'g14', name: 'Tomatoes', meta: '', by: 'Mia', done: true, tickedBy: 'Mia', tickedAt: 'yesterday' },
+    { id: 'g14', name: 'Tomatoes', meta: '', by: 'Member B', done: true, tickedBy: 'Member B', tickedAt: 'yesterday' },
   ],
   agenda: [
     { label: 'Today', date: 'Sat 3', today: true, rows: [
       { id: 'a1', time: '11:45 am', title: 'Soccer pickup', meta: 'Maplewood fields', kind: 'shared' },
-      { id: 'a2', time: '3:15 pm', title: 'Dentist, Mia', meta: 'Riverside Dental', kind: 'shared' },
-      { id: 'a3', time: '11:59 pm', title: 'HW 4 due', meta: 'Canvas, COSC 4320', kind: 'canvas', tick: true } ] },
+      { id: 'a2', time: '3:15 pm', title: 'Dentist, Member B', meta: 'Riverside Dental', kind: 'shared' },
+      { id: 'a3', time: '11:59 pm', title: 'HW 4 due', meta: 'Canvas, CSCI 3400', kind: 'canvas', tick: true } ] },
     { label: 'Sun', date: '4', rows: [ { id: 'a4', time: '9:00 am', title: 'Farmers market', meta: '', kind: 'shared' } ] },
     { label: 'Mon', date: '5', rows: [
       { id: 'a5', time: 'All day', title: 'Rent due', meta: '$1,850.00', kind: 'shared' },
-      { id: 'a6', time: '9:30 am', title: 'COSC 4320 lecture', meta: 'Class schedule', kind: 'canvas' },
-      { id: 'a7', time: '8:00 pm', title: 'Quiz 3 closes', meta: 'Canvas, COSC 4320', kind: 'canvas', tick: true } ] },
+      { id: 'a6', time: '9:30 am', title: 'CSCI 3400 lecture', meta: 'Class schedule', kind: 'canvas' },
+      { id: 'a7', time: '8:00 pm', title: 'Quiz 3 closes', meta: 'Canvas, CSCI 3400', kind: 'canvas', tick: true } ] },
     { label: 'Tue', date: '6', rows: [ { id: 'a8', time: '8:30 am', title: 'Oil change', meta: 'Fleet', kind: 'shared' } ] },
     { label: 'Wed', date: '7', rows: [
-      { id: 'a9', time: '9:30 am', title: 'COSC 4320 lecture', meta: 'Class schedule', kind: 'canvas' },
-      { id: 'a10', time: '11:59 pm', title: 'Lab 5 report due', meta: 'Canvas, COSC 4320', kind: 'canvas', tick: true } ] },
+      { id: 'a9', time: '9:30 am', title: 'CSCI 3400 lecture', meta: 'Class schedule', kind: 'canvas' },
+      { id: 'a10', time: '11:59 pm', title: 'Lab 5 report due', meta: 'Canvas, CSCI 3400', kind: 'canvas', tick: true } ] },
     { label: 'Thu', date: '8', rows: [ { id: 'a11', time: 'All day', title: 'Bins out', meta: '', kind: 'shared' } ] },
     { label: 'Fri', date: '9', rows: [ { id: 'a12', time: '7:30 pm', title: 'Dinner reservation', meta: 'Two people', kind: 'shared' } ] },
     { label: 'Sat', date: '10', rows: [] },
   ],
   lists: [
     { name: 'Groceries', key: 'groceries', shared: true },
-    { name: 'Hardware store', count: '4 to get', meta: 'Shared with Mia', shared: true },
+    { name: 'Hardware store', count: '4 to get', meta: 'Shared with Member B', shared: true },
     { name: 'Weekend ideas', count: '', meta: 'Nothing here yet', shared: true, empty: true },
   ],
   tx: [
@@ -601,7 +601,7 @@ const S = {
     { id: 'x4', date: 'Oct 1', m: 'Oct', desc: 'City Water & Power', acct: 'checking', amt: -86.40, cat: 'Utilities', prov: false },
     { id: 'x5', date: 'Oct 1', m: 'Oct', desc: 'Paycheck, Northside Univ.', acct: 'checking', amt: 2310.55, cat: 'Income', prov: false },
     { id: 'x6', date: 'Oct 1', m: 'Oct', desc: 'Corner Market', acct: 'checking', amt: -112.37, cat: 'Groceries', prov: false },
-    { id: 'x7', date: 'Oct 1', m: 'Oct', desc: 'Transfer to Mia', acct: 'checking', amt: -45.00, cat: '', prov: false },
+    { id: 'x7', date: 'Oct 1', m: 'Oct', desc: 'Transfer to Member B', acct: 'checking', amt: -45.00, cat: '', prov: false },
     { id: 'x8', date: 'Oct 1', m: 'Oct', desc: 'Riverside Dental', acct: 'card', amt: -120.00, cat: 'Health', prov: true },
     { id: 'x9', date: 'Sep 30', m: 'Sep', desc: 'Costco Wholesale', acct: 'card', amt: -187.64, cat: '', prov: true },
     { id: 'x10', date: 'Sep 30', m: 'Sep', desc: 'Blue Door Coffee', acct: 'card', amt: -6.50, cat: '', prov: true },
@@ -671,7 +671,7 @@ function renderAgenda() {
 }
 function renderLists() {
   const items = S.lists.map(l => l.key === 'groceries'
-    ? { ...l, count: open().length ? `${open().length} to get` : 'Nothing left to get', meta: `Shared with ${'Mia'}${done().length ? ` · ${done().length} ticked` : ''}` }
+    ? { ...l, count: open().length ? `${open().length} to get` : 'Nothing left to get', meta: `Shared with ${'Member B'}${done().length ? ` · ${done().length} ticked` : ''}` }
     : l);
   $$('[data-render="lists"]').forEach(c => c.replaceChildren(...items.flatMap(l => Array.from(frag(fill('listsum', l)).childNodes))));
 }
@@ -793,7 +793,7 @@ function sheetSave(sheet) {
 }
 
 /* ---------------- ticks ---------------- */
-function whoOf(el) { const w = el.closest('[data-who]'); return w ? w.dataset.who : 'Mia'; }
+function whoOf(el) { const w = el.closest('[data-who]'); return w ? w.dataset.who : 'Member B'; }
 function tickTodo(btn) {
   const t = S.todos.find(x => x.id === btn.dataset.id); t.done = !t.done;
   $$(`[data-act="tick-todo"][data-id="${t.id}"]`).forEach(b => { b.setAttribute('aria-checked', String(t.done)); b.closest('[data-row]').classList.toggle('done', t.done); });

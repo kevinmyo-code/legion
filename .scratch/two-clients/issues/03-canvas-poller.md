@@ -36,7 +36,7 @@ From ticket 08, "A discussion is more than one deadline (Kevin, 2026-09-05)":
 >
 > Canvas exposes ONE `due_at` per discussion, and it is the LAST obligation (the replies). The
 > initial post is a separate, earlier deadline that lives only in the assignment description and the
-> syllabus. The 2026-09-04 reconciliation held back 15 MATH 3391 "first post due Wednesday" rows as
+> syllabus. The 2026-09-04 reconciliation held back 15 STAT 2300 "first post due Wednesday" rows as
 > probable duplicates of the Friday discussion; that was wrong, and they are being written as their
 > own task rows with `structured_meta.parent_canvas_assignment_id` pointing at the Canvas discussion
 > they belong to.

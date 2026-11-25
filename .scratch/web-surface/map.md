@@ -59,7 +59,7 @@ items. This is the surface Kevin called **his workbench** - review and edit reco
 ingestion - and it currently cannot do any of that.
 
 **The phone and the desktop are not one page reflowed.** Same data, same account, different job:
-Mia glances and ticks; Kevin needs density, history and write access. Designing one responsive column
+Member B glances and ticks; Kevin needs density, history and write access. Designing one responsive column
 for both is what produced an empty desktop.
 
 ### 3. Nine deadlines look like nine unrelated rows
@@ -77,7 +77,7 @@ anywhere on the web. 92 past events and every historical tick are unreachable.
 
 Because the answer differs by surface, and that is the whole finding:
 
-**Phone / Mia** - one question: *what do I need to do or know today?* Ticks, today's events, nothing
+**Phone / Member B** - one question: *what do I need to do or know today?* Ticks, today's events, nothing
 else. She should never see a table, a provenance tag, or an ingestion control.
 
 **Desktop / Kevin** - three questions at once: *what is coming at me, what needs a decision, and

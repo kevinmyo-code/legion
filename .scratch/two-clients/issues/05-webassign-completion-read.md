@@ -14,7 +14,7 @@ tags: [ticket]
 
 # The WebAssign completion read
 
-MATH 3391's homework and chapter quizzes live on WebAssign, not Canvas. Canvas carries `not_graded`
+STAT 2300's homework and chapter quizzes live on WebAssign, not Canvas. Canvas carries `not_graded`
 placeholders it can never mark submitted, so [[03-canvas-poller]] structurally cannot see whether a
 WebAssign week is done. This ticket is the read that can.
 
