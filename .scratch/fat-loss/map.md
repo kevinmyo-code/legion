@@ -35,7 +35,7 @@ against his goal, and one sentence stops it forever. The Body tab shows this at 
 3. **Food logging is "mostly voice + saved meals".** Track **kcal and protein only**; carbs and fat
    are optional everywhere.
 4. **Gym access: yes.** The default programme is 3 full-body strength days.
-5. **Diet:** *"i can follow any kind of diet i dont have food preferences"*. No diet style is
+5. **Diet:** he follows no particular diet and has no food preferences. No diet style is
    assumed or pushed.
 6. **His wife won't use it** (*"8 no"*). Body data stays household-shared; no per-member owner
    migration now. **The shared body tables rest on this ruling**: if a second member starts

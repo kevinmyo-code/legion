@@ -55,7 +55,7 @@ Status: research only, ticket 05 blocked on 03/04. No screen built yet.
 - Order in Life360: phone number -> SMS verification -> name -> email -> birthday -> **then** the
   code-or-create fork. Identity is built first, household membership decided last. For LEGION this
   ordering is probably wrong for the audience: Kevin's parents receiving a text with a link should
-  land on a page that already shows "You've been invited to join the Myo household" (or whatever
+  land on a page that already shows "You've been invited to join the Test House" (or whatever
   the household is named) **before** asking them to make an account, because it answers "what is
   this and can I trust it" up front — see Life360's Add Member flow below for why.
 - **Invite codes are short-lived (72 hours) and sent through the inviter's own messaging app**
@@ -117,7 +117,7 @@ Status: research only, ticket 05 blocked on 03/04. No screen built yet.
 +----------------------------------------------------+
 |                                                       |
 |   You've been invited to join                        |
-|   the Myo household                                  |
+|   the Test House                                    |
 |                                                       |
 |   [Household name] uses this to keep everyone's       |
 |   calendar and lists in one place.                    |
