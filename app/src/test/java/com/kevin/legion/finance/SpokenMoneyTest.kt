@@ -39,7 +39,7 @@ class SpokenMoneyTest {
     @Test
     fun `a mask is said digit by digit`() {
         assertEquals("one zero zero zero", SpokenMoney.digits("1000"))
-        assertEquals("seven eight two three", SpokenMoney.digits("7823"))
+        assertEquals("one one nine nine", SpokenMoney.digits("1199"))
         assertEquals("four four one zero", SpokenMoney.digits("****4410"))
     }
 

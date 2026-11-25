@@ -7,7 +7,7 @@ file under `server/finance/` to the values named here, so a figure typed into a
 test from anywhere else fails the suite.
 
 Two members, Alex and Sam River, one US checking and card on the bank feed
-(masks 1000 and 7823, the same masks `tests/test_plaid.py` invents), and a
+(masks 1000 and 1199, the same masks `tests/test_plaid.py` invents), and a
 Singapore account and card from statements.
 """
 
@@ -21,7 +21,7 @@ MEMBERS = {
 }
 
 CHECKING_LAST4 = "1000"
-CARD_LAST4 = "7823"
+CARD_LAST4 = "1199"
 SG_LAST4 = "2000"
 SG_CARD_LAST4 = "3000"
 # Every four-digit account number a finance test may use.

@@ -602,7 +602,7 @@ def test_monthly_spend_is_the_spend_routes_figure_and_says_its_caveats(
 
     statement(
         household_a,
-        "7823",
+        "1199",
         "BofA card",
         [
             line("2026-09-05", "HEB", -1_000, "Groceries"),

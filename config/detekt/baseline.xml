@@ -3034,7 +3034,7 @@
     <ID>MaxLineLength:LedgerController.kt:LedgerController$suspend</ID>
     <ID>MaxLineLength:LedgerController.kt:LedgerController$val expenses = operatingExpenses(entity, inPeriod, pairingWindow, ownAccountIds = ownAccountIds, accountFilter = accountFilter)</ID>
     <ID>MaxLineLength:LedgerController.kt:LedgerController$val matched = applyToMatching(context) { it.category == null &amp;&amp; it.description.uppercase().contains(merchantKey.uppercase()) }</ID>
-    <ID>MaxLineLength:LedgerControllerOwnAccountMovementsTest.kt:LedgerControllerOwnAccountMovementsTest$txn("4111111115042", -1300_00, "Online Banking payment to CRD 7823 Confirmation# 0649409616", category = "Shopping")</ID>
+    <ID>MaxLineLength:LedgerControllerOwnAccountMovementsTest.kt:LedgerControllerOwnAccountMovementsTest$txn("4111111115042", -1300_00, "Online Banking payment to CRD 1199 Confirmation# 0649409616", category = "Shopping")</ID>
     <ID>MaxLineLength:LedgerControllerPendingHandPathTest.kt:LedgerControllerPendingHandPathTest$assertTrue("a voice-logged pending row is never mistaken for a file-derived one", row.lineRef.startsWith("voice:"))</ID>
     <ID>MaxLineLength:LedgerControllerPendingHandPathTest.kt:LedgerControllerPendingHandPathTest$fun</ID>
     <ID>MaxLineLength:LedgerCoverageTest.kt:LedgerCoverageTest$assertEquals(MONTH_END, coveredThroughMs(listOf(MONTH_START to (MONTH_END + 5 * DAY_MS)), MONTH_START, MONTH_END))</ID>
@@ -3078,7 +3078,7 @@
     <ID>MaxLineLength:LedgerTransfersTest.kt:LedgerTransfersTest$/** The default (no [ownAccountIds] argument) behaves exactly as before 2026-08-13 - existing callers that never pass it are unaffected. */</ID>
     <ID>MaxLineLength:LedgerTransfersTest.kt:LedgerTransfersTest$fun</ID>
     <ID>MaxLineLength:LedgerTransfersTest.kt:LedgerTransfersTest$val outOfPeriodPartner = txn("savings", -1300_00, txnDate = DAY_1 + 3 * DAY_MS, description = "TRANSFER FROM CHK")</ID>
-    <ID>MaxLineLength:LedgerTransfersTest.kt:LedgerTransfersTest$val toUnknownSavings = txn("checking", -50000, description = "Online Banking transfer to SAV 8267 Confirmation# 1771219781")</ID>
+    <ID>MaxLineLength:LedgerTransfersTest.kt:LedgerTransfersTest$val toUnknownSavings = txn("checking", -50000, description = "Online Banking transfer to SAV 2277 Confirmation# 1771219781")</ID>
     <ID>MaxLineLength:LedgerTransfersTest.kt:LedgerTransfersTest.Companion$private const val DAY_1 = 1_753_920_000_000L // 2025-07-31T00:00:00Z-ish, an arbitrary UTC-midnight-aligned instant</ID>
     <ID>MaxLineLength:LedgerWriteDialogs.kt:DirectionChoice("Credit", direction == "credit", enabled = !busy, modifier = Modifier.padding(start = 16.dp)) { direction = "credit" }</ID>
     <ID>MaxLineLength:LedgerWriteDialogs.kt:Text(dollarsParseErrorMessage(), style = LegionType.stamp, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 6.dp))</ID>
@@ -3245,7 +3245,7 @@
     <ID>MaxLineLength:LiveToolboxDeclarationSetTest.kt:LiveToolboxDeclarationSetTest$assertTrue("clear_codes must be declared() so the live model can call it", "clear_codes" in names(LiveToolbox.declarations()))</ID>
     <ID>MaxLineLength:LiveToolboxGoalPlanTest.kt:LiveToolboxGoalPlanTest$assertTrue("the earlier constraint must reach the new call's prompt without being restated", combined.contains("no gym access"))</ID>
     <ID>MaxLineLength:LiveToolboxGoalPlanTest.kt:LiveToolboxGoalPlanTest$goals = listOf(GoalPlanGoal(aspect = "bio", statement = "get to 175 lbs", targetValue = 175.0, unit = "lbs"))</ID>
-    <ID>MaxLineLength:LiveToolboxMonthlySpendTest.kt:LiveToolboxMonthlySpendTest$txn("4111111115042", -1300_00, "Online Banking payment to CRD 7823 Confirmation# 0649409616", category = "Shopping")</ID>
+    <ID>MaxLineLength:LiveToolboxMonthlySpendTest.kt:LiveToolboxMonthlySpendTest$txn("4111111115042", -1300_00, "Online Banking payment to CRD 1199 Confirmation# 0649409616", category = "Shopping")</ID>
     <ID>MaxLineLength:LiveToolboxNextServiceGuessCaveatTest.kt:LiveToolboxNextServiceGuessCaveatTest$MaintenanceItem(vehicleId = "AA:BB", serviceName = "Oil Change", intervalSource = "SEEDED", intervalMiles = 5000, lastDoneMileage = 1000)</ID>
     <ID>MaxLineLength:LiveToolboxNextServiceGuessCaveatTest.kt:LiveToolboxNextServiceGuessCaveatTest$MaintenanceItem(vehicleId = "CC:DD", serviceName = "Oil Change", intervalSource = "CONFIRMED", intervalMiles = 5000, lastDoneMileage = 1000)</ID>
     <ID>MaxLineLength:LiveToolboxNextServiceGuessCaveatTest.kt:LiveToolboxNextServiceGuessCaveatTest$Vehicle(obdMac = mac, name = name, make = "Test", model = "Car", year = 2020, personaPrompt = "", odometerBaseline = 2000, odometerBaselineAt = 1L)</ID>
@@ -3402,7 +3402,7 @@
     <ID>MaxLineLength:MetersScreen.kt:fraction = loggedGap.gap.actual.caloriesKcal.toFloat() / loggedGap.gap.target.caloriesKcal.toFloat()</ID>
     <ID>MaxLineLength:MetersScreen.kt:val balanceLine = buildCredBalanceLine(groupAccountBalances(state.ledgerBalances), state.nominatedAccountId)</ID>
     <ID>MaxLineLength:MetersScreenTest.kt:MetersScreenTest$assertTrue(sentence != null &amp;&amp; sentence.contains("not assigned to a category") &amp;&amp; sentence.contains("NOT counted in spend"))</ID>
-    <ID>MaxLineLength:MetersScreenTest.kt:MetersScreenTest$coverage = listOf(AccountCoverage("7823", coversWholeMonth = true, coveredFromMs = 0L, coveredToMs = 1L, coveredThroughMs = 1L))</ID>
+    <ID>MaxLineLength:MetersScreenTest.kt:MetersScreenTest$coverage = listOf(AccountCoverage("1199", coversWholeMonth = true, coveredFromMs = 0L, coveredToMs = 1L, coveredThroughMs = 1L))</ID>
     <ID>MaxLineLength:MetersScreenTest.kt:MetersScreenTest$val breaches = buildMeterBreaches(null, listOf(dueRow(overdue = true), dueRow(overdue = true), dueRow(overdue = false)))</ID>
     <ID>MaxLineLength:MidnightApplication.kt:MidnightApplication$runCatching { com.kevin.legion.engine.migration.EngineDataMigrationWave1.catchUpOnce(this@MidnightApplication) }</ID>
     <ID>MaxLineLength:MidnightApplication.kt:MidnightApplication$runCatching { com.kevin.legion.engine.migration.EngineDataMigrationWave1.copyNotesIfNeeded(this@MidnightApplication) }</ID>
@@ -3958,7 +3958,7 @@
     <ID>MaxLineLength:TodayGapResolversTest.kt:TodayGapResolversTest$AccountCoverage("checking", coversWholeMonth = false, coveredFromMs = aug(1), coveredToMs = aug(12), coveredThroughMs = aug(12))</ID>
     <ID>MaxLineLength:TodayGapResolversTest.kt:TodayGapResolversTest$assertEquals("spent so far", buildCredTile(budgetFixture(listOf(line), coverage = neverReachesStart), "AUG").caption)</ID>
     <ID>MaxLineLength:TodayGapResolversTest.kt:TodayGapResolversTest$latest = BodyweightLog(weightValue = 187.4, weightUnit = "lbs", loggedAt = 0L, trustTier = TrustTier.REPORTED)</ID>
-    <ID>MaxLineLength:TodayGapResolversTest.kt:TodayGapResolversTest$listOf(AccountCoverage("7823", coversWholeMonth = true, coveredFromMs = 0L, coveredToMs = 1L, coveredThroughMs = 1L))</ID>
+    <ID>MaxLineLength:TodayGapResolversTest.kt:TodayGapResolversTest$listOf(AccountCoverage("1199", coversWholeMonth = true, coveredFromMs = 0L, coveredToMs = 1L, coveredThroughMs = 1L))</ID>
     <ID>MaxLineLength:TodayGapResolversTest.kt:TodayGapResolversTest$private</ID>
     <ID>MaxLineLength:TodayGapResolversTest.kt:TodayGapResolversTest$private fun bwLog(kg: Double, at: Long = 0L)</ID>
     <ID>MaxLineLength:TodayGapResolversTest.kt:TodayGapResolversTest$val calm = com.kevin.legion.weather.WeatherController.WeatherInfo(tempF = 72, description = "partly cloudy", caution = false)</ID>

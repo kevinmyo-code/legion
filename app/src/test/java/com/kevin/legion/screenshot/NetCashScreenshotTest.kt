@@ -111,7 +111,7 @@ class NetCashScreenshotTest {
     @Config(qualifiers = ScreenshotDeviceConfig.QUALIFIERS)
     fun `money - the working, the line and no floor`() {
         shot("net-cash-money.png") { Money(FinanceRead.Fresh(BODY)) }
-        rule.onAllNodesWithText("Rewards Card ending 7823").onFirst().assertExists()
+        rule.onAllNodesWithText("Rewards Card ending 1199").onFirst().assertExists()
     }
 
     @Test
@@ -176,7 +176,7 @@ class NetCashScreenshotTest {
                     "checking", "Everyday Checking", "1000", "USD", 180_000, "bank_available", -650, 1, AS_OF,
                 ),
                 NetCashPartWire(
-                    "card", "Rewards Card", "7823", "USD", -39_782, "current_plus_pending", -1_500, 2, AS_OF,
+                    "card", "Rewards Card", "1199", "USD", -39_782, "current_plus_pending", -1_500, 2, AS_OF,
                 ),
             ),
             history = NetCashHistoryWire(
@@ -190,10 +190,10 @@ class NetCashScreenshotTest {
         )
         val MISSING = NetCashWire(
             available = false,
-            reason = "No net cash figure: Rewards Card ending 7823: the bank sent no balance for this card.",
+            reason = "No net cash figure: Rewards Card ending 1199: the bank sent no balance for this card.",
             parts = BODY.parts.take(1),
             missing = listOf(
-                NetCashMissingWire("card", "Rewards Card", "7823", "the bank sent no balance for this card"),
+                NetCashMissingWire("card", "Rewards Card", "1199", "the bank sent no balance for this card"),
             ),
         )
         val GLANCE = TypesetGlance(

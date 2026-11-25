@@ -714,7 +714,7 @@ internal fun recategorizeResultMessage(result: CategorySetResult, keyText: Strin
 private val previewCategorized = LedgerTransaction(
     id = 1,
     sourceFile = "eStmt_2026-07.pdf",
-    accountId = "5555555555557823",
+    accountId = "5555555555551199",
     currency = LedgerCurrency.USD,
     txnDate = System.currentTimeMillis(),
     description = "SYLAMORE CREEK CAMP",

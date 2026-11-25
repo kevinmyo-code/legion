@@ -117,7 +117,7 @@ def test_card_payments_are_already_netted_by_the_port():
     the checking side and the card side, equal and opposite, two days apart."""
     rows = [
         Txn(1, "1000", -40_000, DAY, "BANK CREDIT CARD Bill Payment", None),
-        Txn(2, "7823", 40_000, DAY + dt.timedelta(days=2), "PAYMENT - THANK YOU", None),
+        Txn(2, "1199", 40_000, DAY + dt.timedelta(days=2), "PAYMENT - THANK YOU", None),
     ]
     analysis = analyze_transfers(rows, rows)
     assert analysis.operating == []

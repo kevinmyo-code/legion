@@ -45,8 +45,8 @@ class MoneyTileModelTest {
     fun `categories are summed across accounts and sorted largest first`() {
         val c = combined(
             listOf(
-                txn(1, -3_000, "BofA card 7823", "Dining"), txn(2, -2_000, "BofA checking 5042", "Dining"),
-                txn(2, -9_000, "BofA checking 5042", "Groceries"), txn(3, -500, "BofA card 7823", "Fuel"),
+                txn(1, -3_000, "BofA card 1199", "Dining"), txn(2, -2_000, "BofA checking 5042", "Dining"),
+                txn(2, -9_000, "BofA checking 5042", "Groceries"), txn(3, -500, "BofA card 1199", "Fuel"),
             ),
         )
         assertEquals(
@@ -68,9 +68,9 @@ class MoneyTileModelTest {
     fun `a refund is not netted and a card payment is not spend`() {
         val c = combined(
             listOf(
-                txn(1, -4_000, "BofA card 7823", "Shopping"), txn(2, 1_500, "BofA card 7823", "Shopping"),
-                txn(2, -50_000, "BofA checking 5042", "Payments").copy(description = "PAYMENT TO CRD 7823"),
-                txn(2, 50_000, "BofA card 7823", "Payments").copy(description = "PAYMENT FROM CHK 5042"),
+                txn(1, -4_000, "BofA card 1199", "Shopping"), txn(2, 1_500, "BofA card 1199", "Shopping"),
+                txn(2, -50_000, "BofA checking 5042", "Payments").copy(description = "PAYMENT TO CRD 1199"),
+                txn(2, 50_000, "BofA card 1199", "Payments").copy(description = "PAYMENT FROM CHK 5042"),
             ),
         )
         assertEquals(4_000L, c.totalCents)

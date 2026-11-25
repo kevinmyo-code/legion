@@ -129,7 +129,7 @@ describe('a member with a full household', () => {
       accounts: [
         {
           name: 'Adv Plus Banking',
-          mask: '7823',
+          mask: '1199',
           type: 'credit',
           subtype: 'credit card',
           balance_current_cents: 141007,

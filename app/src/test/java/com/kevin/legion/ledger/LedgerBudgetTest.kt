@@ -190,7 +190,7 @@ class LedgerBudgetTest {
     @Test
     fun `an unpaired transfer-looking leg still counts as spend - the other statement isn't on file yet`() {
         val unpaired = txn(
-            "card", -1300_00, description = "PAYMENT TO SAV 8267 CONF#v1ikbyqeg", category = "Groceries",
+            "card", -1300_00, description = "PAYMENT TO SAV 2277 CONF#v1ikbyqeg", category = "Groceries",
         )
 
         val result = buildBudgetVsActual(
@@ -347,7 +347,7 @@ class LedgerBudgetTest {
     @Test
     fun `an own-account card payment is excluded from spend and shows up in the disclosure`() {
         val groceries = txn("checking", -80_00, description = "KROGER", category = "Groceries")
-        val cardPayment = txn("checking", -1300_00, description = "PAYMENT TO CRD 7823", category = "Groceries")
+        val cardPayment = txn("checking", -1300_00, description = "PAYMENT TO CRD 1199", category = "Groceries")
 
         val result = buildBudgetVsActual(
             entity = LedgerEntity.US,
@@ -356,7 +356,7 @@ class LedgerBudgetTest {
             pairingWindow = listOf(groceries, cardPayment),
             targets = mapOf("Groceries" to 100_00),
             coverage = completeCoverage("checking"),
-            ownAccountIds = setOf("4111111111117823"),
+            ownAccountIds = setOf("4111111111111199"),
         )
 
         // The card payment never reaches the Groceries line...
@@ -378,7 +378,7 @@ class LedgerBudgetTest {
             pairingWindow = listOf(zelle),
             targets = mapOf("Shopping" to 1000_00),
             coverage = completeCoverage("checking"),
-            ownAccountIds = setOf("4111111111117823", "4111111115042"),
+            ownAccountIds = setOf("4111111111111199", "4111111115042"),
         )
 
         assertEquals(400_00L, result.lines.single().gap.actual)
@@ -431,14 +431,14 @@ class LedgerBudgetTest {
     @Test
     fun `a not-spending category does not disturb card-payment pairing`() {
         val groceries = txn("checking", -80_00, description = "KROGER", category = "Groceries")
-        val cardPayment = txn("checking", -1300_00, description = "PAYMENT TO CRD 7823", category = "Groceries")
+        val cardPayment = txn("checking", -1300_00, description = "PAYMENT TO CRD 1199", category = "Groceries")
         val zelle = txn("checking", -400_00, description = "ZELLE PAYMENT TO MIA", category = "Transfers")
         val rows = listOf(groceries, cardPayment, zelle)
 
         val result = buildBudgetVsActual(
             entity = LedgerEntity.US, month = MONTH, inPeriod = rows, pairingWindow = rows,
             targets = mapOf("Groceries" to 100_00), coverage = completeCoverage("checking"),
-            ownAccountIds = setOf("4111111111117823"),
+            ownAccountIds = setOf("4111111111111199"),
             notSpending = setOf("Transfers"),
         )
 
@@ -472,7 +472,7 @@ class LedgerBudgetTest {
 
     @Test
     fun `omitting ownAccountIds leaves the disclosure empty - the pre-2026-08-13 default`() {
-        val cardPayment = txn("checking", -1300_00, description = "PAYMENT TO CRD 7823", category = "Groceries")
+        val cardPayment = txn("checking", -1300_00, description = "PAYMENT TO CRD 1199", category = "Groceries")
 
         val result = buildBudgetVsActual(
             entity = LedgerEntity.US,
@@ -706,7 +706,7 @@ class LedgerBudgetTest {
     @Test
     fun `accountFilter narrows the excluded-own-account disclosure to the selected cluster`() {
         val cardPaymentFromChecking = txn(
-            "checking", -1300_00, description = "PAYMENT TO CRD 7823", category = "Groceries",
+            "checking", -1300_00, description = "PAYMENT TO CRD 1199", category = "Groceries",
         )
         val debitTransferOut = txn(
             "debit", -400_00, description = "PAYMENT TO CRD 9999", category = "Shopping",
@@ -719,7 +719,7 @@ class LedgerBudgetTest {
             pairingWindow = listOf(cardPaymentFromChecking, debitTransferOut),
             targets = mapOf("Groceries" to 100_00, "Shopping" to 100_00),
             coverage = completeCoverage("checking", "debit"),
-            ownAccountIds = setOf("4111111111117823", "4222222222229999"),
+            ownAccountIds = setOf("4111111111111199", "4222222222229999"),
             accountFilter = setOf("checking"),
         )
 

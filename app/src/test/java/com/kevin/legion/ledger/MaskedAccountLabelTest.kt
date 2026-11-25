@@ -11,13 +11,13 @@ import org.junit.Test
 class MaskedAccountLabelTest {
 
     @Test fun `full card number is masked to its last four`() {
-        assertEquals("****7823", maskedAccountLabel("4111111111117823"))
+        assertEquals("****1199", maskedAccountLabel("4111111111111199"))
     }
 
     @Test fun `bare last-four is left alone`() {
-        // BofaCardCsvStatementParser stores exactly this. It is not a secret, and "****7823"
+        // BofaCardCsvStatementParser stores exactly this. It is not a secret, and "****1199"
         // would read as though four more digits had been hidden.
-        assertEquals("7823", maskedAccountLabel("7823"))
+        assertEquals("1199", maskedAccountLabel("1199"))
     }
 
     @Test fun `already-masked label survives untouched`() {
@@ -35,6 +35,6 @@ class MaskedAccountLabelTest {
     @Test fun `masking does not change the stored identity relation`() {
         // The point of the whole file: display is not identity. sameCard still matches on the
         // stored strings, whatever the UI paints.
-        assertEquals(true, sameCard("4111111111117823", "7823"))
+        assertEquals(true, sameCard("4111111111111199", "1199"))
     }
 }

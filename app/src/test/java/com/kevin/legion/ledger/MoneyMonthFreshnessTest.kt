@@ -57,7 +57,7 @@ class MoneyMonthFreshnessTest {
     @Test
     fun `a bare last-4 and a full number share one newest date`() {
         val rows = listOf(
-            txn(LocalDate.of(2026, 9, 1), "5555555555557823"), txn(LocalDate.of(2026, 9, 9), "7823"),
+            txn(LocalDate.of(2026, 9, 1), "5555555555551199"), txn(LocalDate.of(2026, 9, 9), "1199"),
         )
         val data = buildMoneyMonthData(rows, oct, emptySet())
         assertEquals(1, data.newestByAccount.size)

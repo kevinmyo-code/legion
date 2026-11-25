@@ -75,7 +75,7 @@ class HomeContentScreenshotTest {
             uncategorized = UncategorizedSpend(spentCents = uncategorizedCents, hasProvisionalRows = false),
             coverage = listOf(
                 AccountCoverage(
-                    "7823", coversWholeMonth = true, coveredFromMs = 0L, coveredToMs = 1L, coveredThroughMs = 1L,
+                    "1199", coversWholeMonth = true, coveredFromMs = 0L, coveredToMs = 1L, coveredThroughMs = 1L,
                 ),
             ),
             excludedOwnAccountMovements = ExcludedOwnAccountMovements(0, 0L, emptyList()),

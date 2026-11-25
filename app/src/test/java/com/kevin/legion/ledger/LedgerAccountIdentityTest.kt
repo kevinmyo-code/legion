@@ -14,18 +14,18 @@ class LedgerAccountIdentityTest {
 
     @Test
     fun `sameCard matches on last-4 suffix regardless of full account length`() {
-        assertTrue(sameCard("4111111111117823", "7823"))
-        assertTrue(sameCard("7823", "4111111111117823"))
-        assertFalse(sameCard("4111111111117823", "9999"))
+        assertTrue(sameCard("4111111111111199", "1199"))
+        assertTrue(sameCard("1199", "4111111111111199"))
+        assertFalse(sameCard("4111111111111199", "9999"))
     }
 
     @Test
     fun `a card payment naming the card's own account is an own-account reference`() {
-        // Real shape: `Online Banking payment to CRD 7823 Confirmation# 0649409616`.
+        // Real shape: `Online Banking payment to CRD 1199 Confirmation# 0649409616`.
         assertTrue(
             referencesOwnAccount(
-                "Online Banking payment to CRD 7823 Confirmation# 0649409616",
-                ownAccountIds = setOf("4111111111117823"),
+                "Online Banking payment to CRD 1199 Confirmation# 0649409616",
+                ownAccountIds = setOf("4111111111111199"),
             ),
         )
     }
@@ -43,16 +43,16 @@ class LedgerAccountIdentityTest {
 
     @Test
     fun `a savings transfer naming an account never on file is NOT an own-account reference - conservative by design`() {
-        // Real shape: `Online Banking transfer from SAV 8267 Confirmation# 1731436758` - Kevin's
-        // real data never had a statement imported for the account ending 8267, so `ownAccountIds`
+        // Real shape: `Online Banking transfer from SAV 2277 Confirmation# 1731436758` - Kevin's
+        // real data never had a statement imported for the account ending 2277, so `ownAccountIds`
         // (built from LedgerTransactionDao.accountIdsForCurrency) never contains it. Per the
         // 2026-08-13 instruction, the failure that matters is wrongly EXCLUDING real spend, so an
         // unconfirmed reference must return false here rather than guess - this row falls back to
         // whatever TRANSFER_KEYWORDS already decided (the pre-existing status quo), never worse.
         assertFalse(
             referencesOwnAccount(
-                "Online Banking transfer from SAV 8267 Confirmation# 1731436758",
-                ownAccountIds = setOf("4111111115042", "4111111111117823"),
+                "Online Banking transfer from SAV 2277 Confirmation# 1731436758",
+                ownAccountIds = setOf("4111111115042", "4111111111111199"),
             ),
         )
     }
@@ -64,7 +64,7 @@ class LedgerAccountIdentityTest {
         assertFalse(
             referencesOwnAccount(
                 "Zelle payment to  R Alan Cole US Conf# b4nb0qacg",
-                ownAccountIds = setOf("4111111115042", "4111111111117823"),
+                ownAccountIds = setOf("4111111115042", "4111111111111199"),
             ),
         )
     }
@@ -75,33 +75,33 @@ class LedgerAccountIdentityTest {
         assertFalse(
             referencesOwnAccount(
                 "Zelle payment from JANE R DOE Conf# pwekdcqu8",
-                ownAccountIds = setOf("4111111115042", "4111111111117823"),
+                ownAccountIds = setOf("4111111115042", "4111111111111199"),
             ),
         )
     }
 
     @Test
     fun `a merchant address digit run is never mistaken for an account reference`() {
-        // Real false-positive risk this repo measured: `CIRCLE K # 48267 CYPRESS TX` contains the
-        // digits 48267 (which even ENDS in 8267, the savings account's own last-4) purely by
+        // Real false-positive risk this repo measured: `CIRCLE K # 42277 CYPRESS TX` contains the
+        // digits 42277 (which even ENDS in 2277, the savings account's own last-4) purely by
         // coincidence of a gas station's store number - it must never match because it is never
         // preceded by CRD/CHK/SAV/ACCT.
         assertFalse(
             referencesOwnAccount(
-                "CIRCLE K # 48267         CYPRESS      TX",
-                ownAccountIds = setOf("4111111115042", "4111111111117823", "38267"),
+                "CIRCLE K # 42277         CYPRESS      TX",
+                ownAccountIds = setOf("4111111115042", "4111111111111199", "32277"),
             ),
         )
     }
 
     @Test
     fun `an empty ownAccountIds set never matches anything, even a real CRD reference`() {
-        assertFalse(referencesOwnAccount("PAYMENT TO CRD 7823", ownAccountIds = emptySet()))
+        assertFalse(referencesOwnAccount("PAYMENT TO CRD 1199", ownAccountIds = emptySet()))
     }
 
     @Test
     fun `a description naming no digits at all never matches`() {
-        assertFalse(referencesOwnAccount("MOBILE BANKING PAYMENT TO CRD", ownAccountIds = setOf("4111111111117823")))
+        assertFalse(referencesOwnAccount("MOBILE BANKING PAYMENT TO CRD", ownAccountIds = setOf("4111111111111199")))
     }
 
     // ---- 2026-08-18: the Money tab's per-account toggle predicate ---------------------------

@@ -57,7 +57,7 @@ CHECKING = {
 }
 CARD = {
     "account_id": "acc-card",
-    "mask": "7823",
+    "mask": "1199",
     "name": "Customized Cash Rewards",
     "official_name": None,
     "type": "credit",
@@ -268,7 +268,7 @@ def test_added_modified_and_removed_are_applied_and_the_cursor_kept(fake, item, 
     item.refresh_from_db()
     assert item.cursor == "c1"
     assert item.institution_name == "Bank of America"
-    assert {a["mask"] for a in item.accounts} == {"1000", "7823"}
+    assert {a["mask"] for a in item.accounts} == {"1000", "1199"}
     old_b = rows["t-b"].id
 
     fake.page(
@@ -393,15 +393,15 @@ def test_the_feed_replaces_older_rows_from_its_earliest_date_and_moves_their_cat
     # Card: provisional CSV rows, one with a person's category that a bank row
     # matches (one day apart, same cents), one with a category nothing matches,
     # and one before the feed's window.
-    matched = _provisional(household_a, last4="7823", date="2026-09-10", amount=-4000,
+    matched = _provisional(household_a, last4="1199", date="2026-09-10", amount=-4000,
                            description="SHELL OIL 123")
     person_override(matched, "Fuel")
-    orphan = _provisional(household_a, last4="7823", date="2026-09-15", amount=-9999,
+    orphan = _provisional(household_a, last4="1199", date="2026-09-15", amount=-9999,
                           description="GIFT SHOP")
     person_override(orphan, "Gifts")
-    before = _provisional(household_a, last4="7823", date="2026-08-01", amount=-100,
+    before = _provisional(household_a, last4="1199", date="2026-08-01", amount=-100,
                           description="OLD")
-    plain = _provisional(household_a, last4="7823", date="2026-09-14", amount=-700,
+    plain = _provisional(household_a, last4="1199", date="2026-09-14", amount=-700,
                          description="PARKING")
 
     fake.page(
@@ -439,7 +439,7 @@ def test_the_feed_replaces_older_rows_from_its_earliest_date_and_moves_their_cat
 
 
 def test_an_unmatched_category_is_reported_in_the_sync_result(fake, item, household_a):
-    orphan = _provisional(household_a, last4="7823", date="2026-09-15", amount=-9999,
+    orphan = _provisional(household_a, last4="1199", date="2026-09-15", amount=-9999,
                           description="GIFT SHOP")
     person_override(orphan, "Gifts")
     fake.page(None, "c1", added=[txn("c0", amount=1.0, date="2026-09-01")])
@@ -745,8 +745,8 @@ def test_bofa_is_retired_by_default():
 @pytest.mark.parametrize(
     ("name", "fixture", "mime"),
     [
-        ("bofa_7823_activity_2026-09-27.csv", "currentTransaction_7823.csv", "text/csv"),
-        ("currentTransaction_7823.csv", "currentTransaction_7823.csv", "text/csv"),
+        ("bofa_1199_activity_2026-09-27.csv", "currentTransaction_1199.csv", "text/csv"),
+        ("currentTransaction_1199.csv", "currentTransaction_1199.csv", "text/csv"),
         ("statement.pdf", "bofa_card_happy_path.pdf", "application/pdf"),
     ],
 )
@@ -887,7 +887,7 @@ def test_account_balances_anchors_on_the_banks_own_balance(
     is_error, text, structured = call(client_with(household_user), "account_balances", {})
     assert not is_error, text
     by = {a["account_last4"]: a for a in structured["accounts"]}
-    checking, card = by["1000"], by["7823"]
+    checking, card = by["1000"], by["1199"]
     assert checking["anchor"] == "bank" and checking["verified_balance_cents"] == 123_456
     # The feed's own rows are inside the bank's figure, never added again.
     assert checking["fact_since_count"] == 0

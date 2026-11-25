@@ -4,10 +4,10 @@ package com.kevin.legion.ledger
  * Ticket 12 §0 - the one flagged collision in the provisional-card-CSV
  * design, absorbed here rather than by rewriting a stored `accountId`.
  *
- * [BofaCardCsvStatementParser] stores `accountId = "7823"` (the filename's
+ * [BofaCardCsvStatementParser] stores `accountId = "1199"` (the filename's
  * last-4, call 2 - the only identity the mid-cycle CSV export states about
  * itself). [BofaCardStatementParser] stores the full printed account,
- * `"5555555555557823"`, from the monthly PDF for the SAME physical card.
+ * `"5555555555551199"`, from the monthly PDF for the SAME physical card.
  * These are different strings, and every OTHER mechanism in the ledger keys
  * `accountId` on plain equality - so left alone, the provisional rows from
  * one export can never be found, matched, or superseded by the other.
@@ -57,7 +57,7 @@ fun matchesAccountFilter(accountId: String, filter: Set<String>?): Boolean =
  * account's digits - `CRD`/`CHK`/`SAV`/`ACCT` - each optionally followed by a `#`, then the digit
  * run itself. Deliberately a closed, hand-picked set rather than "any letters then digits":
  * measured against Kevin's real BofA rows (`.scratch/car-probe-transfers/`, 2026-08-13), that
- * looser shape also matches `PETCO 5421`, `CIRCLE K # 48267`, `HILL 71 RD`, and half a dozen other
+ * looser shape also matches `PETCO 5421`, `CIRCLE K # 42277`, `HILL 71 RD`, and half a dozen other
  * merchant addresses and store numbers that have nothing to do with an account.
  */
 private val ACCOUNT_REFERENCE = Regex("""(?i)\b(?:CRD|CHK|SAV|ACCT)\s*#?\s*(\d{4,})\b""")
@@ -73,8 +73,8 @@ private val ACCOUNT_REFERENCE = Regex("""(?i)\b(?:CRD|CHK|SAV|ACCT)\s*#?\s*(\d{4
  * **Deliberately conservative.** [ownAccountIds] must be accounts that have ACTUALLY had a
  * statement imported ([com.kevin.legion.data.local.LedgerTransactionDao.accountIdsForCurrency]),
  * never every account a description happens to NAME. Kevin's real checking statement references a
- * savings account ("SAV 8267") that has never itself had a statement imported - no accountId on
- * file ends in 8267 - so a row naming it returns `false` here, even though it is obviously his own
+ * savings account ("SAV 2277") that has never itself had a statement imported - no accountId on
+ * file ends in 2277 - so a row naming it returns `false` here, even though it is obviously his own
  * account in reality. Per this repo's own instruction for this call: the failure that matters is
  * wrongly EXCLUDING real spend, and an unmatched reference only falls back to whatever
  * [TRANSFER_KEYWORDS] already decided for it (the pre-existing, unchanged status quo) - never
@@ -106,7 +106,7 @@ fun referencesOwnAccount(description: String, ownAccountIds: Set<String>): Boole
  *
  * A run of five or more digits is masked to its last four. Shorter ids are
  * returned unchanged: `BofaCardCsvStatementParser` already stores a bare
- * last-4 (`"7823"`), which is not a secret and reads worse as `"****7823"`.
+ * last-4 (`"1199"`), which is not a secret and reads worse as `"****1199"`.
  * Non-digit labels (`"DBS Multiplier"`) pass through untouched.
  */
 fun maskedAccountLabel(accountId: String): String {

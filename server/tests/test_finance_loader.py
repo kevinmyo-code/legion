@@ -41,7 +41,7 @@ def test_the_template_loads_every_part(household_a, capsys):
         "S RIVER",
     ]
     by = {a.key: a for a in FinanceAccount.objects.filter(household=household_a)}
-    assert (by["us-card-7823"].kind, by["us-card-7823"].last4) == ("credit", "7823")
+    assert (by["us-card-1199"].kind, by["us-card-1199"].last4) == ("credit", "1199")
     assert (by["flat-loan"].kind, by["flat-loan"].owner) == ("loan", None)
     assert by["sg-bonds"].kind == "bond" and by["brokerage"].source == "ibkr_flex"
     assert by["brokerage"].country == "SG"  # the yaml override
@@ -87,7 +87,7 @@ def test_the_output_carries_no_figure_name_or_account_number(household_a, capsys
     out = load(template(), capsys)
     numbers = [int(n) for n in re.findall(r"\d+", out)]
     assert all(n <= 20 for n in numbers), numbers
-    assert "RIVER" not in out and "7823" not in out and "1000" not in out
+    assert "RIVER" not in out and "1199" not in out and "1000" not in out
 
 
 def test_a_dry_run_writes_nothing(household_a, capsys):

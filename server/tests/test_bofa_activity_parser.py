@@ -19,7 +19,7 @@ from ingest.parsers import bofa_activity
 from ingest.parsers.bofa_activity import CARD, CHECKING
 
 FIXTURES = Path(__file__).parent / "bofa_fixtures"
-CARD_NAME = "currentTransaction_7823.csv"
+CARD_NAME = "currentTransaction_1199.csv"
 CHECKING_NAME = "bofa_1000_period_2026-08-03.csv"
 CHECKING_CURRENT_NAME = "bofa_1000_activity_2026-08-03.csv"
 CARD_HEADER = bofa_activity.CARD_HEADER
@@ -80,7 +80,7 @@ def test_the_real_card_fixture_reads_as_provisional_rows_signs_as_printed():
     parsed = CARD.parse(fixture(CARD_NAME), file_name=CARD_NAME)
     assert parsed is not None and parsed.provisional is True
     payload = parsed.payload
-    assert payload["account_last4"] == "7823"
+    assert payload["account_last4"] == "1199"
     assert payload["account_nickname"] == "BofA card"
     assert payload["currency"] == "USD"
     # Rule 7: nothing to anchor on, and nothing is invented.
@@ -104,17 +104,17 @@ def test_lf_crlf_and_a_byte_order_mark_read_the_same():
 @pytest.mark.parametrize(
     "name",
     [
-        "currentTransaction_7823.csv",
-        "CURRENTTRANSACTION_7823.CSV",
-        "currentTransaction_7823 (1).csv",
-        "bofa_7823_activity_2026-09-27.csv",
-        "bofa_7823_period_2026-09-05.csv",
-        "bofa_7823_period_2026-09-05 (2).csv",
+        "currentTransaction_1199.csv",
+        "CURRENTTRANSACTION_1199.CSV",
+        "currentTransaction_1199 (1).csv",
+        "bofa_1199_activity_2026-09-27.csv",
+        "bofa_1199_period_2026-09-05.csv",
+        "bofa_1199_period_2026-09-05 (2).csv",
     ],
 )
 def test_the_account_comes_from_the_file_name(name):
     parsed = CARD.parse(card("09/01/2026,1,COFFEE,,-4.50"), file_name=name)
-    assert parsed.payload["account_last4"] == "7823"
+    assert parsed.payload["account_last4"] == "1199"
     # Current or closed period, the card prints no anchor: provisional always.
     assert parsed.provisional is True
 
@@ -125,8 +125,8 @@ def test_the_account_comes_from_the_file_name(name):
         "activity.csv",
         "currentTransaction.csv",
         "bofa_78_activity.csv",
-        "bofa_7823_statement_2026-09-05.csv",
-        "bofa_7823_period_2026-13-45.csv",
+        "bofa_1199_statement_2026-09-05.csv",
+        "bofa_1199_period_2026-13-45.csv",
     ],
 )
 def test_a_name_that_states_no_account_is_refused_never_guessed(name):

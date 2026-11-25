@@ -57,7 +57,7 @@ export function monthLabel(month: string): string {
  * One label per card, keyed by the last four digits.
  *
  * The engine's spend names each account (the card's most recent bank-file name,
- * else "Card ending 7823"); where it has, that wins so every figure on the page
+ * else "Card ending 1199"); where it has, that wins so every figure on the page
  * calls a card the same thing. A card the spend endpoint did not list (no
  * activity this month) takes its newest row's name, else the same fallback.
  */

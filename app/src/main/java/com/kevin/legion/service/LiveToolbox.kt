@@ -2287,7 +2287,7 @@ object LiveToolbox {
         // account is free-text from the driver's speech, not a stored key, so
         // this matches loosely: an exact accountId, a substring (a driver
         // says "BofA", not "BOFA ****4471"), or the same physical card by
-        // last-4 (sameCard) so "the 7823 card" resolves whether the balance
+        // last-4 (sameCard) so "the 1199 card" resolves whether the balance
         // came from the card's own PDF or its bare-filename CSV entry.
         val matched = allBalances.filter { balance ->
             account.isBlank() || balance.accountId.contains(account, ignoreCase = true) ||
@@ -2296,7 +2296,7 @@ object LiveToolbox {
         // ADR 0094 (Kevin, 2026-11-16): asked how much he has, the answer LEADS with net cash and
         // its as-of time. The engine's figure through the one FinanceController HOME and the Money
         // screen read (ADR 0035), its saved copy offline; never summed here. Only when no account
-        // was named: "the 7823 card" asks about that card.
+        // was named: "the 1199 card" asks about that card.
         val cash = if (account.isBlank()) com.kevin.legion.finance.FinanceController.forApp(context).netCash() else null
         val voice = cash?.let {
             com.kevin.legion.finance.NetCashVoice.voice(it, java.time.Instant.now(), java.time.ZoneId.systemDefault())

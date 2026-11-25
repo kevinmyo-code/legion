@@ -30,7 +30,7 @@ UNVERIFIED_PROVENANCE = frozenset({"UNRECONCILED", "USER"})
 class SpendAccountSerializer(serializers.Serializer):
     account_last4 = serializers.CharField()
     label = serializers.CharField(
-        help_text='The card\'s most recent bank-file name, else "Card ending 7823".'
+        help_text='The card\'s most recent bank-file name, else "Card ending 1199".'
     )
     spend_cents = serializers.IntegerField(
         help_text="Categorised outflows this budget month, after transfers and not-spending "

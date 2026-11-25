@@ -79,7 +79,7 @@ Both exports print from the holder's side already: ticket 12 read the real card
 file as 38 negative debits and 2 positive credits (a refund and a payment), and
 the checking export prints withdrawals negative. So nothing is negated here,
 unlike the card PDF (`ingest/parsers/bofa.py`). The card fixture copied from the
-phone's tests (`currentTransaction_7823.csv`) prints its payment negative and
+phone's tests (`currentTransaction_1199.csv`) prints its payment negative and
 its purchase positive; that file is SYNTHETIC and its signs are not evidence
 about the real export, which ticket 12's reading is.
 
@@ -122,8 +122,8 @@ CHECKING_TABLE_HEADER = "Date,Description,Amount,Running Bal."
 
 NOTHING_WRITTEN = "Nothing was written."
 
-# `currentTransaction_7823.csv`, `bofa_7823_activity_2026-09-27.csv`,
-# `bofa_7823_period_2026-09-04.csv`, and any of them with Drive's " (1)" suffix.
+# `currentTransaction_1199.csv`, `bofa_1199_activity_2026-09-27.csv`,
+# `bofa_1199_period_2026-09-04.csv`, and any of them with Drive's " (1)" suffix.
 # Anchored at the end; case-insensitive because SAF and Drive listings disagree
 # on the extension's case.
 _FILE_NAME_RE = re.compile(

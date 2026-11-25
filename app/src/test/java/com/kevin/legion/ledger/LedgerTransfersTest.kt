@@ -139,7 +139,7 @@ class LedgerTransfersTest {
      */
     @Test
     fun `7 - unpaired PAYMENT FROM SAV is flagged as a suspected transfer but still counts as spend`() {
-        val unpaired = txn("card", 1300_00, description = "PAYMENT FROM SAV 8267 CONF#v1ikbyqeg")
+        val unpaired = txn("card", 1300_00, description = "PAYMENT FROM SAV 2277 CONF#v1ikbyqeg")
 
         val result = analyzeTransfers(inPeriod = listOf(unpaired), pairingWindow = listOf(unpaired))
 
@@ -169,12 +169,12 @@ class LedgerTransfersTest {
      */
     @Test
     fun `10 - an unpaired row naming an account Kevin actually holds is excluded as OWN_ACCOUNT_MOVEMENT`() {
-        val cardPayment = txn("checking", -1300_00, description = "PAYMENT TO CRD 7823 Confirmation# 0649409616")
+        val cardPayment = txn("checking", -1300_00, description = "PAYMENT TO CRD 1199 Confirmation# 0649409616")
 
         val result = analyzeTransfers(
             inPeriod = listOf(cardPayment),
             pairingWindow = listOf(cardPayment),
-            ownAccountIds = setOf("4111111111117823"),
+            ownAccountIds = setOf("4111111111111199"),
         )
 
         assertEquals(0, result.operating.size)
@@ -195,7 +195,7 @@ class LedgerTransfersTest {
         val result = analyzeTransfers(
             inPeriod = listOf(zelle),
             pairingWindow = listOf(zelle),
-            ownAccountIds = setOf("4111111111117823", "4111111115042"),
+            ownAccountIds = setOf("4111111111111199", "4111111115042"),
         )
 
         assertEquals(1, result.operating.size)
@@ -211,12 +211,12 @@ class LedgerTransfersTest {
      */
     @Test
     fun `12 - a reference to an account NOT in ownAccountIds falls back to SUSPECTED_TRANSFER, still counted`() {
-        val toUnknownSavings = txn("checking", -50000, description = "Online Banking transfer to SAV 8267 Confirmation# 1771219781")
+        val toUnknownSavings = txn("checking", -50000, description = "Online Banking transfer to SAV 2277 Confirmation# 1771219781")
 
         val result = analyzeTransfers(
             inPeriod = listOf(toUnknownSavings),
             pairingWindow = listOf(toUnknownSavings),
-            ownAccountIds = setOf("4111111111117823", "4111111115042"), // no account ending 8267
+            ownAccountIds = setOf("4111111111111199", "4111111115042"), // no account ending 2277
         )
 
         assertEquals(1, result.operating.size)
@@ -226,13 +226,13 @@ class LedgerTransfersTest {
     /** A matched pair still wins over an own-account reference - MATCHED_TRANSFER is checked first and is the stronger, second-row-confirmed claim. */
     @Test
     fun `13 - a matched pair is reported as MATCHED_TRANSFER, not OWN_ACCOUNT_MOVEMENT, even when both legs also name a known account`() {
-        val out = txn("checking", -1300_00, txnDate = DAY_1, description = "PAYMENT TO CRD 7823")
+        val out = txn("checking", -1300_00, txnDate = DAY_1, description = "PAYMENT TO CRD 1199")
         val inLeg = txn("card", 1300_00, txnDate = DAY_1 + 2 * DAY_MS, description = "PAYMENT FROM CHK 5042")
 
         val result = analyzeTransfers(
             inPeriod = listOf(out, inLeg),
             pairingWindow = listOf(out, inLeg),
-            ownAccountIds = setOf("4111111111117823", "4111111115042"),
+            ownAccountIds = setOf("4111111111111199", "4111111115042"),
         )
 
         assertEquals(0, result.operating.size)
@@ -242,7 +242,7 @@ class LedgerTransfersTest {
     /** The default (no [ownAccountIds] argument) behaves exactly as before 2026-08-13 - existing callers that never pass it are unaffected. */
     @Test
     fun `14 - omitting ownAccountIds entirely reproduces the pre-2026-08-13 behaviour`() {
-        val cardPayment = txn("checking", -1300_00, description = "PAYMENT TO CRD 7823 Confirmation# 0649409616")
+        val cardPayment = txn("checking", -1300_00, description = "PAYMENT TO CRD 1199 Confirmation# 0649409616")
 
         val result = analyzeTransfers(inPeriod = listOf(cardPayment), pairingWindow = listOf(cardPayment))
 

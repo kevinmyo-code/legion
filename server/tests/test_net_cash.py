@@ -39,7 +39,7 @@ def checking(**over) -> dict:
 def card(**over) -> dict:
     return {
         "account_id": "acc-card",
-        "mask": "7823",
+        "mask": "1199",
         "name": "Rewards Card",
         "type": "credit",
         "subtype": "credit card",
@@ -73,8 +73,8 @@ def days_ago(n: int) -> dt.date:
 def test_checking_minus_card_owed_with_pending_counted_as_spent():
     rows = [
         row("1000", TODAY, -1_200, pending=True),
-        row("7823", TODAY, -3_500, pending=True),
-        row("7823", TODAY, -500, pending=True),
+        row("1199", TODAY, -3_500, pending=True),
+        row("1199", TODAY, -500, pending=True),
     ]
     body = compute([checking(), card()], rows, UTC)
     assert body["available"] is True and body["reason"] is None
@@ -93,7 +93,7 @@ def test_checking_minus_card_owed_with_pending_counted_as_spent():
         "current_plus_pending",
         -44_000,
     )
-    assert crd["mask"] == "7823" and crd["pending_count"] == 2
+    assert crd["mask"] == "1199" and crd["pending_count"] == 2
 
 
 def test_checking_uses_the_banks_available_and_does_not_count_pending_twice():
@@ -108,7 +108,7 @@ def test_checking_uses_the_banks_available_and_does_not_count_pending_twice():
 
 
 def test_a_pending_credit_on_the_card_takes_from_what_is_owed():
-    body = compute([checking(), card()], [row("7823", TODAY, 2_000, pending=True)], UTC)
+    body = compute([checking(), card()], [row("1199", TODAY, 2_000, pending=True)], UTC)
     assert body["parts"][1]["balance_cents"] == -40_000 + 2_000
 
 
@@ -119,7 +119,7 @@ def test_every_card_is_owed_and_other_accounts_are_left_out():
     )
     body = compute([checking(), card(), second, savings], [], UTC)
     # Checking first, then each card by its name.
-    assert [p["mask"] for p in body["parts"]] == ["1000", "7823", "4242"]
+    assert [p["mask"] for p in body["parts"]] == ["1000", "1199", "4242"]
     assert body["net_cents"] == 200_000 - 40_000 - 10_000
 
 
@@ -186,10 +186,10 @@ def test_nothing_linked_is_no_figure_with_nothing_to_name():
 def test_the_line_walks_back_through_posted_rows_and_ends_at_the_headline():
     rows = [
         row("1000", days_ago(40), 0),  # the feed reaches back further than the window
-        row("7823", days_ago(40), 0),
+        row("1199", days_ago(40), 0),
         row("1000", days_ago(2), -10_000),  # spent on checking two days ago
-        row("7823", days_ago(1), -2_000),  # a card charge yesterday
-        row("7823", TODAY, -700, pending=True),  # pending: today's point only
+        row("1199", days_ago(1), -2_000),  # a card charge yesterday
+        row("1199", TODAY, -700, pending=True),  # pending: today's point only
     ]
     body = compute([checking(), card()], rows, UTC)
     history = body["history"]
@@ -206,7 +206,7 @@ def test_the_line_walks_back_through_posted_rows_and_ends_at_the_headline():
 
 
 def test_a_short_feed_draws_what_exists_and_says_from_when():
-    rows = [row("1000", days_ago(5), -100), row("7823", days_ago(3), -100)]
+    rows = [row("1000", days_ago(5), -100), row("1199", days_ago(3), -100)]
     history = compute([checking(), card()], rows, UTC)["history"]
     # The later of the accounts' earliest rows, less one day.
     assert history["start"] == days_ago(4) and history["short"] is True
@@ -219,7 +219,7 @@ def test_an_account_with_no_posted_row_gives_only_todays_point():
 
 
 def test_checking_with_available_but_no_current_has_a_figure_and_only_todays_point():
-    rows = [row("1000", days_ago(3), -100), row("7823", days_ago(3), -100)]
+    rows = [row("1000", days_ago(3), -100), row("1199", days_ago(3), -100)]
     body = compute(
         [checking(balance_current_cents=None, balance_available_cents=150_000), card()], rows, UTC
     )
@@ -232,9 +232,9 @@ def test_a_card_payment_does_not_move_net_cash_when_both_legs_post_the_same_day(
     amount. Today's figures are after the payment."""
     rows = [
         row("1000", days_ago(40), 0),
-        row("7823", days_ago(40), 0),
+        row("1199", days_ago(40), 0),
         row("1000", days_ago(3), -30_000),  # payment out of checking
-        row("7823", days_ago(3), 30_000),  # payment onto the card
+        row("1199", days_ago(3), 30_000),  # payment onto the card
     ]
     body = compute([checking(), card()], rows, UTC)
     points = {p["on"]: p["net_cents"] for p in body["history"]["points"]}
@@ -246,9 +246,9 @@ def test_a_card_payment_whose_legs_post_on_different_days_dips_for_the_days_betw
     the checking leg has posted, and comes back when the card leg posts."""
     rows = [
         row("1000", days_ago(40), 0),
-        row("7823", days_ago(40), 0),
+        row("1199", days_ago(40), 0),
         row("1000", days_ago(4), -30_000),
-        row("7823", days_ago(2), 30_000),
+        row("1199", days_ago(2), 30_000),
     ]
     body = compute([checking(), card()], rows, UTC)
     points = {p["on"]: p["net_cents"] for p in body["history"]["points"]}
@@ -259,7 +259,7 @@ def test_a_card_payment_whose_legs_post_on_different_days_dips_for_the_days_betw
 
 def test_a_pending_card_payment_with_both_legs_pending_does_not_move_the_headline():
     before = compute([checking(), card()], [], UTC)["net_cents"]
-    rows = [row("1000", TODAY, -30_000, pending=True), row("7823", TODAY, 30_000, pending=True)]
+    rows = [row("1000", TODAY, -30_000, pending=True), row("1199", TODAY, 30_000, pending=True)]
     assert compute([checking(), card()], rows, UTC)["net_cents"] == before
 
 
@@ -304,13 +304,13 @@ def _feed(household, last4: str, day: dt.date, cents: int, pending: bool = False
 @pytest.mark.django_db
 def test_the_route_answers_net_cash_with_its_working(auth_client, household_a):
     _link(household_a, checking(), card())
-    _feed(household_a, "7823", TODAY, -3_500, pending=True)
-    _feed(household_a, "7823", days_ago(2), -1_000)
+    _feed(household_a, "1199", TODAY, -3_500, pending=True)
+    _feed(household_a, "1199", days_ago(2), -1_000)
     body = auth_client.get("/api/finance/net-cash").json()
     assert body["available"] is True
     assert body["net_cents"] == 200_000 - 40_000 - 3_500
     assert body["currency"] == "USD" and body["as_of"].startswith("2026-11-16T14:05")
-    assert [p["mask"] for p in body["parts"]] == ["1000", "7823"]
+    assert [p["mask"] for p in body["parts"]] == ["1000", "1199"]
     assert body["history"]["points"][-1]["net_cents"] == body["net_cents"]
     assert body["history"]["start"] is not None
 
@@ -323,7 +323,7 @@ def test_a_charge_logged_by_hand_as_pending_is_not_in_net_cash(auth_client, hous
     LedgerTransaction.objects.create(
         id=uuid.uuid4(),
         household=household_a,
-        account_last4="7823",
+        account_last4="1199",
         account_nickname="Rewards Card",
         currency="USD",
         txn_date=TODAY,
@@ -343,8 +343,8 @@ def test_the_route_says_which_account_has_no_balance(auth_client, household_a):
     _link(household_a, checking(), card(balance_current_cents=None))
     body = auth_client.get("/api/finance/net-cash").json()
     assert body["available"] is False and body["net_cents"] is None
-    assert body["missing"][0]["mask"] == "7823"
-    assert "Rewards Card ending 7823" in body["reason"]
+    assert body["missing"][0]["mask"] == "1199"
+    assert "Rewards Card ending 1199" in body["reason"]
 
 
 @pytest.mark.django_db
@@ -353,7 +353,7 @@ def test_account_balances_leads_with_net_cash(household_a, household_user, setti
 
     settings.LEGION_MCP = True
     _link(household_a, checking(), card())
-    _feed(household_a, "7823", TODAY, -3_500, pending=True)
+    _feed(household_a, "1199", TODAY, -3_500, pending=True)
     is_error, text, structured = call(client_with(household_user), "account_balances", {})
     assert not is_error, text
     assert text.startswith("Net cash now: $1,565.00 (USD), as of ")
@@ -361,7 +361,7 @@ def test_account_balances_leads_with_net_cash(household_a, household_user, setti
     assert "Balances per account" in text
     assert structured["net_cash"]["net_cents"] == 156_500
     # Asked about one account, there is no net cash lead.
-    _, one, _ = call(client_with(household_user), "account_balances", {"account": "7823"})
+    _, one, _ = call(client_with(household_user), "account_balances", {"account": "1199"})
     assert "Net cash" not in one
 
 
@@ -374,14 +374,14 @@ def test_account_balances_with_a_missing_card_names_it_and_adds_nothing(
     settings.LEGION_MCP = True
     _link(household_a, checking(), card(balance_current_cents=None))
     _, text, _ = call(client_with(household_user), "account_balances", {})
-    assert text.startswith("No net cash figure: Rewards Card ending 7823")
+    assert text.startswith("No net cash figure: Rewards Card ending 1199")
     assert "Do not add the accounts below up yourself" in text
 
 
 @pytest.mark.django_db
 def test_net_cash_never_reads_another_households_bank(auth_client, household_a, household_b):
     _link(household_b, checking(name="Household B checking"), card())
-    _feed(household_b, "7823", TODAY, -3_500, pending=True)
+    _feed(household_b, "1199", TODAY, -3_500, pending=True)
     body = auth_client.get("/api/finance/net-cash").json()
     assert body["available"] is False and body["parts"] == [] and body["net_cents"] is None
     assert "Household B" not in str(body)

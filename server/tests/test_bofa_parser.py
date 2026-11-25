@@ -238,7 +238,7 @@ def test_card_happy_path_three_sections_and_no_ytd_trap_row():
     # Signs flipped from the paper: a payment is positive, a purchase negative.
     assert amounts(payload) == [150000, 125550, -60000, -45025, -90000, -500]
     assert 99999 not in amounts(payload) and -99999 not in amounts(payload)
-    assert payload["account_last4"] == "7823"  # Kotlin: "5555555555557823"
+    assert payload["account_last4"] == "1199"  # Kotlin: "5555555555551199"
     assert payload["account_nickname"] == "BofA card"
     assert payload["lines"][0]["description"] == "PAYMENT FROM CHK 5521 CONF#4mv2plq8h"
     assert payload["lines"][2]["description"] == "NORTHWIND OUTFITTERS      Northwind.com/billWA"

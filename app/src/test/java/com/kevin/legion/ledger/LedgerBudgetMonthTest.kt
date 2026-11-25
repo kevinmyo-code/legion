@@ -220,10 +220,10 @@ class LedgerBudgetMonthTest {
     @Test
     fun `a card payment filed as Housing on the 31st is still paired and never becomes spend in either month`() {
         val cardPayment = txn(
-            LocalDate.of(2026, 8, 31), -1300_00, accountId = "checking", description = "PAYMENT TO CRD 7823",
+            LocalDate.of(2026, 8, 31), -1300_00, accountId = "checking", description = "PAYMENT TO CRD 1199",
         )
         val rows = listOf(cardPayment)
-        val own = setOf("4111111111117823")
+        val own = setOf("4111111111111199")
 
         val august = budgetFor(YearMonth.of(2026, 8), rows, own)
         val september = budgetFor(YearMonth.of(2026, 9), rows, own)

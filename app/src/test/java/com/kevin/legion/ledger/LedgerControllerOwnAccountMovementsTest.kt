@@ -73,8 +73,8 @@ class LedgerControllerOwnAccountMovementsTest {
     fun `a card payment naming an account actually on file is excluded from spend and disclosed`() = runBlocking {
         insertEngineTransactions(
             // The card's own account, so `accountIdsForCurrency(USD)` will contain it.
-            txn("4111111111117823", -5_000, "WALMART SUPERCENTER", category = "Shopping"),
-            txn("4111111115042", -1300_00, "Online Banking payment to CRD 7823 Confirmation# 0649409616", category = "Shopping"),
+            txn("4111111111111199", -5_000, "WALMART SUPERCENTER", category = "Shopping"),
+            txn("4111111115042", -1300_00, "Online Banking payment to CRD 1199 Confirmation# 0649409616", category = "Shopping"),
         )
 
         val result = LedgerController.budgetVsActual(context, LedgerEntity.US, MONTH)
@@ -87,7 +87,7 @@ class LedgerControllerOwnAccountMovementsTest {
     @Test
     fun `a Zelle payment to a person is never excluded, even against a real ownAccountIds set`() = runBlocking {
         insertEngineTransactions(
-            txn("4111111111117823", -5_000, "WALMART SUPERCENTER", category = "Shopping"),
+            txn("4111111111111199", -5_000, "WALMART SUPERCENTER", category = "Shopping"),
             txn("4111111115042", -40_000, "Zelle payment to  R Alan Cole US Conf# b4nb0qacg", category = "Shopping"),
         )
 
@@ -102,8 +102,8 @@ class LedgerControllerOwnAccountMovementsTest {
     @Test
     fun `categoryTransactions reads the same own-account exclusion the budget total used`() = runBlocking {
         insertEngineTransactions(
-            txn("4111111111117823", -5_000, "WALMART SUPERCENTER", category = "Shopping"),
-            txn("4111111115042", -1300_00, "Online Banking payment to CRD 7823 Confirmation# 0649409616", category = "Shopping"),
+            txn("4111111111111199", -5_000, "WALMART SUPERCENTER", category = "Shopping"),
+            txn("4111111115042", -1300_00, "Online Banking payment to CRD 1199 Confirmation# 0649409616", category = "Shopping"),
         )
 
         val rows = LedgerController.categoryTransactions(context, LedgerEntity.US, MONTH, "Shopping")

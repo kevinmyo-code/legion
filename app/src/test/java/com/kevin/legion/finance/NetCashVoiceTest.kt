@@ -25,7 +25,7 @@ class NetCashVoiceTest {
         pendingCents = -8_520,
         parts = listOf(
             NetCashPartWire("checking", "Everyday Checking", "1000", "USD", 341_250, "bank_available", 0, 0, asOf),
-            NetCashPartWire("card", "Rewards Card", "7823", "USD", -128_075, "current_plus_pending", -8_520, 2, asOf),
+            NetCashPartWire("card", "Rewards Card", "1199", "USD", -128_075, "current_plus_pending", -8_520, 2, asOf),
         ),
     )
 
@@ -52,10 +52,10 @@ class NetCashVoiceTest {
         assertTrue(v.figures.first().what.startsWith("net cash"))
         assertEquals("$3,412.50", says["in Everyday Checking ending 1000 as net cash counts it"])
         // Posted 1,195.55 plus 85.20 pending: the counted card amount, said positive (owed).
-        val card = says["owed on Rewards Card ending 7823 as net cash counts it, pending charges included"]
+        val card = says["owed on Rewards Card ending 1199 as net cash counts it, pending charges included"]
         assertEquals(FinanceText.exact(119_555L + 8_520L), card)
         assertEquals("$1,280.75", card)
-        assertEquals("$85.20", says["of which pending charges on Rewards Card ending 7823"])
+        assertEquals("$85.20", says["of which pending charges on Rewards Card ending 1199"])
         assertEquals("$85.20", says["pending charges at the bank, already counted in net cash"])
         assertEquals("today at 9:04 PM", v.asOf)
         assertNull(v.stale)
@@ -130,8 +130,8 @@ class NetCashVoiceTest {
         assertFalse(v.speech.contains("dollars"))
         assertEquals(NetCashVoice.NO_READ_SPEECH, NetCashVoice.voice(FinanceRead.Unavailable("x"), at(2026, 11, 16, 21, 29), zone).speech)
         assertEquals(
-            "BOFA CARD ending seven eight two three: minus one thousand one hundred ninety-five dollars and fifty-five cents.",
-            NetCashVoice.ledgerSpeech("BOFA CARD ****7823", -119_555, "USD"),
+            "BOFA CARD ending one one nine nine: minus one thousand one hundred ninety-five dollars and fifty-five cents.",
+            NetCashVoice.ledgerSpeech("BOFA CARD ****1199", -119_555, "USD"),
         )
         assertEquals("BOFA CARD ending four four one zero: no balance on file.", NetCashVoice.ledgerSpeech("BOFA CARD ****4410", null, "USD"))
     }

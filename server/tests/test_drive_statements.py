@@ -687,7 +687,7 @@ def bofa_registry(monkeypatch):
         ),
         (
             "bofa_card_happy_path.pdf",
-            "7823",
+            "1199",
             "BofA card",
             -842150,
             -762125,

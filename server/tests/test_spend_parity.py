@@ -178,7 +178,7 @@ def test_transfers_6():
 @kotlin(TRANSFERS, "7 - unpaired PAYMENT FROM SAV is flagged as a suspected transfer but still counts as spend")  # noqa: E501
 def test_transfers_7():
     t = Rows(DAY_1)
-    unpaired = t("card", 1300_00, description="PAYMENT FROM SAV 8267 CONF#v1ikbyqeg")
+    unpaired = t("card", 1300_00, description="PAYMENT FROM SAV 2277 CONF#v1ikbyqeg")
     result = analyze_transfers([unpaired], [unpaired])
     assert [r.id for r in result.operating] == [unpaired.id]
     assert [(r.reason, r.paired_with) for r in result.excluded] == [(SUSPECTED_TRANSFER, None)]
@@ -195,8 +195,8 @@ def test_transfers_8():
 @kotlin(TRANSFERS, "10 - an unpaired row naming an account Kevin actually holds is excluded as OWN_ACCOUNT_MOVEMENT")  # noqa: E501
 def test_transfers_10():
     t = Rows(DAY_1)
-    payment = t("checking", -1300_00, description="PAYMENT TO CRD 7823 Confirmation# 0649409616")
-    result = analyze_transfers([payment], [payment], own_account_ids={"4111111111117823"})
+    payment = t("checking", -1300_00, description="PAYMENT TO CRD 1199 Confirmation# 0649409616")
+    result = analyze_transfers([payment], [payment], own_account_ids={"4111111111111199"})
     assert result.operating == []
     assert [(r.reason, r.paired_with) for r in result.excluded] == [(OWN_ACCOUNT_MOVEMENT, None)]
 
@@ -206,7 +206,7 @@ def test_transfers_11():
     t = Rows(DAY_1)
     zelle = t("checking", -40000, description="Zelle payment to  R Alan Cole US Conf# b4nb0qacg")
     result = analyze_transfers(
-        [zelle], [zelle], own_account_ids={"4111111111117823", "4111111115042"}
+        [zelle], [zelle], own_account_ids={"4111111111111199", "4111111115042"}
     )
     assert [r.id for r in result.operating] == [zelle.id]
     assert [r.reason for r in result.excluded] == [SUSPECTED_TRANSFER]
@@ -215,8 +215,8 @@ def test_transfers_11():
 @kotlin(TRANSFERS, "12 - a reference to an account NOT in ownAccountIds falls back to SUSPECTED_TRANSFER, still counted")  # noqa: E501
 def test_transfers_12():
     t = Rows(DAY_1)
-    row = t("checking", -50000, description="Online Banking transfer to SAV 8267 Confirmation# 1771219781")  # noqa: E501
-    result = analyze_transfers([row], [row], own_account_ids={"4111111111117823", "4111111115042"})
+    row = t("checking", -50000, description="Online Banking transfer to SAV 2277 Confirmation# 1771219781")  # noqa: E501
+    result = analyze_transfers([row], [row], own_account_ids={"4111111111111199", "4111111115042"})
     assert len(result.operating) == 1
     assert [r.reason for r in result.excluded] == [SUSPECTED_TRANSFER]
 
@@ -224,10 +224,10 @@ def test_transfers_12():
 @kotlin(TRANSFERS, "13 - a matched pair is reported as MATCHED_TRANSFER, not OWN_ACCOUNT_MOVEMENT, even when both legs also name a known account")  # noqa: E501
 def test_transfers_13():
     t = Rows(DAY_1)
-    out = t("checking", -1300_00, description="PAYMENT TO CRD 7823")
+    out = t("checking", -1300_00, description="PAYMENT TO CRD 1199")
     in_leg = t("card", 1300_00, date=days(2), description="PAYMENT FROM CHK 5042")
     result = analyze_transfers(
-        [out, in_leg], [out, in_leg], own_account_ids={"4111111111117823", "4111111115042"}
+        [out, in_leg], [out, in_leg], own_account_ids={"4111111111111199", "4111111115042"}
     )
     assert result.operating == []
     assert all(r.reason == MATCHED_TRANSFER for r in result.excluded)
@@ -236,7 +236,7 @@ def test_transfers_13():
 @kotlin(TRANSFERS, "14 - omitting ownAccountIds entirely reproduces the pre-2026-08-13 behaviour")
 def test_transfers_14():
     t = Rows(DAY_1)
-    payment = t("checking", -1300_00, description="PAYMENT TO CRD 7823 Confirmation# 0649409616")
+    payment = t("checking", -1300_00, description="PAYMENT TO CRD 1199 Confirmation# 0649409616")
     result = analyze_transfers([payment], [payment])
     assert len(result.operating) == 1
     assert [r.reason for r in result.excluded] == [SUSPECTED_TRANSFER]
@@ -342,7 +342,7 @@ def test_budget_zero_bucket():
 @kotlin(BUDGET, "an unpaired transfer-looking leg still counts as spend - the other statement isn't on file yet")  # noqa: E501
 def test_budget_unpaired_leg_counts():
     t = Rows(MID_MONTH)
-    rows = [t("card", -1300_00, description="PAYMENT TO SAV 8267 CONF#v1ikbyqeg", category="Groceries")]  # noqa: E501
+    rows = [t("card", -1300_00, description="PAYMENT TO SAV 2277 CONF#v1ikbyqeg", category="Groceries")]  # noqa: E501
     assert line(budget(rows, {"Groceries": 100_00}), "Groceries").actual_cents == 1300_00
 
 
@@ -389,9 +389,9 @@ def test_budget_empty_month():
 def test_budget_own_account_excluded_and_disclosed():
     t = Rows(MID_MONTH)
     groceries = t("checking", -80_00, description="KROGER", category="Groceries")
-    payment = t("checking", -1300_00, description="PAYMENT TO CRD 7823", category="Groceries")
+    payment = t("checking", -1300_00, description="PAYMENT TO CRD 1199", category="Groceries")
     result = budget(
-        [groceries, payment], {"Groceries": 100_00}, own_account_ids={"4111111111117823"}
+        [groceries, payment], {"Groceries": 100_00}, own_account_ids={"4111111111111199"}
     )
     assert line(result, "Groceries").actual_cents == 80_00
     assert [r.id for r in result.own_account_rows] == [payment.id]
@@ -403,7 +403,7 @@ def test_budget_zelle_still_counts():
     t = Rows(MID_MONTH)
     zelle = t("checking", -400_00, description="Zelle payment to  R Alan Cole US Conf# b4nb0qacg", category="Shopping")  # noqa: E501
     result = budget(
-        [zelle], {"Shopping": 1000_00}, own_account_ids={"4111111111117823", "4111111115042"}
+        [zelle], {"Shopping": 1000_00}, own_account_ids={"4111111111111199", "4111111115042"}
     )
     assert result.lines[0].actual_cents == 400_00
     assert result.own_account_rows == []
@@ -438,12 +438,12 @@ def test_budget_transfers_without_flag():
 def test_budget_not_spending_keeps_pairing():
     t = Rows(MID_MONTH)
     groceries = t("checking", -80_00, description="KROGER", category="Groceries")
-    payment = t("checking", -1300_00, description="PAYMENT TO CRD 7823", category="Groceries")
+    payment = t("checking", -1300_00, description="PAYMENT TO CRD 1199", category="Groceries")
     zelle = t("checking", -400_00, description="ZELLE PAYMENT TO MIA", category="Transfers")
     result = budget(
         [groceries, payment, zelle],
         {"Groceries": 100_00},
-        own_account_ids={"4111111111117823"},
+        own_account_ids={"4111111111111199"},
         not_spending={"Transfers"},
     )
     assert [r.id for r in result.own_account_rows] == [payment.id]
@@ -465,7 +465,7 @@ def test_budget_operating_expenses_drops_not_spending():
 @kotlin(BUDGET, "omitting ownAccountIds leaves the disclosure empty - the pre-2026-08-13 default")
 def test_budget_no_own_ids_no_disclosure():
     t = Rows(MID_MONTH)
-    payment = t("checking", -1300_00, description="PAYMENT TO CRD 7823", category="Groceries")
+    payment = t("checking", -1300_00, description="PAYMENT TO CRD 1199", category="Groceries")
     result = budget([payment], {"Groceries": 100_00})
     assert result.own_account_rows == []
     assert result.lines[0].actual_cents == 1300_00
@@ -504,13 +504,13 @@ def test_budget_account_filter_clusters_one_card():
 def test_budget_account_filter_narrows_disclosure():
     t = Rows(MID_MONTH)
     rows = [
-        t("checking", -1300_00, description="PAYMENT TO CRD 7823", category="Groceries"),
+        t("checking", -1300_00, description="PAYMENT TO CRD 1199", category="Groceries"),
         t("debit", -400_00, description="PAYMENT TO CRD 9999", category="Shopping"),
     ]
     result = budget(
         rows,
         {"Groceries": 100_00, "Shopping": 100_00},
-        own_account_ids={"4111111111117823", "4222222222229999"},
+        own_account_ids={"4111111111111199", "4222222222229999"},
         account_filter={"checking"},
     )
     assert len(result.own_account_rows) == 1
@@ -640,9 +640,9 @@ def test_month_pairing_window_is_calendar():
 @kotlin(BUDGET_MONTH, "a card payment filed as Housing on the 31st is still paired and never becomes spend in either month")  # noqa: E501
 def test_month_card_payment_as_housing():
     payment = rent_rows()(
-        "checking", -1300_00, date=dt.date(2026, 8, 31), description="PAYMENT TO CRD 7823"
+        "checking", -1300_00, date=dt.date(2026, 8, 31), description="PAYMENT TO CRD 1199"
     )
-    own = {"4111111111117823"}
+    own = {"4111111111111199"}
     august = budget_for(Month(2026, 8), [payment], own)
     september = budget_for(Month(2026, 9), [payment], own)
     assert august.spent_cents == 0 and september.spent_cents == 0
@@ -666,7 +666,7 @@ def test_month_calendar_rows_caller():
 MONEY = "MoneyMonthTest.kt"
 OCT = Month(2026, 10)
 CHECKING = "BofA checking 5042"
-CARD = "BofA card 7823"
+CARD = "BofA card 1199"
 
 
 def oct_rows():
@@ -704,7 +704,7 @@ def test_money_sections():
 def test_money_card_payment():
     t = oct_rows()
     rows = [
-        t(CHECKING, -50_000, date=d(2), category="Payments", description="PAYMENT TO CRD 7823"),
+        t(CHECKING, -50_000, date=d(2), category="Payments", description="PAYMENT TO CRD 1199"),
         t(CARD, 50_000, date=d(2), category="Payments", description="PAYMENT FROM CHK 5042"),
         t(CARD, -1_200, date=d(2), category="Dining"),
         t(CHECKING, -700, date=d(1), category="Groceries"),
@@ -785,12 +785,12 @@ def test_money_not_spending():
 def test_money_one_card_two_ids():
     t = oct_rows()
     rows = [
-        t("5555555555557823", -1_000, date=d(2), category="Dining"),
-        t("7823", -500, date=d(3), category="Dining"),
+        t("5555555555551199", -1_000, date=d(2), category="Dining"),
+        t("1199", -500, date=d(3), category="Dining"),
     ]
     results = account_month_results(rows, OCT, set())
     assert len(results) == 1
-    assert results[0].name.endswith("7823")
+    assert results[0].name.endswith("1199")
     assert results[0].total_cents == 1_500
 
 

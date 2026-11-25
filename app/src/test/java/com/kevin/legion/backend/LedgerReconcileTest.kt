@@ -78,7 +78,7 @@ class LedgerReconcileTest {
      * write path rather than inventing a second one. */
     private suspend fun createEngineTransaction(
         provenance: RecordProvenance,
-        accountId: String = "5555555555557823",
+        accountId: String = "5555555555551199",
         description: String = "COFFEE SHOP",
         amountCents: Long = -450L,
         balanceCents: Long? = null,
@@ -134,7 +134,7 @@ class LedgerReconcileTest {
     fun `an UNRECONCILED row maps field-for-field and its provenance survives verbatim`() = runBlocking {
         createEngineTransaction(
             provenance = RecordProvenance.UNRECONCILED,
-            accountId = "7823",
+            accountId = "1199",
             description = "MID-CYCLE PURCHASE",
             amountCents = -1299L,
             currency = "USD",
@@ -152,8 +152,8 @@ class LedgerReconcileTest {
         assertTrue(report.skipped.isEmpty())
         val row = backend.transactions.values.single()
         assertNull(row.statementId)
-        assertEquals("7823", row.accountLast4)
-        assertEquals("7823", row.accountNickname) // accountId itself - see LedgerReconcile's own doc
+        assertEquals("1199", row.accountLast4)
+        assertEquals("1199", row.accountNickname) // accountId itself - see LedgerReconcile's own doc
         assertEquals("USD", row.currency)
         assertEquals(30_000L, row.txnDateEpochMs)
         assertEquals("MID-CYCLE PURCHASE", row.description)

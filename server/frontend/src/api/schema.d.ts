@@ -12317,7 +12317,7 @@ export interface components {
         };
         SpendAccount: {
             account_last4: string;
-            /** @description The card's most recent bank-file name, else "Card ending 7823". */
+            /** @description The card's most recent bank-file name, else "Card ending 1199". */
             label: string;
             /** @description Categorised outflows this budget month, after transfers and not-spending categories are taken out. Uncategorised money is not in it. */
             spend_cents: number;

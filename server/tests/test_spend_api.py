@@ -77,18 +77,18 @@ def accounts(body):
 def test_nickname_drift_on_one_card_is_one_account_named_by_its_latest_label(
     auth_client, household_a
 ):
-    statement(household_a, "7823", "7823", [line("2026-09-03", "HEB", -1_000, "Groceries")])
+    statement(household_a, "1199", "1199", [line("2026-09-03", "HEB", -1_000, "Groceries")])
     statement(
         household_a,
-        "7823",
+        "1199",
         "BofA card",
         [line("2026-09-05", "DINER", -500, "Dining")],
         start="2026-09-04",
     )
     body = auth_client.get(SPEND, {"month": "2026-09"}).data
     assert body["month"] == "2026-09" and body["currency"] == "USD"
-    assert list(accounts(body)) == ["7823"]
-    card = accounts(body)["7823"]
+    assert list(accounts(body)) == ["1199"]
+    card = accounts(body)["1199"]
     assert card["spend_cents"] == 1_500
     assert card["label"] == "BofA card"
     assert card["latest_row_at"] is not None
@@ -108,12 +108,12 @@ def test_unverified_is_true_exactly_when_a_counted_row_is_unverified(auth_client
     a_rule(household_a, "UBER", "Transport")
     provisional(
         household_a,
-        "7823",
+        "1199",
         "BofA card",
         [line("2026-09-10", "UBER *TRIP", -1_200), line("2026-09-11", "MYSTERY", -300)],
     )
     body = auth_client.get(SPEND, {"month": "2026-09"}).data
-    checking, card = accounts(body)["5042"], accounts(body)["7823"]
+    checking, card = accounts(body)["5042"], accounts(body)["1199"]
     assert (checking["unverified"], checking["unverified_cents"]) == (False, 0)
     assert (card["spend_cents"], card["unverified"], card["unverified_cents"]) == (
         1_200,
@@ -131,15 +131,15 @@ def test_unverified_is_true_exactly_when_a_counted_row_is_unverified(auth_client
 def test_an_uncategorised_unverified_row_alone_does_not_make_spend_unverified(
     auth_client, household_a
 ):
-    provisional(household_a, "7823", "BofA card", [line("2026-09-11", "MYSTERY", -300)])
-    card = accounts(auth_client.get(SPEND, {"month": "2026-09"}).data)["7823"]
+    provisional(household_a, "1199", "BofA card", [line("2026-09-11", "MYSTERY", -300)])
+    card = accounts(auth_client.get(SPEND, {"month": "2026-09"}).data)["1199"]
     assert (card["spend_cents"], card["unverified"]) == (0, False)
 
 
 def test_housing_on_the_29th_counts_in_the_next_month(auth_client, household_a):
     statement(
         household_a,
-        "7823",
+        "1199",
         "BofA card",
         [
             line("2026-09-29", "RPS*RENT PORTAL", -180_000, "Housing"),
@@ -148,7 +148,7 @@ def test_housing_on_the_29th_counts_in_the_next_month(auth_client, household_a):
     )
     statement(
         household_a,
-        "7823",
+        "1199",
         "BofA card",
         [line("2026-10-02", "HEB", -2_000, "Groceries")],
         start="2026-10-01",
@@ -156,9 +156,9 @@ def test_housing_on_the_29th_counts_in_the_next_month(auth_client, household_a):
     )
     september = auth_client.get(SPEND, {"month": "2026-09"}).data
     october = auth_client.get(SPEND, {"month": "2026-10"}).data
-    assert accounts(september)["7823"]["spend_cents"] == 1_000
+    assert accounts(september)["1199"]["spend_cents"] == 1_000
     assert september["excluded"]["early_charges_counted_next_month_cents"] == 180_000
-    assert accounts(october)["7823"]["spend_cents"] == 182_000
+    assert accounts(october)["1199"]["spend_cents"] == 182_000
     assert october["excluded"]["early_charges_counted_here_cents"] == 180_000
     assert october["excluded"]["early_charges_moved_cents"] == 180_000
 
@@ -176,11 +176,11 @@ def test_transfers_are_excluded_and_disclosed(auth_client, household_a):
         "BofA checking",
         [
             line("2026-09-03", "ZELLE PAYMENT TO MIA", -40_000, "Transfers"),
-            line("2026-09-04", "PAYMENT TO CRD 7823", -50_000, "Payments"),
+            line("2026-09-04", "PAYMENT TO CRD 1199", -50_000, "Payments"),
             line("2026-09-05", "HEB", -1_000, "Groceries"),
         ],
     )
-    statement(household_a, "7823", "BofA card", [line("2026-09-06", "DINER", -700, "Dining")])
+    statement(household_a, "1199", "BofA card", [line("2026-09-06", "DINER", -700, "Dining")])
     body = auth_client.get(SPEND, {"month": "2026-09"}).data
     assert accounts(body)["5042"]["spend_cents"] == 1_000
     assert body["excluded"]["not_spending_cents"] == 40_000
@@ -226,7 +226,7 @@ def test_complete_only_when_gated_statements_cover_the_whole_month(auth_client, 
         household_a, "5042", "BofA checking", [line("2026-09-05", "HEB", -1_000, "Groceries")]
     )
     assert auth_client.get(SPEND, {"month": "2026-09"}).data["complete"] is True
-    provisional(household_a, "7823", "BofA card", [line("2026-09-11", "MYSTERY", -300)])
+    provisional(household_a, "1199", "BofA card", [line("2026-09-11", "MYSTERY", -300)])
     assert auth_client.get(SPEND, {"month": "2026-09"}).data["complete"] is False
     assert auth_client.get(SPEND, {"month": "2026-08"}).data["complete"] is False
 

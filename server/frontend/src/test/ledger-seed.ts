@@ -24,7 +24,7 @@ function uuid(): string {
 }
 
 export const CHECKING = '5521'
-export const CARD = '7823'
+export const CARD = '1199'
 
 type TxnInput = Partial<Omit<LedgerTransaction, 'id'>> & {
   description: string

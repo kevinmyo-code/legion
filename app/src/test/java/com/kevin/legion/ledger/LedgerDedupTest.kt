@@ -295,15 +295,15 @@ class LedgerDedupTest {
     /** Test 14: sameCard - exact match true; suffix match true; mismatched suffix false; short strings don't throw. */
     @Test
     fun `sameCard - exact, suffix-matched, mismatched, and short-string cases`() {
-        assertEquals(true, sameCard("7823", "7823"))
-        assertEquals(true, sameCard("7823", "4111111111117823"))
-        assertEquals(true, sameCard("4111111111117823", "7823"))
-        assertEquals(false, sameCard("7823", "1234"))
+        assertEquals(true, sameCard("1199", "1199"))
+        assertEquals(true, sameCard("1199", "4111111111111199"))
+        assertEquals(true, sameCard("4111111111111199", "1199"))
+        assertEquals(false, sameCard("1199", "1234"))
         // Strings under 4 chars must not throw (takeLast(4) on a short
         // string just returns the whole string, but the length guard means
         // neither branch even reaches takeLast for these).
-        assertEquals(false, sameCard("12", "7823"))
-        assertEquals(false, sameCard("7823", "1"))
+        assertEquals(false, sameCard("12", "1199"))
+        assertEquals(false, sameCard("1199", "1"))
         assertEquals(true, sameCard("", ""))
     }
 
@@ -311,7 +311,7 @@ class LedgerDedupTest {
     @Test
     fun `resolveDedup still dedups an UNRECONCILED row against a DETERMINISTIC one sharing the same key`() {
         val provisional = LedgerTransaction(
-            sourceFile = "currentTransaction_7823.csv",
+            sourceFile = "currentTransaction_1199.csv",
             accountId = "acc-1",
             currency = LedgerCurrency.USD,
             txnDate = DAY_1,

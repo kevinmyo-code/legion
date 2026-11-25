@@ -23,7 +23,7 @@ from legacy.models.ledger import LedgerTransaction, Statement
 from tests.test_drive_statements import DRIVE_SECRET, FOLDER, FakeDrive, NoGemini, run
 
 FIXTURES = Path(__file__).parent / "bofa_fixtures"
-CARD_NAME = "bofa_7823_activity_2026-09-27.csv"
+CARD_NAME = "bofa_1199_activity_2026-09-27.csv"
 CHECKING_NAME = "bofa_1000_period_2026-08-03.csv"
 CARD_HEADER = "Posted Date,Reference Number,Payee,Address,Amount"
 
@@ -78,8 +78,8 @@ def pull(household, drive, content: bytes, name: str = CARD_NAME, *, stamp: str 
 def test_a_card_activity_csv_lands_unverified_with_no_header_and_no_gemini(
     connected, household_a, drive
 ):
-    content = (FIXTURES / "currentTransaction_7823.csv").read_bytes()
-    result = pull(household_a, drive, content, "currentTransaction_7823.csv")
+    content = (FIXTURES / "currentTransaction_1199.csv").read_bytes()
+    result = pull(household_a, drive, content, "currentTransaction_1199.csv")
 
     rows = list(provisional_rows(household_a))
     assert [(r.txn_date.isoformat(), r.amount_cents) for r in rows] == [
@@ -87,11 +87,11 @@ def test_a_card_activity_csv_lands_unverified_with_no_header_and_no_gemini(
         ("2026-06-13", 60000),
     ]
     assert all(r.statement_id is None for r in rows)
-    assert all((r.account_last4, r.account_nickname) == ("7823", "BofA card") for r in rows)
-    assert all(r.line_ref.startswith("currentTransaction_7823.csv:") for r in rows)
+    assert all((r.account_last4, r.account_nickname) == ("1199", "BofA card") for r in rows)
+    assert all(r.line_ref.startswith("currentTransaction_1199.csv:") for r in rows)
     assert not Statement.objects.exists()
     assert result.rows_written == 2
-    stored = IngestedFile.objects.get(display_name="currentTransaction_7823.csv")
+    stored = IngestedFile.objects.get(display_name="currentTransaction_1199.csv")
     assert stored.state == IngestState.INGESTED
     # The job log is a surface: it says so in words.
     assert "provisional" in result.output and "unverified" in result.output
@@ -117,7 +117,7 @@ def test_re_pulling_the_same_day_replaces_rather_than_duplicates(connected, hous
 def test_identical_bytes_are_not_read_twice(connected, household_a, drive):
     content = card("09/01/2026,1,COFFEE,,-4.50")
     pull(household_a, drive, content, stamp="2026-09-02T12:00:00.000Z")
-    drive.add("bofa_7823_activity_2026-09-27 (1).csv", content=content, mime="text/csv",
+    drive.add("bofa_1199_activity_2026-09-27 (1).csv", content=content, mime="text/csv",
               modified="2026-09-02T13:00:00.000Z")
     result = run(household_a, drive, NoGemini())
     assert result.outcome == Outcome.OK
@@ -167,7 +167,7 @@ def test_a_re_pull_leaves_another_account_and_a_voice_logged_charge_alone(
             created_at="2026-09-01T10:00:00Z",
         )
 
-    voice = provisional("7823", "BofA card", "LUNCH (voice-logged)", pending=True)
+    voice = provisional("1199", "BofA card", "LUNCH (voice-logged)", pending=True)
     other = provisional("4444", "BofA card", "OTHER CARD")
     pull(household_a, drive, card("09/01/2026,1,COFFEE,,-4.50"))
 
@@ -181,12 +181,12 @@ def test_a_re_pull_leaves_another_account_and_a_voice_logged_charge_alone(
 
 
 def a_card_statement(**overrides) -> dict:
-    """A gated BofA card statement for 7823 covering 09/01 to 09/05, which
+    """A gated BofA card statement for 1199 covering 09/01 to 09/05, which
     ties out: -1000 - 450 - 6000 = -7450."""
     payload = {
         "content_sha256": "sha-card-statement",
         "provenance": gate.DETERMINISTIC,
-        "account_last4": "7823",
+        "account_last4": "1199",
         "account_nickname": "BofA card",
         "currency": "USD",
         "stated_total_cents": None,
@@ -433,7 +433,7 @@ def test_checking_current_file_after_a_closed_period_leaves_the_verified_rows_un
 def test_card_current_then_closed_period_then_next_current_holds_each_row_once(
     connected, household_a, drive
 ):
-    """Card 7823, statement closing 09/05 (P). The current file on 09/10 (X)
+    """Card 1199, statement closing 09/05 (P). The current file on 09/10 (X)
     covers 09/01 to 09/10, the period file covers 09/01 to 09/05, the next
     day's current file covers 09/06 to 09/11. The card prints no anchor, so all
     of it stays UNRECONCILED, and none of it may be counted twice."""
@@ -444,7 +444,7 @@ def test_card_current_then_closed_period_then_next_current_holds_each_row_once(
         "09/05/2026,4,REFUND,,12.00",
         "09/09/2026,5,FUEL,,-40.00",
     )
-    pull(household_a, drive, current_x, "bofa_7823_activity_2026-09-10.csv",
+    pull(household_a, drive, current_x, "bofa_1199_activity_2026-09-10.csv",
          stamp="2026-09-10T12:00:00.000Z")
 
     period = card(
@@ -453,16 +453,16 @@ def test_card_current_then_closed_period_then_next_current_holds_each_row_once(
         "09/04/2026,3,BAGEL,,-3.00",
         "09/05/2026,4,REFUND,,12.00",
     )
-    result = pull(household_a, drive, period, "bofa_7823_period_2026-09-05.csv",
+    result = pull(household_a, drive, period, "bofa_1199_period_2026-09-05.csv",
                   stamp="2026-09-10T18:00:00.000Z")
     assert "unverified: 0 new, 4 already held, 0 no longer listed" in result.output
 
     next_day = card("09/09/2026,5,FUEL,,-40.00", "09/11/2026,6,GROCER,,-60.00")
-    pull(household_a, drive, next_day, "bofa_7823_activity_2026-09-11.csv",
+    pull(household_a, drive, next_day, "bofa_1199_activity_2026-09-11.csv",
          stamp="2026-09-11T12:00:00.000Z")
 
     u = Provenance.UNRECONCILED
-    assert ledger(household_a, "7823") == sorted([
+    assert ledger(household_a, "1199") == sorted([
         ("2026-09-02", "COFFEE", -450, u),
         ("2026-09-04", "BAGEL", -300, u),
         ("2026-09-04", "BAGEL", -300, u),
@@ -481,7 +481,7 @@ def test_card_current_then_closed_period_then_next_current_holds_each_row_once(
          checking_csv(10000, DAY_2, start="09/05/2026", end="09/10/2026")),
         ("bofa_1000_period_2026-09-10.csv",
          checking_csv(10000, DAY_2, start="09/05/2026", end="09/10/2026")),
-        ("bofa_7823_period_2026-09-05.csv", card("09/02/2026,1,COFFEE,,-4.50")),
+        ("bofa_1199_period_2026-09-05.csv", card("09/02/2026,1,COFFEE,,-4.50")),
     ],
 )
 def test_identical_bytes_twice_are_a_no_op(connected, household_a, drive, name, content):
@@ -564,7 +564,7 @@ def a_provisional(**overrides) -> dict:
     payload = {
         "content_sha256": "sha-provisional",
         "provenance": Provenance.UNRECONCILED,
-        "account_last4": "7823",
+        "account_last4": "1199",
         "account_nickname": "BofA card",
         "currency": "USD",
         "lines": [

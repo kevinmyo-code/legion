@@ -27919,7 +27919,7 @@ components:
           type: string
         label:
           type: string
-          description: The card's most recent bank-file name, else "Card ending 7823".
+          description: The card's most recent bank-file name, else "Card ending 1199".
         spend_cents:
           type: integer
           description: Categorised outflows this budget month, after transfers and

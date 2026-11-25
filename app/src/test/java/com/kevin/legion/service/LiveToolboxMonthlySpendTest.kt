@@ -83,8 +83,8 @@ class LiveToolboxMonthlySpendTest {
     @Test
     fun `an own-account card payment is excluded from the total and disclosed in the note`() = runBlocking {
         insertEngineTransactions(
-            txn("4111111111117823", -5_000, "WALMART SUPERCENTER", category = "Shopping"),
-            txn("4111111115042", -1300_00, "Online Banking payment to CRD 7823 Confirmation# 0649409616", category = "Shopping"),
+            txn("4111111111111199", -5_000, "WALMART SUPERCENTER", category = "Shopping"),
+            txn("4111111115042", -1300_00, "Online Banking payment to CRD 1199 Confirmation# 0649409616", category = "Shopping"),
         )
 
         val result = LiveToolbox.dispatch(context, "get_monthly_spend", JSONObject())!!
@@ -100,7 +100,7 @@ class LiveToolboxMonthlySpendTest {
     @Test
     fun `a Zelle payment to a person is never excluded and the disclosure reads zero`() = runBlocking {
         insertEngineTransactions(
-            txn("4111111111117823", -5_000, "WALMART SUPERCENTER", category = "Shopping"),
+            txn("4111111111111199", -5_000, "WALMART SUPERCENTER", category = "Shopping"),
             txn("4111111115042", -40_000, "Zelle payment to  R Alan Cole US Conf# b4nb0qacg", category = "Shopping"),
         )
 

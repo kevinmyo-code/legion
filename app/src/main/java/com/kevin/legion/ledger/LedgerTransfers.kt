@@ -11,8 +11,8 @@ import com.kevin.legion.data.local.LedgerTransaction
  *
  * **The trap this file exists to close.** Kevin's US accounts move money to
  * each other constantly - his card statement prints `PAYMENT FROM CHK 5042`,
- * his checking CSV prints `Online Banking transfer from SAV 8267`, and his
- * card CSV prints `PAYMENT FROM SAV 8267 +1300.00`. Sum credits and debits
+ * his checking CSV prints `Online Banking transfer from SAV 2277`, and his
+ * card CSV prints `PAYMENT FROM SAV 2277 +1300.00`. Sum credits and debits
  * naively across an entity and that one $1,300 card payment becomes $1,300 of
  * income on the card AND $1,300 of expense somewhere else - both sides
  * inflate, and if only one of the two statements happens to be imported, the
@@ -43,7 +43,7 @@ import com.kevin.legion.data.local.LedgerTransaction
  * pair is safe to pull from spend") was measured against Kevin's real data
  * and found to leave roughly $24,000 of his own money moving between his own
  * accounts counted as spend, because most of those movements only ever have
- * ONE leg imported (the card statement's `PAYMENT TO CRD 7823` with no
+ * ONE leg imported (the card statement's `PAYMENT TO CRD 1199` with no
  * matching checking import that month). The naive fix - trust
  * [TRANSFER_KEYWORDS] wording alone - was measured too and rejected: it also
  * catches `Zelle payment to <a person's name>`, which is real money leaving
@@ -64,7 +64,7 @@ import com.kevin.legion.data.local.LedgerTransaction
  * double-count it.
  *
  * [OWN_ACCOUNT_MOVEMENT] (Kevin, 2026-08-13) found no partner ROW, but the description itself names
- * an account [referencesOwnAccount] confirms Kevin actually holds - a `PAYMENT TO CRD 7823` naming
+ * an account [referencesOwnAccount] confirms Kevin actually holds - a `PAYMENT TO CRD 1199` naming
  * his own card is proven evidence his money moved to an account of his, on file, whether or not that
  * account's own statement has been imported this period. It IS excluded from
  * [TransferAnalysis.operating], same as a matched pair, because the evidence for it is a stated
@@ -166,7 +166,7 @@ private fun daysApart(a: Long, b: Long): Long = kotlin.math.abs(a - b) / DAY_MS
  * [ExclusionReason.OWN_ACCOUNT_MOVEMENT] and IS pulled out of
  * [TransferAnalysis.operating] - unlike pass 3 below, this is not a wording
  * guess: the description states a specific account, and [ownAccountIds]
- * proves Kevin holds it. A `PAYMENT TO CRD 7823` naming his own card is safe
+ * proves Kevin holds it. A `PAYMENT TO CRD 1199` naming his own card is safe
  * to exclude even with no matching checking-statement row this period, for
  * the same reason a matched pair is safe - the evidence is a fact on file,
  * not an inference.

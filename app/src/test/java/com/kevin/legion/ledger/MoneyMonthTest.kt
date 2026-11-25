@@ -67,7 +67,7 @@ class MoneyMonthTest {
     @Test
     fun `a card payment from checking is spending on neither side`() {
         val rows = listOf(
-            txn(d(2), -50_000, CHECKING, "Payments", description = "PAYMENT TO CRD 7823"),
+            txn(d(2), -50_000, CHECKING, "Payments", description = "PAYMENT TO CRD 1199"),
             txn(d(2), 50_000, CARD, "Payments", description = "PAYMENT FROM CHK 5042"),
             txn(d(2), -1_200, CARD, "Dining"),
             txn(d(1), -700, CHECKING, "Groceries"),
@@ -156,12 +156,12 @@ class MoneyMonthTest {
     @Test
     fun `a bare last-4 and a full number for one card are one section`() {
         val rows = listOf(
-            txn(d(2), -1_000, "5555555555557823", "Dining"),
-            txn(d(3), -500, "7823", "Dining"),
+            txn(d(2), -1_000, "5555555555551199", "Dining"),
+            txn(d(3), -500, "1199", "Dining"),
         )
         val results = buildAccountMonthResults(rows, oct, emptySet())
         assertEquals(1, results.size)
-        assertEquals("****7823", results.single().name.takeLast(8))
+        assertEquals("****1199", results.single().name.takeLast(8))
         assertEquals(1_500L, spendOf(results, results.single().name).totalCents)
     }
 
@@ -181,6 +181,6 @@ class MoneyMonthTest {
 
     private companion object {
         const val CHECKING = "BofA checking 5042"
-        const val CARD = "BofA card 7823"
+        const val CARD = "BofA card 1199"
     }
 }

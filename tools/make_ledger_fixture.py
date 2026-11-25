@@ -155,7 +155,7 @@ def main() -> None:
 
 CARD_FIXTURES_DIR = Path(__file__).resolve().parent.parent / "app/src/test/resources/ledger_fixtures"
 
-CARD_ACCOUNT_DIGITS = "5555 5555 5555 7823"
+CARD_ACCOUNT_DIGITS = "5555 5555 5555 1199"
 CARD_ACCOUNT_LAST4 = CARD_ACCOUNT_DIGITS.replace(" ", "")[-4:]
 
 CARD_PREVIOUS_BALANCE = 842150  # $8,421.50, invented
@@ -516,7 +516,7 @@ def make_card_csv_rejection_fixture() -> None:
         f"06/09/2026,24992915166300{CARD_ACCOUNT_LAST4}01,PAYMENT - THANK YOU,,-1500.00",
         f"06/13/2026,24992915167300{CARD_ACCOUNT_LAST4}02,NORTHWIND OUTFITTERS,123 MAIN ST SEATTLE WA,600.00",
     ]
-    out = CARD_FIXTURES_DIR / "currentTransaction_7823.csv"
+    out = CARD_FIXTURES_DIR / "currentTransaction_1199.csv"
     out.write_text("\n".join(csv_lines) + "\n", encoding="utf-8")
     print(f"wrote {out} ({out.stat().st_size} bytes)")
 

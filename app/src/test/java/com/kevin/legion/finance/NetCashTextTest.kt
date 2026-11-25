@@ -31,7 +31,7 @@ class NetCashTextTest {
         pendingCents = -2_150,
         parts = listOf(
             NetCashPartWire("checking", "Everyday Checking", "1000", "USD", 180_000, "bank_available", -650, 1, "2026-11-16T14:05:00+00:00"),
-            NetCashPartWire("card", "Rewards Card", "7823", "USD", -39_782, "current_plus_pending", -1_500, 2, "2026-11-16T14:05:00+00:00"),
+            NetCashPartWire("card", "Rewards Card", "1199", "USD", -39_782, "current_plus_pending", -1_500, 2, "2026-11-16T14:05:00+00:00"),
         ),
         history = NetCashHistoryWire(
             start = "2026-11-14",
@@ -70,14 +70,14 @@ class NetCashTextTest {
     fun `a missing balance gives no figure and names the account`() {
         val missing = NetCashWire(
             available = false,
-            reason = "No net cash figure: Rewards Card ending 7823: the bank sent no balance for this card.",
-            missing = listOf(NetCashMissingWire("card", "Rewards Card", "7823", "the bank sent no balance for this card")),
+            reason = "No net cash figure: Rewards Card ending 1199: the bank sent no balance for this card.",
+            missing = listOf(NetCashMissingWire("card", "Rewards Card", "1199", "the bank sent no balance for this card")),
             parts = body.parts.take(1),
         )
         val m = NetCashText.model(FinanceRead.Fresh(missing), null, now, zone)
         assertFalse(m.hasFigure)
         assertEquals("No figure", m.figure)
-        assertEquals("No net figure: Rewards Card ending 7823, the bank sent no balance for this card.", m.line)
+        assertEquals("No net figure: Rewards Card ending 1199, the bank sent no balance for this card.", m.line)
         assertTrue(NetCashText.spoken(FinanceRead.Fresh(missing), now, zone).startsWith("No net cash figure."))
     }
 

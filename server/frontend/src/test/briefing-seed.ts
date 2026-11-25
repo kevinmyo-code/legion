@@ -102,7 +102,7 @@ export function briefingLedger(): Record<string, Row[]> {
   }
   // Three card charges nobody has categorised, not on a statement yet.
   for (const [description, cents] of [['Fuel stop 118', -4210], ['Corner Grocer', -1460], ['Streaming service', -750]] as const) {
-    rows.push(makeTxn({ txn_date: day(now.getDate()), description, amount_cents: cents, account_last4: '7823' }))
+    rows.push(makeTxn({ txn_date: day(now.getDate()), description, amount_cents: cents, account_last4: '1199' }))
   }
   // Last month's checking row carrying a balance; the card's from the bank feed.
   rows.push(
@@ -110,7 +110,7 @@ export function briefingLedger(): Record<string, Row[]> {
       txn_date: day(now.getDate()),
       description: 'Card payment',
       amount_cents: -2000,
-      account_last4: '7823',
+      account_last4: '1199',
       provenance: 'BANK_API',
       verification_note: null,
       balance_cents: -132718,
@@ -153,7 +153,7 @@ export function briefingSpend(): Spend {
     ...emptySpend(month),
     accounts: [
       { account_last4: '5521', label: 'Checking', spend_cents: 136672, unverified: false, unverified_cents: 0, latest_row_at: new Date().toISOString() },
-      { account_last4: '7823', label: 'Credit card', spend_cents: 0, unverified: false, unverified_cents: 0, latest_row_at: new Date().toISOString() },
+      { account_last4: '1199', label: 'Credit card', spend_cents: 0, unverified: false, unverified_cents: 0, latest_row_at: new Date().toISOString() },
     ],
     categories: [
       { category: 'Housing', spend_cents: 120000, target_cents: 120000, unverified: false },

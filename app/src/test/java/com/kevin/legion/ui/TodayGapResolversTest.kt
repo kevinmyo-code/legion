@@ -263,7 +263,7 @@ class TodayGapResolversTest {
             lines = lines,
             uncategorized = UncategorizedSpend(spentCents = uncategorizedCents, hasProvisionalRows = false),
             coverage = coverage ?: if (complete) {
-                listOf(AccountCoverage("7823", coversWholeMonth = true, coveredFromMs = 0L, coveredToMs = 1L, coveredThroughMs = 1L))
+                listOf(AccountCoverage("1199", coversWholeMonth = true, coveredFromMs = 0L, coveredToMs = 1L, coveredThroughMs = 1L))
             } else {
                 emptyList()
             },

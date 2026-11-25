@@ -46,8 +46,8 @@ class LedgerPendingDeltaDisjointTest {
     }
 
     private fun fileDerivedProvisional(txnDate: Long, amountCents: Long) = LedgerTransaction(
-        sourceFile = "currentTransaction_7823.csv",
-        accountId = "7823",
+        sourceFile = "currentTransaction_1199.csv",
+        accountId = "1199",
         currency = LedgerCurrency.USD,
         txnDate = txnDate,
         description = "CARD CSV ROW",
@@ -60,7 +60,7 @@ class LedgerPendingDeltaDisjointTest {
 
     private fun voiceLoggedPending(txnDate: Long, amountCents: Long) = LedgerTransaction(
         sourceFile = "voice",
-        accountId = "7823",
+        accountId = "1199",
         currency = LedgerCurrency.USD,
         txnDate = txnDate,
         description = "VOICE-LOGGED ROW",
@@ -83,8 +83,8 @@ class LedgerPendingDeltaDisjointTest {
         val dao = db.ledgerTransactionDao()
         dao.insertAll(listOf(fileDerivedProvisional(JUL_1, -4500L), voiceLoggedPending(JUL_2, -1200L)))
 
-        val provisional = dao.provisionalDeltaCentsAfter("7823", LedgerCurrency.USD, Long.MIN_VALUE)
-        val pending = dao.pendingDeltaCents("7823", LedgerCurrency.USD)
+        val provisional = dao.provisionalDeltaCentsAfter("1199", LedgerCurrency.USD, Long.MIN_VALUE)
+        val pending = dao.pendingDeltaCents("1199", LedgerCurrency.USD)
 
         assertEquals(-4500L, provisional)
         assertEquals(-1200L, pending)
@@ -99,8 +99,8 @@ class LedgerPendingDeltaDisjointTest {
         val dao = db.ledgerTransactionDao()
         dao.insertAll(listOf(voiceLoggedPending(JUL_1, -8000L)))
 
-        assertEquals(null, dao.provisionalDeltaCentsAfter("7823", LedgerCurrency.USD, Long.MIN_VALUE))
-        assertEquals(-8000L, dao.pendingDeltaCents("7823", LedgerCurrency.USD))
+        assertEquals(null, dao.provisionalDeltaCentsAfter("1199", LedgerCurrency.USD, Long.MIN_VALUE))
+        assertEquals(-8000L, dao.pendingDeltaCents("1199", LedgerCurrency.USD))
     }
 
     /** A file-derived provisional row alone: pendingDeltaCents must read zero, never the file's amount. */
@@ -109,8 +109,8 @@ class LedgerPendingDeltaDisjointTest {
         val dao = db.ledgerTransactionDao()
         dao.insertAll(listOf(fileDerivedProvisional(JUL_1, -3000L)))
 
-        assertEquals(-3000L, dao.provisionalDeltaCentsAfter("7823", LedgerCurrency.USD, Long.MIN_VALUE))
-        assertEquals(null, dao.pendingDeltaCents("7823", LedgerCurrency.USD))
+        assertEquals(-3000L, dao.provisionalDeltaCentsAfter("1199", LedgerCurrency.USD, Long.MIN_VALUE))
+        assertEquals(null, dao.pendingDeltaCents("1199", LedgerCurrency.USD))
     }
 
     companion object {

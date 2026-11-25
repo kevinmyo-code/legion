@@ -94,7 +94,7 @@ def test_accounts_get_returns_every_account_as_plain_dicts():
             {
                 "accounts": [
                     Model({"account_id": "acc-chk", "mask": "1000", "balances": {"current": 1.5}}),
-                    {"account_id": "acc-card", "mask": "7823", "balances": {"current": 2.5}},
+                    {"account_id": "acc-card", "mask": "1199", "balances": {"current": 2.5}},
                 ],
                 "item": {"item_id": "item-1"},
                 "request_id": "req-2",

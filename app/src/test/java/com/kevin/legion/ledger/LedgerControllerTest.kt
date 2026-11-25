@@ -34,14 +34,14 @@ class LedgerControllerTest {
     @Test
     fun `grouping uses only the balance-holder's own provisional delta, never a sibling's`() {
         val withPrintedBalance = AccountBalance(
-            accountId = "4111111111117823",
+            accountId = "4111111111111199",
             currency = LedgerCurrency.USD,
             balanceCents = 50_000L,
             provisionalDeltaCents = 3_000L,
             isProvisional = true,
         )
         val provisionalOnlySibling = AccountBalance(
-            accountId = "7823",
+            accountId = "1199",
             currency = LedgerCurrency.USD,
             balanceCents = null,
             provisionalDeltaCents = 7_500L,
@@ -59,8 +59,8 @@ class LedgerControllerTest {
     /** No provisional rows at all: the representative's delta (zero) survives grouping untouched. */
     @Test
     fun `grouping a cluster with no provisional rows leaves the delta at zero`() {
-        val withPrintedBalance = AccountBalance("4111111111117823", LedgerCurrency.USD, 50_000L)
-        val provisionalOnlySibling = AccountBalance("7823", LedgerCurrency.USD, null)
+        val withPrintedBalance = AccountBalance("4111111111111199", LedgerCurrency.USD, 50_000L)
+        val provisionalOnlySibling = AccountBalance("1199", LedgerCurrency.USD, null)
 
         val grouped = groupAccountBalances(listOf(withPrintedBalance, provisionalOnlySibling))
 
@@ -94,15 +94,15 @@ class LedgerControllerTest {
     /** Same last-4, same currency: this is the real ticket 12 §0 case, and it MUST still merge. */
     @Test
     fun `same last-4 and same currency still merge into one row`() {
-        val cardPdf = AccountBalance("4111111111117823", LedgerCurrency.USD, 50_000L)
-        val cardCsv = AccountBalance("7823", LedgerCurrency.USD, null, provisionalDeltaCents = 0L)
+        val cardPdf = AccountBalance("4111111111111199", LedgerCurrency.USD, 50_000L)
+        val cardCsv = AccountBalance("1199", LedgerCurrency.USD, null, provisionalDeltaCents = 0L)
 
         val grouped = groupAccountBalances(listOf(cardPdf, cardCsv))
 
         assertEquals(1, grouped.size)
         // The full printed PAN reads better in the UI than a bare last-4 -
         // it's the representative when it carries the printed balance.
-        assertEquals("4111111111117823", grouped.first().accountId)
+        assertEquals("4111111111111199", grouped.first().accountId)
     }
 
     /** A singleton cluster (no other account shares its last-4) passes through unchanged. */
@@ -127,14 +127,14 @@ class LedgerControllerTest {
     @Test
     fun `grouping never multiplies a voice-logged pending delta across cluster members`() {
         val cardPdf = AccountBalance(
-            accountId = "4111111111117823",
+            accountId = "4111111111111199",
             currency = LedgerCurrency.USD,
             balanceCents = 50_000L,
             pendingDeltaCents = -7_500L,
             hasPendingRows = true,
         )
         val cardCsv = AccountBalance(
-            accountId = "7823",
+            accountId = "1199",
             currency = LedgerCurrency.USD,
             balanceCents = null,
             pendingDeltaCents = -7_500L,

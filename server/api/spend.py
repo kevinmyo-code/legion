@@ -14,7 +14,7 @@ The rules, kept exactly:
   pairs two rows on different accounts with equal and opposite amounts within
   5 days (closest date first, then lowest id; greedy, each row used once);
   pass 2 pulls a row whose description names an account the household holds
-  (`CRD 7823`); pass 3 only FLAGS wording ("payment to") and leaves the row in
+  (`CRD 1199`); pass 3 only FLAGS wording ("payment to") and leaves the row in
   spend, so a Zelle to a person still counts.
 - **Only outflows count**, and a refund is not netted against them.
 - **A not-spending category (`categories.excluded_from_spend`) never counts**,
@@ -665,7 +665,7 @@ def household_spend(queryset_rows, categories, targets, statements, month: Month
 
 def _label(rows, last4: str) -> str:
     """Spec D5: the most recent server-ingested `account_nickname` for the
-    card, else "Card ending 7823". A phone-uploaded row's nickname is the
+    card, else "Card ending 1199". A phone-uploaded row's nickname is the
     phone's raw account id (digits, `LedgerReconcile`), never a label, so a
     nickname with no letter in it is not offered as one."""
     named = [r for r in rows if any(ch.isalpha() for ch in (r.get("account_nickname") or ""))]

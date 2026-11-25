@@ -125,7 +125,7 @@ object NetCashVoice {
         return "There is no net cash figure: ${first.label}$ending has no balance from the bank.$also"
     }
 
-    /** One ledger account as spoken: "BOFA CARD ending seven eight two three: minus ... cents." */
+    /** One ledger account as spoken: "BOFA CARD ending one one nine nine: minus ... cents." */
     fun ledgerSpeech(accountId: String, cents: Long?, currency: String): String {
         val mask = Regex("""(\d{4})\s*$""").find(accountId)?.groupValues?.get(1)
         val name = accountId.substringBefore("*").trim().ifEmpty { "That account" }

@@ -119,4 +119,4 @@ def test_the_guard_covers_the_template_and_the_tests():
 def test_the_guard_would_catch_a_stray_figure():
     assert not _allowed_int(123_456)
     assert not _allowed_digits("4321")
-    assert _allowed_int(50_000) and _allowed_digits("2026") and _allowed_digits("7823")
+    assert _allowed_int(50_000) and _allowed_digits("2026") and _allowed_digits("1199")

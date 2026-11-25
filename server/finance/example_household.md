@@ -15,7 +15,7 @@ Money is in major units (`500` is 500.00), at most two decimal places.
 | Key | Account | Owner | Ccy | Layer | Source |
 |---|---|---|---|---|---|
 | us-checking-1000 | Bank A checking 1000 | Alex | USD | liquid | plaid |
-| us-card-7823 | Bank A card 7823 | Alex | USD | liquid (debt) | plaid |
+| us-card-1199 | Bank A card 1199 | Alex | USD | liquid (debt) | plaid |
 | sg-savings | Bank B savings | Sam | SGD | liquid | statement |
 | sg-card | Bank C card | Sam | SGD | liquid (debt) | statement |
 | sg-bonds | Savings bonds | Sam | SGD | investments | computed |
@@ -94,7 +94,7 @@ policy:
     in_ledger: false        # true once the account that pays it is in the ledger
   us_topup:
     checking: us-checking-1000
-    card: us-card-7823
+    card: us-card-1199
     bills_30d: 2000
     warn_days: 7
     card_due_day: 20        # optional, day of month

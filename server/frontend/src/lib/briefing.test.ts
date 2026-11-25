@@ -136,7 +136,7 @@ function txn(overrides: Partial<LedgerTransaction>): LedgerTransaction {
   return {
     id: crypto.randomUUID(),
     statement_id: null,
-    account_last4: '7823',
+    account_last4: '1199',
     account_nickname: 'Card',
     currency: 'USD',
     txn_date: '2026-11-01',
@@ -240,12 +240,12 @@ describe('latestBalances', () => {
     const balances = latestBalances(
       [],
       [],
-      [linked({}), linked({ name: 'Cash Rewards', mask: '7823', type: 'credit', balance_current_cents: 41007 })],
+      [linked({}), linked({ name: 'Cash Rewards', mask: '1199', type: 'credit', balance_current_cents: 41007 })],
     )
     const checking = balances.find((b) => b.account === '1000')!
     expect(checking).toMatchObject({ cents: 123456, word: 'Verified', label: 'Adv Plus Banking' })
     expect(checking.detail).toMatch(/^From the bank as of \d{1,2}:14 [AP]M, Nov [23]$/)
-    const card = balances.find((b) => b.account === '7823')!
+    const card = balances.find((b) => b.account === '1199')!
     expect(card.cents).toBe(-41007)
     expect(card.detail).toMatch(/^Owed, from the bank as of /)
   })

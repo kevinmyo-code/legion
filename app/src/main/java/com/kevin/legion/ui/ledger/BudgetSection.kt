@@ -764,7 +764,7 @@ private fun PreviewBudgetExcludedOwnAccountMovements() = SoftTheme {
                         LedgerTransaction(
                             id = 101, sourceFile = "eStmt.pdf", accountId = "4111111115042",
                             currency = LedgerCurrency.USD, txnDate = System.currentTimeMillis(),
-                            description = "Online Banking payment to CRD 7823 Confirmation# 0649409616",
+                            description = "Online Banking payment to CRD 1199 Confirmation# 0649409616",
                             amountCents = -34_011L, lineRef = "1", ingestMethod = IngestMethod.DETERMINISTIC,
                         ),
                     ),
@@ -922,13 +922,13 @@ private fun PreviewExcludedOwnAccountMovements() = SoftTheme {
                 LedgerTransaction(
                     id = 1, sourceFile = "eStmt.pdf", accountId = "4111111115042",
                     currency = LedgerCurrency.USD, txnDate = System.currentTimeMillis(),
-                    description = "Online Banking payment to CRD 7823 Confirmation# 0649409616",
+                    description = "Online Banking payment to CRD 1199 Confirmation# 0649409616",
                     amountCents = -34_011L, lineRef = "1", ingestMethod = IngestMethod.DETERMINISTIC,
                 ),
                 LedgerTransaction(
                     id = 2, sourceFile = "eStmt.pdf", accountId = "4111111115042",
                     currency = LedgerCurrency.USD, txnDate = System.currentTimeMillis(),
-                    description = "Mobile Banking payment to CRD 7823 Confirmation# 14lmchyt7",
+                    description = "Mobile Banking payment to CRD 1199 Confirmation# 14lmchyt7",
                     amountCents = -34_907L, lineRef = "2", ingestMethod = IngestMethod.DETERMINISTIC,
                 ),
             ),

@@ -472,7 +472,7 @@ private fun PreviewTransactionRowUnreconciled() = SoftTheme {
     Surface {
         LedgerTransactionRow(
             previewTxn.copy(
-                accountId = "7823",
+                accountId = "1199",
                 description = "NORTHWIND OUTFITTERS 07/13 PURCHASE SEATTLE WA",
                 amountCents = -6000,
                 balanceCents = null,
@@ -530,7 +530,7 @@ private fun PreviewBalancesProvisional() = SoftTheme {
                 // latest one didn't print a balance" - the "no statement
                 // yet" copy is the correct one for this exact case.
                 AccountBalance(
-                    accountId = "7823",
+                    accountId = "1199",
                     currency = LedgerCurrency.USD,
                     balanceCents = null,
                     provisionalDeltaCents = -7500,
@@ -559,7 +559,7 @@ private fun PreviewBalancesProvisionalReconciledCard() = SoftTheme {
         BalancesSection(
             listOf(
                 AccountBalance(
-                    accountId = "4111111111117823",
+                    accountId = "4111111111111199",
                     currency = LedgerCurrency.USD,
                     balanceCents = null,
                     provisionalDeltaCents = -1500,
