@@ -4,8 +4,8 @@ title: "Engine brain: Alfred's agent graph on the engine; the phone and every de
 charted: 2026-11-17
 charted-by: "Opus (plan 2026-11-16, ruled by Kevin 2026-11-17)"
 effort: "`.scratch/engine-brain/`"
-tickets: 15
-open: 14
+tickets: 17
+open: 16
 status: open
 tags: [map]
 ---
@@ -54,6 +54,7 @@ He says "what do I have today and can I afford lunch".
 | 13 | Web on the engine |
 | 14 | Head unit as a thin limb |
 | 15 | Engine homes for user-aspect records (split from 03) |
+| 16 | Alfred and Moose on one engine |
 
 ## Not in this map
 - On-phone or cloud-hosted voice (dropped).
