@@ -373,7 +373,7 @@ def test_a_dated_log_today_outranks_an_asserted_anchor_stated_earlier_today(
     from brief.maintenance import schedule_status
     from legacy.models.fleet import Vehicle
 
-    today = dt.date.today()
+    today = _write_day()
     vehicle = _car(auth_client)
     _put(
         auth_client,
@@ -414,7 +414,7 @@ def test_a_re_stated_anchor_is_the_newest_row_even_though_its_row_is_old(
         f"maintenance_schedules/{vehicle}/oil change/",
         {"interval_miles": 5_000, "interval_source": "SEEDED", "never_done": False},
     )
-    today = dt.date.today()
+    today = _write_day()
     # Anchored a year ago, then logged today with no reading.
     old = dt.date(2025, 1, 10)
     _service(auth_client, "a1", vehicle, "oil change", old, 71_200, kind="ASSERTED")
@@ -457,7 +457,7 @@ def test_logging_the_service_again_with_a_reading_supersedes_a_pinned_one(
         f"maintenance_schedules/{vehicle}/oil change/",
         {"interval_miles": 5_000, "interval_source": "SEEDED", "never_done": False},
     )
-    today = dt.date.today()
+    today = _write_day()
     _service(auth_client, "s1", vehicle, "oil change", today, None)
     # set_odometer pinned a misheard reading onto the item.
     _service(auth_client, "a1", vehicle, "oil change", today, 335_000, kind="ASSERTED")
