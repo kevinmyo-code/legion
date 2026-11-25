@@ -1203,15 +1203,15 @@ def _answer(
         # while the model's first round runs. It used to be the conversation's first utterance only
         # (round 2 speech review 5, round 3 S5), which left every later question silent until the
         # answer: `fillers.ack_skip` carries the phone's skip list instead.
-        # The shortest acknowledgement render in hand (never the last one said). The phone bounds
-        # its backchannel to 120 to 700 ms, but it measures a clip it has TRIMMED to its voice
-        # (`Backchannel.trimSilence`: the cloud voice pads a one-word render with 80 to 520 ms of
-        # silence each side), and this door plays what the engine returns untrimmed, so the phone's
-        # window cannot be applied to a raw clip. A hard `ceiling_ms` is also the wrong tool here:
-        # with nothing short enough it falls back to `FALLBACK`, whose words promise a look. So the
-        # bound is the shortest of the eight; trimming, and the measurement that would set a real
-        # window, are owed (report finding 5).
-        picked = filler_audio.pick(voice, ACK_TOOL, shortest=True)
+        # Rotated, not bounded, and deliberately so. The phone bounds its backchannel to 120 to
+        # 700 ms, but it measures a clip it has TRIMMED to its voice (`Backchannel.trimSilence`:
+        # the cloud voice pads a one-word render with 80 to 520 ms of silence each side), and this
+        # door plays what the engine returns untrimmed, so the phone's window cannot be applied
+        # here as it stands. `shortest=True` would bound it at the cost of the phone's other rule,
+        # rotation: it takes the shortest clip in hand every turn, so one word would be the
+        # acknowledgement forever. Trimming, and the one measurement that sizes the problem (what
+        # the TTS returns for a one-word line in a demo persona's voice), are owed.
+        picked = filler_audio.pick(voice, ACK_TOOL)
         if picked is None:
             ack_skip = "not_in_memory"
         else:
@@ -1256,6 +1256,9 @@ def _answer(
             rounds.append(row)
 
     first_sentence = None
+    # When the answer's speech was first asked of the voice, on the door's clock: the phone's
+    # `answerAskedAtMs`, which is what `wait_lines.fits_before_answer` measures from.
+    answer_asked_at: float | None = None
     verbatim_said = False
     # One TASK line a turn (the contract's rule): the wait lines chain on top of it, never a second
     # line naming a tool.
@@ -1334,9 +1337,13 @@ def _answer(
         The dead-air rule: the chain runs until the answer's AUDIO is in hand, which is the phone's
         own line (`CascadeSession.kt`: "until the answer's AUDIO is in hand ([DeadAir]: the first
         text alone no longer ends them)"); a sentence whose speech has not come back yet is still
-        dead air to the person listening. Never after a cancel, because a clip already pushed
-        cannot be recalled. `wait_lines.MAX_CLIP_MS` bounds how long an answer ready just after a
-        line starts has to wait behind it.
+        dead air to the person listening. What keeps that from putting a clip in FRONT of an answer
+        already on its way is the phone's other half, `DeadAir.fits`
+        (`wait_lines.fits_before_answer`): once the answer's speech has been asked for, a line
+        starts only if it ends by the time that audio is expected, plus the phone's hold. A no
+        there is not the end of the chain, because the estimate can go stale. Never after a cancel,
+        because a clip already pushed cannot be recalled, and `wait_lines.MAX_CLIP_MS` bounds how
+        long an answer ready just after a line starts has to wait behind it.
         """
         if not speak or filler_skip is not None or cancelled_often():
             return None
@@ -1357,6 +1364,12 @@ def _answer(
             # Outside the phone's 200 to 1,300 ms window: nothing, rather than a clip that could
             # still be playing when the answer is ready.
             held.words.add(line)
+            return None
+        if not wait_lines.fits_before_answer(
+            now=clock(), asked_at=answer_asked_at, clip_ms=clip_ms
+        ):
+            # The answer's audio is expected too soon for this clip to end first. The line is NOT
+            # marked said: the next tick asks again, and by then the estimate may be stale.
             return None
         timings["wait_lines"] = timings.get("wait_lines", 0) + 1
         timings["wait_ms"] = int((clock() - t0) * 1000)
@@ -1385,13 +1398,15 @@ def _answer(
         what history keeps of it instead (`TurnReport.replay`). `exact_text`: code's verbatim
         sentences (his profile) are shown exactly as written, never put through the tag stripper,
         which would drop an asterisk or a bracketed word from them."""
-        nonlocal sentences, first_sentence
+        nonlocal sentences, first_sentence, answer_asked_at
         if not exact_text:
             text = speech_tags.untagged(text)
         sentences += 1
         report.say(text, replay)
         if first_sentence is None:
             first_sentence = int((clock() - t0) * 1000)
+        if answer_asked_at is None:
+            answer_asked_at = clock()
         speaker.add(
             tagged if tagged is not None else text,
             expressive=tagged is not None,

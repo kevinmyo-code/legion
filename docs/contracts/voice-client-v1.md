@@ -193,14 +193,29 @@ After `decide` passes, at the timer:
 | Lines | "Still on it.", "Still checking.", "One moment more.", "Bear with me.", "Working on it." |
 
 - No line twice in one turn, and the task line's own words count as said.
-- Never once the answer's text or audio is in hand, and never after a cancel: a clip already handed
-  over cannot be recalled, which is what the 1,300 ms ceiling bounds (P `service/cascade/DeadAir.kt`
+- Never once the answer's AUDIO is in hand, and never after a cancel: a clip already handed over
+  cannot be recalled, which is what the 1,300 ms ceiling bounds (P `service/cascade/DeadAir.kt`
   cuts a line the answer caught, with at most 300 ms left to play; a door that pushes audio has no
-  equivalent and relies on the ceiling alone).
+  equivalent and relies on the ceiling alone). The answer's first TEXT does not end the chain
+  (P `service/cascade/CascadeSession.kt:1513-1515`): a sentence whose speech has not come back is
+  still dead air. The engine door reads its speaker's first non-filler audio for this
+  (E `assistant/cascade.py`, `wait_line`).
+- **The backchannel's own skip reasons bind the chain too**, so a turn that says nothing light says
+  nothing light at all: no holding line over words of distress or over a goodbye
+  (P `service/cascade/CascadeSession.kt:1522`, `if (fillerSkip != null) return`;
+  E `assistant/cascade.py`, `filler_skip`).
+- **Known gap on a door whose tool call is synchronous** (the engine's web door today): the phone's
+  chain is a coroutine on the wall clock and speaks while a tool runs, where that door only has the
+  moments its model read reports as waiting, so a tool's seconds are silent. Closing it is a change
+  to the shared runtime loop and is not done.
 - Every waiting turn, tool or no tool. This is what the web was missing: before 2026-11-24 a later
   question with no tool was silent for the whole model round.
 
-**The engine's acknowledgement** ("Yeah, one sec.", E `assistant/fillers.py:133`, sent as a `filler` with `tool: ""` on the first utterance when the words need a look, E `assistant/cascade.py:1736-1745`) and the client's backchannel could both fall in one turn. **Kevin, 2026-11-19 (Q3):** a client that plays backchannels sends `backchannel: true` on the request, and the engine then sends no acknowledgement. The slow-tool task line stays, no sooner than 400 ms after the backchannel ends (P `service/cascade/Backchannel.kt:56`).
+**The engine's acknowledgement** (the phone's own eight words since 2026-11-24, E
+`assistant/fillers.py` `ACK`, sent as a `filler` with `tool: ""` on every turn of theirs that its
+skip list passes) and the client's backchannel could both fall in one turn. The engine door picks
+the shortest render it holds; it does NOT trim the clip to its voice or apply the phone's 120 to
+700 ms window, so a padded one-word render is heard in full there (owed). **Kevin, 2026-11-19 (Q3):** a client that plays backchannels sends `backchannel: true` on the request, and the engine then sends no acknowledgement. The slow-tool task line stays, no sooner than 400 ms after the backchannel ends (P `service/cascade/Backchannel.kt:56`).
 
 ## 5. Playback order and owed lines
 
