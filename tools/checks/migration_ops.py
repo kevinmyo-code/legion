@@ -37,13 +37,37 @@ match judged them. All five must hold:
    callee is a name taken from `django.db`, it takes no positional argument and no keyword but the
    two, and both are literal lists or tuples with `database_operations` empty;
 4. every element of `state_operations` is a call whose callee is a name taken from `django.db`;
-5. nowhere in the file is there a `lambda` or a `:=`, and every call's callee is rooted at a name an
-   import bound. A builtin is not import-bound, and that is what shuts the routes needing one: a
-   sibling `operations` element running `setattr(migrations, 'SeparateDatabaseAndState', ...)` to
-   patch Django before the exempt call is evaluated, `BAG.append(...)`, `getattr`, `vars`, `type`.
+5. nowhere in the file is there a `lambda` or a `:=`, and every call in the file is on the
+   allow-list below.
+
+**Rule 5 is an allow-list on calls, not a ban list** (the smig-red2 RED review, 2026-11-24). It
+used to say only that a call's callee is rooted at a name an import bound, on the reasoning that a
+builtin is not import-bound; one `import builtins` line, or a `django.db`-pathed re-export of that
+module, makes every builtin import-rooted, which is how `setattr` reached
+`SeparateDatabaseAndState` beside the exempt call. So a call is allowed only when it is:
+
+- an OPERATION CONSTRUCTOR: `<name>.<Attr>(...)` where the name is bound to EXACTLY `django.db`,
+  `django.db.migrations` or `django.db.models`. An exact set, not a `django.db.` prefix, because
+  anything re-exported under such a path would otherwise count as Django's; or
+- a HELPER nested inside an operation's ARGUMENT, bound from a module that is not in the standard
+  library (`checklists/0002_household.py` passes its constraint name through its own
+  `household_unique_name(...)`, which is why the second clause exists and the rule is not simply
+  "no non-Django calls").
+
+Every DIRECT element of `operations`, and of an exempt `state_operations`, must be an operation
+constructor, so nothing else runs beside the exempt call.
 
 What is exempt is then the CALLEE of each state operation and nothing else: an element's arguments
 are read like any other code, so an operation stashed inside one is still refused.
+
+**Outside the plain shape the old text match still applies, so this is never weaker than what it
+replaced** (smig-red2 F1-r2). A file the shape rules refuse is held to `DESTRUCTIVE.search(source)`
+as well as to the AST walk, because a walk reads NODES and a node it never visits, or a constant it
+declines to read, is invisible: a `bytes` constant, a docstring, a `match` statement's `kwd_attrs`
+and the dropped `reverse_sql` subtree each hid a destructive operation NAME that the text match
+caught. The invariant is by construction rather than one rule per hiding place. It costs nothing:
+the two files the exemption exists for are both plain-shape, and over the 154 tracked migrations
+plus `homes/0003` the text fallback adds no flag that the walk does not already make.
 
 **It fails closed.** A file that does not parse, a positional, absent, variable or non-empty
 `database_operations`, `**kwargs`, a locally defined function of the same name, a name that could
@@ -72,19 +96,27 @@ Three deliberate narrowings, each measured against the tree rather than guessed:
 - **`reverse_sql` is not read**, on a call whose callee is Django's own `RunSQL`. It runs only on a
   deliberate backward migrate, which no ship does, and a `CREATE TABLE` whose reverse is
   `DROP TABLE` is a correctly written migration. A helper of one's own taking a `reverse_sql`
-  argument and running it forward keeps the rule.
+  argument and running it forward keeps the rule. The skip is right for SQL and is NOT safe in
+  general: the dropped subtree is somewhere to park an operation CLASS and read back out
+  (`S = migrations.RunSQL('select 1', reverse_sql=migrations.DeleteModel)`, then `S.reverse_sql`
+  called in `operations`), which the old text match DID stop. Such a file is not the plain shape,
+  so the text fallback above stops it.
 - **`AlterField` stays destructive**, though it is the one name here that can be metadata-only. The
   operation restates the WHOLE field, so one file cannot show that only `help_text` changed: a type
   or a nullability change is spelled the same way. The consequence is real and recorded by the
   smig-red review - a routine field change is a STOP with no hatch - and the hatch is Kevin's call,
   not this module's.
 
-Not covered, and deliberately not chased: SQL the module never spells out (a name built at runtime
-by `+`, `%`, `.format`, `.join` or `bytes.decode`, a comment inside the statement, a string read
-from a file, an imported helper's SQL, an ORM `.objects.all().delete()` inside `RunPython`, a
+Not covered, and deliberately not chased: SQL the module never spells out (a statement built at
+runtime by `+`, `%`, `.format`, `.join` or `bytes.decode`, a comment inside the statement, a string
+read from a file, an imported helper's SQL, an ORM `.objects.all().delete()` inside `RunPython`, a
 `reverse_sql` read back off a call, anything reached through `gc`, `sys.modules` or a dunder chain
-on an imported module). Every one of those passed the old text match too, so none is a regression;
-writing rules for them would not converge either.
+on an imported module). Every one of those passes the old text match too AS SQL, because the text
+it would have to match is never written down, so none is a regression; writing rules for them would
+not converge either. The same shapes carrying an operation NAME are a different matter - the name IS
+written down, so the text match caught it - and those are stopped by the fallback above, not by this
+list. Nor is a second module covered: a `SeparateDatabaseAndState` re-exported from a module of
+one's own is not Django's here, and an attacker who can add a module needs no exemption at all.
 
 Stdlib only, pure, and tested in tools/checks/test_checks.py and server/tests/test_ship_checks.py.
 """
@@ -93,6 +125,7 @@ from __future__ import annotations
 
 import ast
 import re
+import sys
 
 # The operations that drop or rewrite a column, a table or a constraint when they reach the database.
 DESTRUCTIVE = re.compile(r"RemoveField|DeleteModel|AlterField|RenameField|RenameModel")
@@ -113,6 +146,10 @@ REVERSE = "reverse_sql"
 RUN_SQL = "RunSQL"
 STATE_AND_DB = "SeparateDatabaseAndState"
 DJANGO = "django.db"
+# Where an operation constructor may be taken from inside the plain shape, EXACTLY. Not a
+# `django.db.` prefix: `from django.db.migrations.serializer import builtins` re-exports the
+# builtins module under such a path, which is how `setattr` got in (smig-red2 F1-r2 payload F).
+DJANGO_OPERATION_MODULES = frozenset({DJANGO, f"{DJANGO}.migrations", f"{DJANGO}.models"})
 
 
 def database_destructive(source: str) -> str | None:
@@ -124,7 +161,7 @@ def database_destructive(source: str) -> str | None:
     except SyntaxError as exc:
         return f"the file does not parse ({exc.msg}), so its operations cannot be read"
     bindings = _bindings(tree)
-    exempt = _exempt_callees(tree, bindings)
+    exempt, plain = _exempt_callees(tree, bindings)
     stack: list[ast.AST] = [tree]
     while stack:
         node = stack.pop()
@@ -138,6 +175,12 @@ def database_destructive(source: str) -> str | None:
         if sql:
             return f"SQL running {sql}"
         stack.extend(_operation_children(node, bindings))
+    if not plain:
+        # The walk reads nodes, and a node it never visits hides a name the old text match saw. Only
+        # the plain shape earns an exemption, so every other file is still held to that match.
+        m = DESTRUCTIVE.search(source)
+        if m:
+            return m.group(0)
     return None
 
 
@@ -226,53 +269,75 @@ def _bindings(tree: ast.AST) -> dict[str, str]:
     return {} if rebound & set(bindings) else bindings
 
 
-def _exempt_callees(tree: ast.AST, bindings: dict[str, str]) -> frozenset[int]:
-    """The callee nodes of the state operations this file's shape makes exempt, by `id`.
+def _exempt_callees(tree: ast.AST, bindings: dict[str, str]) -> tuple[frozenset[int], bool]:
+    """The callee nodes of the state operations this file's shape makes exempt, by `id`, and
+    whether the file IS the plain state-only shape the module docstring sets out.
 
-    Empty for every file that is not the plain state-only shape the module docstring sets out: the
-    exemption is an allow-list, and anything else is judged by its operations.
+    The exemption is an allow-list, so anything else is judged by its operations AND by the old
+    text match, which is what the second half of the pair is for: a file that is not plain earns
+    neither the exemption nor the narrowing that came with it.
     """
-    if not _only_import_rooted_calls(tree, bindings):
-        return frozenset()
+    if any(isinstance(node, (ast.Lambda, ast.NamedExpr)) for node in ast.walk(tree)):
+        return frozenset(), False
     klass = _migration_class(tree, bindings)
     if klass is None:
-        return frozenset()
+        return frozenset(), False
     operations = _operations_literal(klass)
     if operations is None:
-        return frozenset()
+        return frozenset(), False
     exempt: set[int] = set()
+    constructors: set[int] = set()
     for element in operations.elts:
+        if not _operation_constructor(element, bindings):
+            return frozenset(), False  # something else runs beside the exempt call
+        constructors.add(id(element))
         state = _state_only_operations(element, bindings)
         if state is None:
-            continue  # judged like any other operation
+            continue  # an ordinary operation, judged by its own name
         for op in state.elts:
-            if not (isinstance(op, ast.Call) and _from_django(op.func, bindings)):
-                return frozenset()  # not a django.db operation: the whole exemption is off
+            if not _operation_constructor(op, bindings):
+                return frozenset(), False  # not a django.db operation: the exemption is off
+            constructors.add(id(op))
             exempt.add(id(op.func))
-    return frozenset(exempt)
+    if not _only_allowed_helpers(tree, bindings, constructors):
+        return frozenset(), False
+    return frozenset(exempt), True
 
 
-def _only_import_rooted_calls(tree: ast.AST, bindings: dict[str, str]) -> bool:
-    """Whether every call in the file is made on a name an import bound, and nothing binds a name
-    with a `lambda` or a `:=` (rule 5).
+def _operation_constructor(node: ast.AST, bindings: dict[str, str]) -> bool:
+    """Whether this is a call on `<name>.<Attr>`, with the name bound to exactly one of Django's
+    three operation modules: the only call shape allowed to BE an operation (rule 5)."""
+    if not isinstance(node, ast.Call):
+        return False
+    func = node.func
+    if not (isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name)):
+        return False
+    return bindings.get(func.value.id, "") in DJANGO_OPERATION_MODULES
 
-    A builtin is not import-bound, so this is what stops code beside the exempt call from reaching
-    into it or patching what it calls: `setattr`, `getattr`, `vars`, `type` and a `list.append` all
-    fail it, while `migrations.DeleteModel(...)` and a project helper taken from an import pass.
+
+def _only_allowed_helpers(
+    tree: ast.AST, bindings: dict[str, str], constructors: set[int]
+) -> bool:
+    """Whether every remaining call in the file - each one nested inside an operation's argument,
+    since rules 1 and 2 leave nowhere else for a call to sit - is an operation constructor or a
+    helper from a module outside the standard library (rule 5's second clause).
+
+    The stdlib ban is what shuts `builtins.setattr` and friends, however they were imported: a
+    `django.db`-pathed re-export of `builtins` is still the `builtins` module.
     """
     for node in ast.walk(tree):
-        if isinstance(node, (ast.Lambda, ast.NamedExpr)):
+        if not isinstance(node, ast.Call) or id(node) in constructors:
+            continue
+        if _operation_constructor(node, bindings):
+            continue
+        root = node.func
+        while isinstance(root, ast.Attribute):
+            root = root.value
+        if not isinstance(root, ast.Name) or root.id not in bindings:
             return False
-        if isinstance(node, ast.Call) and not _import_rooted(node.func, bindings):
+        if set(bindings[root.id].split(".")) & sys.stdlib_module_names:
             return False
     return True
-
-
-def _import_rooted(func: ast.AST, bindings: dict[str, str]) -> bool:
-    """Whether this callee is an imported name, or an attribute chain hanging off one."""
-    while isinstance(func, ast.Attribute):
-        func = func.value
-    return isinstance(func, ast.Name) and func.id in bindings
 
 
 def _migration_class(tree: ast.AST, bindings: dict[str, str]) -> ast.ClassDef | None:
