@@ -47,8 +47,8 @@ what makes getting it wrong expensive: a figure a person repeats to someone else
    not just a verdict. A hand-typed 401k balance has an anchor - the date it was typed and the
    statement it came from - and both must be stored or the figure cannot be re-verified later.
 3. **How the unverified part is said.** The map proposes: **a net worth is never one number.** It is
-   the figure plus, in words, how much rests on estimates - "USD 82,400, of which 31,000 is estimated
-   and last checked 6 weeks ago". Never a single bold total with an asterisk.
+   the figure plus, in words, how much rests on estimates - "USD <total>, of which <part> is
+   estimated and last checked <age> ago". Never a single bold total with an asterisk.
 4. **What staleness does to it.** A loan balance typed in March is wrong in September in a knowable
    direction. Does a component expire? Does the figure refuse to render past some age, or does it
    say how old its oldest input is?

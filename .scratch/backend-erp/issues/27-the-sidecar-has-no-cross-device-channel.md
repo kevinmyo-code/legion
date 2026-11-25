@@ -33,8 +33,8 @@ OTHER phone agrees.
 
 **The persona columns contradict a decision already taken.** Ticket 02 ruled that personas and
 memories bind to the USER, not the device, and `memory/MEMORY.md` records the cross-interface
-requirement in Kevin's own framing: *companion_memories follows the user to Supabase so Alfred
-remembers across phone/Windows.* A per-device `personaPrompt`/`voiceName`/`personaTraits` is the
+requirement: companion memories follow the USER, so the same companion is there on every
+interface. A per-device `personaPrompt`/`voiceName`/`personaTraits` is the
 opposite of that.
 
 `archived` is the second-sharpest: archiving a car on one phone and having it reappear on the other
@@ -76,7 +76,7 @@ of which there are nine.
 
 ## RULED 2026-08-29, and the recommendation above is WITHDRAWN. Three of the seven are dead.
 
-Delegated ("go per ur recommendations"), so this is my call - and checking before building changed
+Delegated to me, so this is my call - and checking before building changed
 the answer. I recommended splitting the sidecar by ownership and moving persona to the server.
 **Persona should not go to the server. It should stop being carried at all.**
 

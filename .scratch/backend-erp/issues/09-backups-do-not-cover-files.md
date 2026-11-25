@@ -7,7 +7,7 @@ map: backend-erp
 
 # A backup that restores rows pointing at files it never kept
 
-**Found 2026-08-26, the hard way: I destroyed Kevin's three receipt photos and then discovered the
+**Found 2026-08-26, the hard way: I destroyed the stored receipt photos and then discovered the
 backup had never covered them.**
 
 ## What happened
@@ -62,7 +62,7 @@ it is not providing, which is the failure ticket 04 named.
 together. Doing the wording half alone is still worth it and can go first, because it is true today
 and will stay true.
 
-**What this does NOT fix:** the three receipt photos already destroyed. Nothing does. That loss is
+**What this does NOT fix:** the receipt photos already destroyed. Nothing does. That loss is
 recorded in ticket 08.
 
 ## Superseded: what was open

@@ -13,8 +13,8 @@ drives, codes, maintenance and vehicle state write to Supabase, and the PC can r
 ## What already exists and works
 
 Ticket 10 built and ran the whole upload half on real hardware 2026-08-28. Eight of ten tables agree
-exactly between screen, device and server: 3 vehicles, 4 service history, 17 drives, 59 code events,
-2 code-clear events, 3 vehicle specs, 1 build entry. The server schema is applied and RLS-verified.
+exactly between screen, device and server: vehicles, service history, drives, code events,
+code-clear events, vehicle specs and the build entry all match row for row. The server schema is applied and RLS-verified.
 The `skippedUnexportable` pre-check reads `public.vehicles`' own DDL rather than patching one
 constraint.
 

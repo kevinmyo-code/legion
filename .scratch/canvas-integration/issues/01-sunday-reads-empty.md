@@ -29,8 +29,7 @@ He is right that it is wrong, and the cause is not an empty calendar.
 
 ## What is actually due Sunday
 
-From `research/planner-2026-09-01.json`, Canvas's own `due_at_utc`, converted to the device's local zone (CDT,
-UTC-5):
+From `research/planner-2026-09-01.json`, Canvas's own `due_at_utc`, converted to the device's local zone:
 
 | `due_at_utc` | Local | Course | Item |
 |---|---|---|---|

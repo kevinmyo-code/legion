@@ -22,7 +22,7 @@ there was read from the live engine in Kevin's own browser, not assumed.
 **Kevin, 2026-09-04:** *"end of day it records and resets. i can look back and see what i did."*
 That is the half of `one-today` ticket 09 the phone got and the web never did.
 
-There are **92 past events** and a per-day tick history in `checklist_ticks`, and nothing on the web
+There is a backlog of **past events** and a per-day tick history in `checklist_ticks`, and nothing on the web
 reaches either. The data is already there; this is a surface, not a feature.
 
 ## Build

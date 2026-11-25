@@ -1,17 +1,18 @@
 ---
 map: fat-loss
 ticket: "13"
-title: "Phone: the Monday 8 am weekly weight line"
+title: "Phone: the weekly weight line"
 type: build
 status: built
-status-detail: "built 2026-11-05 on feat/fat-loss, targeted JVM tests green; owed: a Monday 8 am on the phone, then 'stop the weekly weight line'"
+status-detail: "built 2026-11-05 on feat/fat-loss, targeted JVM tests green; owed: one weekly raise on the phone, then 'stop the weekly weight line'"
 blockers: ["05"]
 blocked-by: ["[[05-trend-and-waist]]"]
 tags: [ticket]
 ---
-# Phone: the Monday 8 am weekly weight line
+# Phone: the weekly weight line
 
-Build item E. Its own raise (`weekly_weight_line`, WELLBEING) and its own Monday 08:00 alarm.
+Build item E. Its own raise (`weekly_weight_line`, WELLBEING) and its own weekly alarm, on a configured day
+and time.
 
 - Facts from `GET weekly-line/`: trend weight, rate per week against the band, the goal's
   remaining distance, waist change when there is one. **Silent when there is too little data**
