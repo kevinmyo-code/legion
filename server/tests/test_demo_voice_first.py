@@ -140,7 +140,11 @@ def test_a_tool_that_has_returned_gets_no_line(member, engine, monkeypatch, hous
     engine.speech.heard = "Calendar today?"
     engine.model = FakeModel([call("list_events", {}), say("Your day is clear.")])
     events = _events(_post(member, audio=PCM))
-    assert _of(events, "filler") == []
+    # The TASK lines only. Since 2026-11-24 the turn also gets an acknowledgement, as the phone's
+    # every turn does (`fillers.ack_skip`); what this test is about is the LOOKUP's line, which a
+    # returned tool must not get. The note about "heard short, so no one sec either" is stale: the
+    # length rule went with the words, which claim nothing now.
+    assert [f["tool"] for f in _of(events, "filler") if f["tool"]] == []
 
 
 def test_no_filler_in_front_of_a_code_written_sentence(member, engine, monkeypatch, household_user):
