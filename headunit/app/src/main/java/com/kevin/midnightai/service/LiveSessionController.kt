@@ -107,7 +107,7 @@ class LiveSessionController(context: Context) {
     // for a cold connect.
     private enum class Pending { NONE, CONVERSATION, PROACTIVE_COLD, PROACTIVE_WARM }
     private var pendingAction = Pending.NONE
-    private var pendingPrompt: String? = null
+    private var pendingPrompt: ProactiveBus.SpeakRequest? = null
 
     // True while a hands-free conversation (server VAD) is running, vs. a
     // speak-only proactive session. Drives whether a completed turn returns to
@@ -127,8 +127,37 @@ class LiveSessionController(context: Context) {
 
     private val tapDebounce = TapDebounce()
 
-    private fun dropped(prompt: String, why: String) {
-        MidnightEvents.voiceTurnDecision("proactive_dropped: $why :: ${prompt.take(60)}")
+    private fun dropped(request: ProactiveBus.SpeakRequest, why: String) {
+        MidnightEvents.voiceTurnDecision(
+            "proactive_dropped: $why :: ${request.kind} :: ${request.prompt.take(60)}"
+        )
+    }
+
+    /**
+     * The two ways a proactive line reaches the socket, and the only places
+     * [ProactiveBus.SpeakRequest.onSpoken] fires. They exist so that cannot be forgotten at one of
+     * the six call sites: a caller's "already told" marker is only honest while every path that
+     * does NOT speak a line leaves it unmarked (see [AnnouncedCodes]).
+     */
+    private fun sendTurn(s: GeminiLiveSession, request: ProactiveBus.SpeakRequest): Boolean =
+        s.sendText(request.prompt).also { if (it) request.onSpoken() }
+
+    private fun speakWarm(s: GeminiLiveSession, request: ProactiveBus.SpeakRequest): Boolean =
+        s.speakOnWarm(request.prompt).also { if (it) request.onSpoken() }
+
+    /**
+     * Gives up on a proactive line still waiting on a socket about to be thrown away, and clears
+     * the slot. The three teardowns that do not go through `LiveEvent.Closed` (a tap taking over,
+     * a voice refresh, a connect with no usable mode) used to leave it there to be overwritten,
+     * which is a line nobody speaks and nobody records. A CONVERSATION pending prompt is the
+     * greeting, not a proactive line, so it is cleared without a breadcrumb.
+     */
+    private fun abandonPending(why: String) {
+        val request = pendingPrompt
+        pendingPrompt = null
+        val wasProactive = pendingAction != Pending.CONVERSATION
+        pendingAction = Pending.NONE
+        if (request != null && wasProactive) dropped(request, why)
     }
 
     // A failure the driver should see. When Midnight is not in front (another app in front, the
@@ -175,6 +204,7 @@ class LiveSessionController(context: Context) {
         usageMeter.pause(System.currentTimeMillis())
         session?.silentDestroy()
         session = null
+        abandonPending("the idle socket was dropped to pick up the current voice")
     }
 
     /**
@@ -228,6 +258,7 @@ class LiveSessionController(context: Context) {
             usageMeter.pause(System.currentTimeMillis())
             s.silentDestroy()
             session = null
+            abandonPending("the driver tapped to talk before it was spoken")
         }
         startConversation()
     }
@@ -245,8 +276,8 @@ class LiveSessionController(context: Context) {
         return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
     }
 
-    /** Proactive engine - voice [prompt] once, no mic; reuse the warm socket. */
-    fun requestSpeak(prompt: String) {
+    /** Proactive engine - voice [request] once, no mic; reuse the warm socket. */
+    fun requestSpeak(request: ProactiveBus.SpeakRequest) {
         val s = session
         // DIAGNOSTIC (B9, remove once root-caused): which branch a proactive line
         // takes decides whether the mic reopens after (only the inConversation
@@ -268,18 +299,19 @@ class LiveSessionController(context: Context) {
             // overwrite pendingAction = CONVERSATION with PROACTIVE_WARM, so the driver's tap
             // became a mic-less proactive line. Hold it for the first turn boundary instead.
             resumePending || (s != null && pendingAction == Pending.CONVERSATION) ->
-                foldIns.hold(prompt, now, onDropped = ::dropped)
+                foldIns.hold(request, now, onDropped = ::dropped)
             // Mid-conversation: fold the line into the ongoing turn flow (rare).
             // The segment is already active from when the conversation started. B11 (2026-10-15):
             // only while the mic is open and the model is not speaking (LISTENING). Sent mid-reply
             // it interrupted the answer the driver was hearing (the late Spotify report and the
             // DTC ASK both arrive this way); otherwise it waits for the next turnComplete.
             s != null && s.inConversation -> {
-                if (_phase.value == Phase.LISTENING) {
-                    s.sendText(prompt)
+                // A socket that refuses the turn has not spoken it: hold it for the next boundary
+                // rather than letting the caller believe it was said.
+                if (_phase.value == Phase.LISTENING && sendTurn(s, request)) {
                     set(Phase.THINKING, "...")
                 } else {
-                    foldIns.hold(prompt, now, onDropped = ::dropped)
+                    foldIns.hold(request, now, onDropped = ::dropped)
                 }
             }
             // Warm socket already up: speak on it and stay warm. This is a
@@ -287,20 +319,20 @@ class LiveSessionController(context: Context) {
             // fires LiveEvent.Connected, so start the billing segment here.
             s != null && s.isWarm() -> {
                 usageMeter.startSegment(System.currentTimeMillis())
-                if (!s.speakOnWarm(prompt)) {
+                if (!speakWarm(s, request)) {
                     // B15: the "warm" socket was dead and has closed itself. Keep the line, once, for
                     // the next good connect (nothing reopens on a close any more); it was not spoken.
                     usageMeter.pause(System.currentTimeMillis())
-                    carried.hold(prompt, now, failures = 1, onDropped = ::dropped)
+                    carried.hold(request, now, failures = 1, onDropped = ::dropped)
                 }
             }
             // A socket is still connecting (a tap's or a proactive line's): speak once it's up, warm.
-            s != null && pendingPrompt == null -> { pendingAction = Pending.PROACTIVE_WARM; pendingPrompt = prompt }
+            s != null && pendingPrompt == null -> { pendingAction = Pending.PROACTIVE_WARM; pendingPrompt = request }
             // Two proactive lines for one connecting socket: only one slot exists, and the first
             // is already promised. Leave a trace rather than overwrite it silently.
-            s != null -> dropped(prompt, "another proactive line already waits on this connect")
+            s != null -> dropped(request, "another proactive line already waits on this connect")
             // Nothing live: spin up a short-lived speak-only session.
-            else -> startProactive(prompt)
+            else -> startProactive(request)
         }
     }
 
@@ -308,10 +340,10 @@ class LiveSessionController(context: Context) {
     private fun drainFoldIn() {
         val s = session ?: return
         val held = foldIns.takeFresh(SystemClock.elapsedRealtime(), ::dropped) ?: return
-        if (s.sendText(held.prompt)) {
+        if (sendTurn(s, held.request)) {
             set(Phase.THINKING, "...")
         } else {
-            dropped(held.prompt, "socket refused the fold-in")
+            dropped(held.request, "socket refused the fold-in")
         }
     }
 
@@ -437,11 +469,16 @@ class LiveSessionController(context: Context) {
             val base = brain.buildBaseInstruction()
             val live = brain.buildLiveContext()
             val isFirst = !CompanionProfile.isFirstSessionDone(appContext)
-            pendingPrompt = when {
-                isFirst -> firstGreetingOpener()
-                live.isBlank() -> GREETING_PROMPT
-                else -> "(Current car/driver context, use naturally if relevant:\n$live)\n\n$GREETING_PROMPT"
-            }
+            // The greeting of a tapped conversation, not a proactive line: REQUESTED because the
+            // driver asked for this session, and nothing holds or drops it either way.
+            pendingPrompt = ProactiveBus.SpeakRequest(
+                when {
+                    isFirst -> firstGreetingOpener()
+                    live.isBlank() -> GREETING_PROMPT
+                    else -> "(Current car/driver context, use naturally if relevant:\n$live)\n\n$GREETING_PROMPT"
+                },
+                ProactiveKind.REQUESTED,
+            )
             s.start(
                 base, LiveToolbox.declarations(),
                 vad = true, voiceName = CompanionProfile.voice(appContext),
@@ -462,32 +499,38 @@ class LiveSessionController(context: Context) {
         val held = carried.takeFresh(now, ::dropped) ?: return
         val s = session
         when {
-            s == null -> dropped(held.prompt, "no session after connect")
+            s == null -> dropped(held.request, "no session after connect")
             connectedFor == Pending.NONE -> {
                 usageMeter.startSegment(System.currentTimeMillis())
-                if (!s.speakOnWarm(held.prompt)) {
+                if (!speakWarm(s, held.request)) {
                     usageMeter.pause(System.currentTimeMillis())
-                    carried.hold(held.prompt, now, failures = held.failures + 1, onDropped = ::dropped)
+                    carried.hold(held.request, now, failures = held.failures + 1, onDropped = ::dropped)
                 } else {
                     MidnightEvents.voiceTurnDecision("carried proactive spoken after reconnect")
                 }
             }
-            connectedFor == Pending.CONVERSATION -> foldIns.hold(held.prompt, now, onDropped = ::dropped)
-            else -> dropped(held.prompt, "connect already had its own proactive line")
+            connectedFor == Pending.CONVERSATION -> foldIns.hold(held.request, now, onDropped = ::dropped)
+            else -> dropped(held.request, "connect already had its own proactive line")
         }
     }
 
     /** Cold start a speak-only proactive session (no warm socket existed). */
-    private fun startProactive(prompt: String) {
+    private fun startProactive(request: ProactiveBus.SpeakRequest) {
         val s = GeminiLiveSession(appContext) { handleEvent(it) }
         session = s
         pendingAction = Pending.PROACTIVE_COLD
-        pendingPrompt = prompt
+        pendingPrompt = request
         conversationMode = false
         connectedThisSession = false
         scope.launch {
             val connectionMode = resolveLiveConnectionMode()
-            if (connectionMode == null) { s.silentDestroy(); session = null; return@launch }
+            if (connectionMode == null) {
+                // silentDestroy skips LiveEvent.Closed, so this is the one exit where the line
+                // would vanish with no trace and with the caller none the wiser.
+                s.silentDestroy(); session = null
+                abandonPending("voice paused - no usable connection mode")
+                return@launch
+            }
             val base = brain.buildBaseInstruction()
             s.start(
                 base, LiveToolbox.declarations(),
@@ -513,15 +556,21 @@ class LiveSessionController(context: Context) {
                         // connect, so a tap that fails (no network, bad key)
                         // doesn't suppress the one-time intro.
                         CompanionProfile.markFirstSessionDone(appContext)
-                        session?.beginConversation(pendingPrompt)
+                        session?.beginConversation(pendingPrompt?.prompt)
                         set(Phase.THINKING, "...")   // Zero is about to greet
                     }
                     Pending.PROACTIVE_COLD -> {
-                        pendingPrompt?.let { session?.sendText(it) }
+                        val s = session
+                        pendingPrompt?.let { r ->
+                            if (s == null || !sendTurn(s, r)) dropped(r, "socket refused the cold proactive line")
+                        }
                         set(Phase.IDLE, IDLE_STATUS)
                     }
                     Pending.PROACTIVE_WARM -> {
-                        pendingPrompt?.let { session?.speakOnWarm(it) }
+                        val s = session
+                        pendingPrompt?.let { r ->
+                            if (s == null || !speakWarm(s, r)) dropped(r, "socket refused the warm proactive line")
+                        }
                         set(Phase.IDLE, IDLE_STATUS)
                     }
                     Pending.NONE -> set(Phase.IDLE, IDLE_STATUS) // warm, ready to tap
@@ -562,9 +611,9 @@ class LiveSessionController(context: Context) {
                 // path, e.g. the cold speak-only session in startProactive).
                 if (conversationMode && event.dismissed) {
                     // The driver said goodbye and the session is parking: no fold-in, and no
-                    // "Listening..." flash. The Idle that follows sets the phase and DROPS
-                    // whatever was held, rather than speaking it after the sign-off
-                    // (HeldLines.onPark).
+                    // "Listening..." flash. The Idle that follows sets the phase and drops the
+                    // ROUTINE lines that were held, rather than speaking one after the sign-off;
+                    // an urgent or asked-for line still gets said (HeldLines.onPark).
                     MidnightEvents.voiceTurnDecision("turn ended on a dismissal, no fold-in")
                 } else if (conversationMode) {
                     set(Phase.LISTENING, "Listening...")
@@ -586,9 +635,9 @@ class LiveSessionController(context: Context) {
                 set(Phase.IDLE, IDLE_STATUS)
                 // A fold-in still waiting when the conversation went quiet is spoken now, on the
                 // warm socket, rather than lost with the conversation. A conversation the driver
-                // ENDED drops it instead: HeldLines.onPark is that rule.
+                // ENDED drops the routine ones and keeps the rest: HeldLines.onPark is that rule.
                 foldIns.onPark(event.afterDismissal, SystemClock.elapsedRealtime(), ::dropped)
-                    ?.let { requestSpeak(it.prompt) }
+                    ?.let { requestSpeak(it.request) }
             }
             is LiveEvent.Subtitle -> {
                 _subtitle.tryEmit(event.text)
