@@ -15,6 +15,9 @@ quantities and code prices them from the catalogue.
 - `shop_find`: a catalogue lookup. Read.
 - `shop_quote`: prices the order and reads it back, asking for a yes. Keeps the quote on the visit
   (a cart, not an order), so not a write, and it ends the turn: the yes must be the visitor's.
+  Code reads the shopper's own words first (`wants_to_buy`): while they are still asking about a
+  product, nothing is priced. A question about the ORDER's total is the one exception, because
+  the read-back is the only place a total is ever said.
 - `shop_place_order`: places the quoted order, only in a turn AFTER the read-back. A write.
 - `shop_handoff`: "let me get someone". Says where the callback form is, or, with the switch off
   or the day's callbacks used up, that no person can be reached from here.
@@ -276,7 +279,10 @@ def _find(request, arguments: dict) -> ToolResult:
     # money check backs a figure only from the turn's tool text (`speech_rules.backed_cents`).
     text = "\n".join(lines) + (
         f"\nPolicies: {POLICY}\nSay prices exactly as written. Stock and the bundle above are the "
-        "only ones there are."
+        "only ones there are. Use a product's own words above to say why it suits what they told "
+        "you. With more than one product of the same kind here, name both prices and what "
+        "separates them before you recommend one. What a product 'goes with' is offered only "
+        "after they say they want that product."
     )
     data = {
         "items": items,
@@ -344,10 +350,104 @@ def _readback(q: catalogue.Quote) -> tuple[str, ...]:
     return tuple(said)
 
 
+NO_INTENT = (
+    "Nothing was quoted: their own words do not say they want to buy yet. Recommend a product "
+    "and say why it suits what they told you, or give the one price they asked for in shop_find's "
+    "own words, or ask whether to put it in an order, and quote only once they say yes."
+)
+# A question about the ORDER's total. Code's read-back is the only place a total is ever said, so
+# these pass even though they are questions. Checked before everything else, so a total question
+# still quotes when it rides along with an asking word ("I want the 40L, what's the total?").
+_TOTAL = re.compile(
+    r"\b(totals?|total (it|them|that|this) up|come to|comes to|altogether|all together|"
+    r"in all|all in)\b",
+    re.I,
+)
+# A price question that covers more than one thing, the whole order, or the delivery on top, is a
+# question about the ORDER and not about a product, so it passes too. Deliberately loose, because
+# it is only ever read on a message `_PRICE_ONLY` has already matched: it can never pull a
+# browsing message into a read-back, and a spoken question does not always carry its punctuation.
+_WHOLE_ORDER = re.compile(
+    r"\b(and|with|plus|both|everything|all of it|the lot|my order|my cart|"
+    r"delivery|shipping|postage)\b",
+    re.I,
+)
+# Words that commit to this purchase, with a thing attached. Checked before the browse list, so a
+# message that both asks and commits ("which one? I'll take the 40L") still quotes. The thing is
+# what does the work: "can I get the 40L" is an order, "can I get a recommendation" is not, so
+# the ask verbs take only a definite or a count, never "a" or "some". A bare "one" is not a
+# thing either, because it is usually a spec ("I want one that's lighter"); "one of" is. Bare
+# "buy" is not here: "which one should I buy?" is a question. A plain order carrying no asking
+# word at all ("One headlamp please", "I want one") needs no entry: it falls through the browse
+# list and passes.
+_THING = r"(the|that|this|those|these|them|it|one of|two|three|four|both|\d+)"
+_BUY = re.compile(
+    r"\b(buy (it|that|this|them|the|a|one|two|both)|purchas\w*|checkout|check out|"
+    r"ring (it|me|that) up|"
+    r"add (it|that|them|this|those|one|two|the|a|some)|"
+    r"order (it|that|this|them|the|a|one|two|both|please|now)|place (the|my|that) order|"
+    r"(i|we)(?:'|’)?(?:ll| will|d| would) (take|have|get|go with|buy|order|do)|"
+    rf"(i|we)(?:'|’)?(?:d| would) like {_THING}|"
+    # "Want" and "need" only: "we have two people" and "I'll take it" are a use statement and an
+    # order, and a "for" behind the thing makes it the use again ("I need one for weekend hikes").
+    rf"(i|we) (want|need) {_THING}(?! for\b)|"
+    rf"(can|could|may) (i|we) (get|have|take) {_THING}|"
+    rf"give me {_THING}|put me down for {_THING}|yes to {_THING}|"
+    # The accept-the-recommendation turn, in either tense and with or without a verb in front.
+    r"(the|that) one you (recommend|recommended|suggest|suggested)|"
+    r"what you (recommend|recommended|suggest|suggested)|"
+    r"let(?:'|’)?s (do|get|take|buy|order|go with)|sign me up|i(?:'|’)?m sold)\b",
+    re.I,
+)
+# One product's price read out is a lookup answer, not a cart: the rep says it from shop_find's
+# own words and never through the read-back. Checked after `_BUY`, so "I want the 40L, how much
+# is it?" is still an order.
+_PRICE_ONLY = re.compile(
+    r"\b(how much (is|are|for|does|do|would)|what(?:'|’)?s the price|what is the price|"
+    r"the price (of|on)|how much\?|what (does|do|would) [^?.]{1,40} cost|cost of)",
+    re.I,
+)
+# Asking for advice or a listing, not ordering. A blocklist on purpose, and a short one: a
+# refused real order is worse for this demo than an early read-back, so only a message that
+# plainly asks for advice or what the shop has is held back. Every verb takes every ending it
+# has, so the gate never turns on the shopper's tense: "recommend", "recommended" and
+# "recommendation" are all asking, and the accept-the-recommendation shapes are named in `_BUY`
+# above, which is checked first. "Options" is plural only, so a request for a list ("what are my
+# options?") is held while the objection answer ("the cheaper option") passes: the gate must not
+# turn on the shopper's number either.
+_BROWSING = re.compile(
+    r"\b(recommend\w*|suggest\w*|what (do|are|is|have)|what(?:'|’)?s|"
+    r"what (sort|kind|type)s? of|which (one|of|is)|"
+    r"any (ideas|options)|help me (choose|pick|decide)|"
+    r"(just )?(looking|browsing)|difference|not sure|thinking about|tell me about|"
+    r"what about|options)\b",
+    re.I,
+)
+
+
+def wants_to_buy(words: str) -> bool:
+    """True when the shopper's own message may be priced into an order ("One headlamp please",
+    "I'll take the 40L", "the cheaper one then", "the one you recommended"), and for a question
+    about the order's total, which only the read-back can answer. False while they are still
+    asking ("recommend me a pack", "which one is lighter?", "tell me about the tent") and for a
+    question about one product's price ("how much is the 40L?"), which the rep answers itself. A
+    yes alone passes, because nothing in it asks: what a yes may PLACE is `is_yes`'s business."""
+    text = words or ""
+    if _TOTAL.search(text) or _BUY.search(text):
+        return True
+    if _PRICE_ONLY.search(text):
+        return bool(_WHOLE_ORDER.search(text))
+    return not _BROWSING.search(text)
+
+
 def _quote(request, arguments: dict) -> ToolResult:
     visit = scenario.visit_of(request.user)
     if visit is None:
         return refused(NOT_A_VISIT)
+    # A read-back with a total is the cart, so it needs the shopper's own intent, not the rep's
+    # eagerness (the live run of 2026-11-24 offered to add something on every turn, unasked).
+    if not wants_to_buy(read_through.heard_words(request)):
+        return refused(NO_INTENT)
     items, problem = _items(arguments)
     if problem:
         return refused(problem)
