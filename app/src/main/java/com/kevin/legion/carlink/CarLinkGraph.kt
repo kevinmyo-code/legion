@@ -56,7 +56,12 @@ class CarLinkGraph(private val app: Application) {
                     phoneName = { Build.MODEL },
                     spotifyClientId = { com.kevin.legion.ai.CompanionProfile.spotifyClientId(app) },
                 ),
-                tokens = UnitTokenNotYetAvailable(),
+                // The unit's own engine sign-in, minted on the member's own device token.
+                tokens = com.kevin.legion.backend.engine.DjangoUnitTokenSource(
+                    com.kevin.legion.backend.engine.EngineHttp(
+                        com.kevin.legion.backend.engine.EngineConfig(app),
+                    ),
+                ),
                 redact = LogcatRedactor::addLiteral,
             ),
             newSender = { ring, onEvent, sendFixes, mode ->
