@@ -7,7 +7,7 @@ import com.kevin.legion.carlink.HandoverGap
 import com.kevin.legion.carlink.HandoverPlan
 import com.kevin.legion.carlink.HandoverSources
 import com.kevin.legion.carlink.MemoryRecordFile
-import com.kevin.legion.carlink.UnitTokenNotYetAvailable
+import com.kevin.legion.carlink.NoUnitTokens
 import com.kevin.legion.carlink.protocol.CarLinkVectors
 import com.kevin.legion.carlink.protocol.CarLinkVectors.hex
 import com.kevin.legion.carlink.protocol.Frames
@@ -73,7 +73,7 @@ class CarLinkViewModelTest {
     private val controller = CarLinkController(
         store = store,
         transport = { _, _ -> conn },
-        handover = HandoverPlan(HandoverSources({ null }, { null }, { "Test phone" }), UnitTokenNotYetAvailable()) {},
+        handover = HandoverPlan(HandoverSources({ null }, { null }, { "Test phone" }), NoUnitTokens()) {},
         newSender = { _, _, _, _ -> null },
         scope = scope,
         io = Dispatchers.Unconfined,
@@ -190,7 +190,7 @@ class CarLinkViewModelTest {
         val unreadable = FakeKeystoreStandIn().apply { failOpens = 3 }
         val brokenController = CarLinkController(
             CarLinkStore(unreadable, file) {}, { _, _ -> null },
-            HandoverPlan(HandoverSources({ null }, { null }, { null }), UnitTokenNotYetAvailable()) {},
+            HandoverPlan(HandoverSources({ null }, { null }, { null }), NoUnitTokens()) {},
             { _, _, _, _ -> null }, scope, Dispatchers.Unconfined, { 300L }, {},
         )
         val broken = CarLinkViewModel(brokenController, scannerAvailable = true, debugPaste = false, scope = scope)
@@ -223,7 +223,7 @@ class CarLinkViewModelTest {
     @Test fun `the hands-over line and the no-car note wait until the facts have loaded`() {
         val slow = CarLinkController(
             store = store, transport = { _, _ -> null },
-            handover = HandoverPlan(HandoverSources({ null }, { null }, { null }), UnitTokenNotYetAvailable()) {},
+            handover = HandoverPlan(HandoverSources({ null }, { null }, { null }), NoUnitTokens()) {},
             newSender = { _, _, _, _ -> null }, scope = scope, io = Dispatchers.Unconfined,
             jitterMs = { 300L }, sleep = {},
             vehicles = { kotlinx.coroutines.awaitCancellation() },
@@ -236,7 +236,7 @@ class CarLinkViewModelTest {
     @Test fun `Scan and Pair wait until the facts have loaded`() {
         val slow = CarLinkController(
             store = store, transport = { _, _ -> null },
-            handover = HandoverPlan(HandoverSources({ null }, { null }, { null }), UnitTokenNotYetAvailable()) {},
+            handover = HandoverPlan(HandoverSources({ null }, { null }, { null }), NoUnitTokens()) {},
             newSender = { _, _, _, _ -> null }, scope = scope, io = Dispatchers.Unconfined,
             jitterMs = { 300L }, sleep = {},
             vehicles = { kotlinx.coroutines.awaitCancellation() },

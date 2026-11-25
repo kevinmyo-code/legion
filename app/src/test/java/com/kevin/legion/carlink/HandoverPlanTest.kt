@@ -128,8 +128,8 @@ class HandoverPlanTest {
         assertEquals(40, long.body().phoneName!!.length)
     }
 
-    @Test fun `production mints nothing until the engine endpoint is deployed`() = runBlocking {
-        val none = UnitTokenNotYetAvailable()
+    @Test fun `a source that mints nothing hands over nothing and revokes nothing`() = runBlocking {
+        val none = NoUnitTokens()
         assertNull(none.mint("Head unit", null))
         assertNull(none.rotate("hu-1"))
         assertFalse(none.revoke("hu-1"))

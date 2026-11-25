@@ -384,8 +384,13 @@ class CarLinkController(
             val client = PairingClient(qr, P256.generate(), ring, handover::body)
             val runner = PairingRunner(transport, jitterMs, sleep) { stage ->
                 _status.update { it.copy(pairing = stage) }
-                // Mint the unit's token only once the unit proved itself (a verified ack).
-                if (stage is PairingStage.DigitsShown) scope.launch(io) { handover.prepare(_status.value.vehicleId) }
+                // Mint the unit's token only once the unit proved itself (a verified ack), and
+                // AWAIT it here: the runner cannot take `code_ok` until this returns, and
+                // `code_ok` is what builds the handover frame the token rides in. Launched into
+                // the background (as it was while the mint was a stub that answered instantly) a
+                // real mint can land after the frame has gone, handing the unit no token while the
+                // phone stores its id and believes it did.
+                if (stage is PairingStage.DigitsShown) handover.prepare(_status.value.vehicleId)
             }
             try {
                 runner.run(client, qr.host, qr.port)
