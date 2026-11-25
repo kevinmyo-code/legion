@@ -132,9 +132,9 @@ class CarLinkStore(
      */
     fun pendingUnitToken(): PendingUnitToken? {
         val values = file.read()
-        val id = values[PENDING_ID] ?: return null
-        val token = values[PENDING_TOKEN]?.let(::openText) ?: return null
-        return PendingUnitToken(id, token, values[PENDING_VEHICLE])
+        val id = values[PENDING_ID]
+        val token = values[PENDING_TOKEN]?.let(::openText)
+        return if (id != null && token != null) PendingUnitToken(id, token, values[PENDING_VEHICLE]) else null
     }
 
     /** Writes or (null) clears it. False = nothing was written, so nothing changed. */
