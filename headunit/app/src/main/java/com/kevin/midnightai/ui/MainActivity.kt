@@ -39,6 +39,8 @@ import com.kevin.midnightai.service.AriaForegroundService
 import com.kevin.midnightai.ui.theme.AriaColors
 import com.kevin.midnightai.ui.theme.AriaTheme
 import kotlinx.coroutines.launch
+import com.kevin.midnightai.util.ExternalDoor
+import com.kevin.midnightai.util.ExternalScreen
 
 /**
  * The app's one activity: hosts the Cruise HUD as the head unit's home surface
@@ -382,7 +384,12 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun checkAndRequestPermissions() {
+    /**
+     * Asks for the permissions the service needs. Returns null when there was nothing to ask or
+     * Android took the request, else the words for what did not happen, for a caller with a screen
+     * to put them on (Settings > System > Permissions). Startup has no screen yet and ignores them.
+     */
+    private fun checkAndRequestPermissions(): String? {
         val permissions = mutableListOf<String>()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -406,9 +413,20 @@ class MainActivity : ComponentActivity() {
 
         if (missingPermissions.isEmpty()) {
             startAriaServiceAfterPermissions()
-        } else {
+            return null
+        }
+        // A ROM that cannot show a permission dialog throws from launch. A throw means the callback
+        // above never runs, so this does what its all-denied branch does (MainActivity.kt:62-70):
+        // start the service anyway. The service does not need the grant to start, and the tap-time
+        // notices already handle a missing mic; the alternative is a launcher that boots to
+        // nothing. The words go back to the caller: on the startup call there is no screen yet and
+        // the non-fatal is the whole record, but the Settings row that also calls this does have
+        // one, and a tap there that said nothing was the dead tap a home app may never give.
+        val trouble = ExternalDoor.attempt(ExternalScreen.PERMISSION_PROMPT) {
             requestPermissionLauncher.launch(missingPermissions.toTypedArray())
         }
+        if (trouble != null) startAriaServiceAfterPermissions()
+        return trouble
     }
 
     private fun startAriaService(action: String? = null) {

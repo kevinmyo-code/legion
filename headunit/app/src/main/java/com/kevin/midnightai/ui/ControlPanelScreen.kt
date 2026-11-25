@@ -55,6 +55,9 @@ import com.kevin.midnightai.bluetooth.PhoneLinkCapability
 import com.kevin.midnightai.bluetooth.PhoneLinkManager
 import com.kevin.midnightai.bluetooth.PhoneLinkState
 import com.kevin.midnightai.media.PlaylistsState
+import com.kevin.midnightai.media.openNotificationAccessSettings
+import com.kevin.midnightai.util.ExternalDoor
+import com.kevin.midnightai.util.ExternalScreen
 import com.kevin.midnightai.media.SpotifyController
 import com.kevin.midnightai.media.SpotifyPlaylists
 import com.kevin.midnightai.media.SpotifyWebApi
@@ -172,7 +175,10 @@ private enum class Section {
 
 @Composable
 fun ControlPanel(
-    onRequestRuntimePermissions: () -> Unit,
+    // Returns the words for what did not happen, or null when Android took the request: the
+    // permission launch goes through ExternalDoor, and the row that taps it is the one place those
+    // words have a screen to land on.
+    onRequestRuntimePermissions: () -> String?,
     startInSetup: Boolean = false,
     // Lands straight on Phones & audio > Phones (Cruise's phone-link chip tap
     // target, 2026-09-27). Same shape as startInSetup; the three shortcuts are
@@ -1026,13 +1032,23 @@ private fun CarDetailsSection(context: Context, onBack: () -> Unit) {
                 AppBackground.notifyChanged()
             }
         }
+        // A photo picker is DocumentsUI or a gallery, and AOSP 8 to 10 on this unit may have
+        // neither: PickVisualMedia then falls back to ACTION_OPEN_DOCUMENT or GET_CONTENT and
+        // throws out of the tap. Same for a camera app.
+        var pickTrouble by remember { mutableStateOf<String?>(null) }
         Row(horizontalArrangement = Arrangement.spacedBy(AriaDimens.s3)) {
             Button(onClick = {
-                carPhotoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                pickTrouble = ExternalDoor.attempt(ExternalScreen.PHOTO_PICKER) {
+                    carPhotoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                }
             }) { Text(if (carPhoto == null) "ADD A CAR PHOTO" else "CHANGE PHOTO") }
             if (hasCamera(context)) {
-                Button(onClick = carPhotoCamera) { Text("TAKE PHOTO") }
+                Button(onClick = { pickTrouble = carPhotoCamera() }) { Text("TAKE PHOTO") }
             }
+        }
+        pickTrouble?.let {
+            Spacer(Modifier.height(8.dp))
+            Text(it, style = RowSubtitle, color = AriaColors.NeonCyan)
         }
         Spacer(Modifier.height(16.dp))
 
@@ -1162,7 +1178,7 @@ private fun AboutYouSection(context: Context, onBack: () -> Unit) {
 // on ON_RESUME) and everything else (preferences).
 
 @Composable
-private fun SystemPermissionsSection(context: Context, onRequestRuntimePermissions: () -> Unit, onBack: () -> Unit) {
+private fun SystemPermissionsSection(context: Context, onRequestRuntimePermissions: () -> String?, onBack: () -> Unit) {
     var refresh by remember { mutableIntStateOf(0) }
 
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -1187,19 +1203,33 @@ private fun SystemPermissionsSection(context: Context, onRequestRuntimePermissio
     }
     val mediaGranted = remember(refresh) { NowPlayingController.hasAccess(context) }
 
+    // One holder per row: a successful retry of either must not wipe the other's line, which is
+    // still true until its own tap says otherwise.
+    var micTrouble by remember { mutableStateOf<String?>(null) }
+    var mediaTrouble by remember { mutableStateOf<String?>(null) }
+
     SectionScaffold("Permissions", onBack) {
         GrantRow(
             label = "Microphone & location",
             granted = micGranted,
             actionLabel = "Grant",
-            onAction = onRequestRuntimePermissions,
+            onAction = { micTrouble = onRequestRuntimePermissions() },
         )
+        micTrouble?.let {
+            Spacer(Modifier.height(8.dp))
+            Text(it, style = RowSubtitle, color = AriaColors.NeonCyan)
+        }
         GrantRow(
             label = "Media access (now-playing & music control)",
             granted = mediaGranted,
             actionLabel = "Enable",
-            onAction = { context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) },
+            // The second copy of this intent used to live here, unguarded. One door, one caller.
+            onAction = { mediaTrouble = openNotificationAccessSettings(context) },
         )
+        mediaTrouble?.let {
+            Spacer(Modifier.height(8.dp))
+            Text(it, style = RowSubtitle, color = AriaColors.NeonCyan)
+        }
         Spacer(Modifier.height(16.dp))
         Text(
             text = "Music plays from your phone over Bluetooth - play it there and your co-pilot " +
@@ -1234,12 +1264,13 @@ private fun SystemPreferencesSection(context: Context, onBack: () -> Unit) {
         // tap-through that opens that screen, and the label reflects live state
         // after the user returns. The app ships NOT set as home by default.
         var isDefaultLauncher by remember(refresh) { mutableStateOf(LauncherSettings.isDefaultLauncher(context)) }
+        var homeTrouble by remember { mutableStateOf<String?>(null) }
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(8.dp))
-                .clickable { LauncherSettings.openLauncherSettings(context) }
+                .clickable { homeTrouble = LauncherSettings.openLauncherSettings(context) }
                 .padding(vertical = 6.dp),
         ) {
             Column(Modifier.weight(1f)) {
@@ -1258,6 +1289,11 @@ private fun SystemPreferencesSection(context: Context, onBack: () -> Unit) {
                 style = Label,
                 color = AriaColors.Amber,
             )
+        }
+
+        homeTrouble?.let {
+            Spacer(Modifier.height(8.dp))
+            Text(it, style = RowSubtitle, color = AriaColors.NeonCyan)
         }
 
         // GPS beacon link (2026-07-25). This head unit browns out its own WiFi/BT

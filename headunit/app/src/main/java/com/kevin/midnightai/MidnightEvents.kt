@@ -426,9 +426,17 @@ object MidnightEvents {
      * Records a handled (non-fatal) error under [tag] so it appears in the
      * Crashlytics non-fatals dashboard. The original exception is preserved as
      * the cause so the full stack trace is visible.
+     *
+     * Rate-limited like every other non-fatal here, so a driver poking a dead door does not fill
+     * the ~2 MB drive-log ring with one repeated reason. The key is the tag AND the exception
+     * class, not the tag alone: most callers pass a constant tag (`obd_loop`,
+     * `warm_resume_context`), so keying on it alone would drop a genuinely different failure of the
+     * same subject inside the window. Only a repeat of the same failure under the same tag is lost.
      */
     fun recordError(tag: String, e: Throwable) = safe {
-        c.recordException(RuntimeException("[$tag] ${e.message}", e))
+        if (nonFatalLimiter.allow("record_error:$tag:${e.javaClass.name}")) {
+            c.recordException(RuntimeException("[$tag] ${e.message}", e))
+        }
     }
 
     /**

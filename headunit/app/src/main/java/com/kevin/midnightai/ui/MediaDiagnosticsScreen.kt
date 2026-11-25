@@ -101,6 +101,7 @@ internal fun MediaDiagnosticsScreen(onBack: () -> Unit) {
                 color = AriaColors.TextDim,
             )
             Spacer(Modifier.height(8.dp))
+            var trouble by remember { mutableStateOf<String?>(null) }
             Text(
                 "OPEN NOTIFICATION ACCESS SETTINGS",
                 style = AriaType.neonLabel.copy(fontSize = 11.sp),
@@ -108,9 +109,17 @@ internal fun MediaDiagnosticsScreen(onBack: () -> Unit) {
                 modifier = Modifier
                     .clip(RoundedCornerShape(6.dp))
                     .border(1.dp, AriaColors.Amber.copy(alpha = 0.6f), RoundedCornerShape(6.dp))
-                    .clickable { openNotificationAccessSettings(context) }
+                    .clickable { trouble = openNotificationAccessSettings(context) }
                     .padding(horizontal = 12.dp, vertical = 8.dp),
             )
+            trouble?.let {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    it,
+                    style = AriaType.logbookBody.copy(fontSize = 12.sp),
+                    color = AriaColors.NeonCyan,
+                )
+            }
         }
 
         Spacer(Modifier.height(20.dp))

@@ -18,6 +18,8 @@ import android.os.HandlerThread
 import android.os.SystemClock
 import android.provider.Settings
 import androidx.core.content.ContextCompat
+import com.kevin.midnightai.util.ExternalDoor
+import com.kevin.midnightai.util.ExternalScreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -401,6 +403,20 @@ object PhoneLinkManager {
             .putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 120)
 
     fun systemBluetoothSettingsIntent(): Intent = Intent(Settings.ACTION_BLUETOOTH_SETTINGS)
+
+    /**
+     * Opens one of the system screens above through [ExternalDoor], which catches whatever this
+     * ROM throws, and puts its words in [state]'s `lastResult`, where the screen already renders
+     * them above the footer. `ACTION_REQUEST_DISCOVERABLE` and `ACTION_BLUETOOTH_SETTINGS` are
+     * optional parts of Android and this unit handles neither, so the tap threw out of the click
+     * handler and took the launcher down with it.
+     *
+     * A success clears `lastResult`, so a failure line cannot sit under a later tap that worked.
+     */
+    fun openSystemScreen(screen: ExternalScreen, open: () -> Unit) {
+        val words = ExternalDoor.attempt(screen, open = open)
+        _state.update { it.copy(lastResult = words) }
+    }
 
     fun vendorAppLaunchIntent(context: Context): Intent? {
         val pkg = _state.value.vendorPackage ?: return null
