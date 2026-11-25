@@ -28,8 +28,11 @@ object ExternalDoor {
      * recorded, and a silent tap is strictly better than a dead launcher. A caller that HAS a
      * screen shows it, because that is the whole point of catching.
      *
-     * [open] must be the launch call and nothing else. Work around it (rendering a bitmap, writing
-     * a file) throws `IOException`, which is not a [RuntimeException] and is not caught here.
+     * [open] is the launch call plus only what Android itself can refuse on the way to it: naming a
+     * file for the launcher through `FileProvider` belongs inside, because a misconfigured provider
+     * throws `IllegalArgumentException` and killed the tap just the same. Our own work around it
+     * (rendering a bitmap, writing a file) does NOT: it throws `IOException`, which is not a
+     * [RuntimeException], is not caught here, and would be given a wrong diagnosis if it were.
      */
     fun attempt(screen: ExternalScreen, named: String? = null, open: () -> Unit): String? {
         val (words, failure) = try {
