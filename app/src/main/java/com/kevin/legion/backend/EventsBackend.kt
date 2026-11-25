@@ -22,7 +22,7 @@ package com.kevin.legion.backend
  *
  * Set once at write time, from the record type/write path - never derived from a row's shape
  * (`sortOrder`, `source`, a title containing "quiz" or "due", anything else that happens to
- * correlate today - ticket 08's own explicit rejection of a heuristic classifier: `"COSC 3334 Exam
+ * correlate today - ticket 08's own explicit rejection of a heuristic classifier: `"CSCI 2200 Exam
  * review session"` is a class that matches `exam`). See the migration's own comment for why the
  * server default is [REMINDER], not a guess: an origin the app cannot identify is treated as
  * something it owns, the direction that fails visibly rather than silently.
@@ -85,7 +85,7 @@ data class RemoteEvent(
     val location: String?,
     val notes: String?,
     /** The parsed `LEGION::v1` description-block map, as the server's own `jsonb` column
-     * round-trips it: a compact JSON object string (e.g. `{"course":"COSC4320"}`), or null when
+     * round-trips it: a compact JSON object string (e.g. `{"course":"CSCI3400"}`), or null when
      * the event carries no such block. Added alongside `public.events.structured_meta`
      * (`supabase/migrations/20260827000100_events_structured_meta.sql`, UNAPPLIED as of that
      * migration's own doc comment) so the class-schedule metadata
