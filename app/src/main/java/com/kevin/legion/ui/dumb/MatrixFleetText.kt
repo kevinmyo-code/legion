@@ -26,7 +26,7 @@ internal object MatrixFleetText {
     /**
      * The two shapes of "not known to be fine", in one note because this screen has one slot for
      * them: items with no last-done at all, and items whose only interval is a mileage one and
-     * whose newest service carries no reading ([VehicleController.needsMileageReading]). The second
+     * whose newest service carries no reading ([needsMileageReading]). The second
      * is named for what it needs - a reading - because that is the thing the driver can supply.
      */
     private fun unknownNote(next: VehicleController.NextService?): String? {

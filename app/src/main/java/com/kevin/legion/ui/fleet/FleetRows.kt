@@ -31,6 +31,7 @@ import com.kevin.legion.util.relativeAge
 import com.kevin.legion.util.shortDate
 import com.kevin.legion.vehicle.DtcClearController
 import com.kevin.legion.vehicle.VehicleController
+import com.kevin.legion.vehicle.needsMileageReading
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.LocalDate
@@ -307,7 +308,7 @@ private fun toDueRow(item: MaintenanceItem, currentMileage: Int, odometerUnset: 
     // service was logged, but the log states no reading, so no due figure can be computed and there
     // is no time axis to fall back on. A bare "every 5,000 mi" beside a "-" would leave the row
     // looking like a rendering gap rather than a missing fact the driver can supply.
-    val milesBlockedByNoReading = axis == null && VehicleController.needsMileageReading(item)
+    val milesBlockedByNoReading = axis == null && needsMileageReading(item)
 
     val value = when {
         overdue -> "OVERDUE"

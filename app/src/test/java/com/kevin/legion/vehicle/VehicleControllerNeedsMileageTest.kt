@@ -36,22 +36,26 @@ class VehicleControllerNeedsMileageTest {
         lastDoneDate = lastDoneDate,
     )
 
+    /** [loggedServiceMessage] for one service name, so each case reads as its own three facts. */
+    private fun logged(statedMileage: Int?, months: Int?, miles: Int?) =
+        loggedServiceMessage("Oil Change", statedMileage, months, miles)
+
     // --- needsMileageReading, the predicate itself -----------------------------------------------
 
     @Test
     fun `a miles-only item logged with no reading needs a mileage reading`() {
-        assertTrue(VehicleController.needsMileageReading(milesOnly(null, yesterday)))
+        assertTrue(needsMileageReading(milesOnly(null, yesterday)))
     }
 
     @Test
     fun `a miles-only item with a reading does not`() {
-        assertFalse(VehicleController.needsMileageReading(milesOnly(40_000, yesterday)))
+        assertFalse(needsMileageReading(milesOnly(40_000, yesterday)))
     }
 
     @Test
     fun `an item with a months interval and a date is timed by date, so it needs nothing`() {
         val dualAxis = milesOnly(null, yesterday).copy(intervalMonths = 6)
-        assertFalse(VehicleController.needsMileageReading(dualAxis))
+        assertFalse(needsMileageReading(dualAxis))
     }
 
     @Test
@@ -60,13 +64,13 @@ class VehicleControllerNeedsMileageTest {
         assertTrue(VehicleController.isUnknown(noAnchor))
         assertFalse(
             "unknownNames and needsMileage must never name the same item",
-            VehicleController.needsMileageReading(noAnchor),
+            needsMileageReading(noAnchor),
         )
     }
 
     @Test
     fun `a never-done item is already due, so it needs no reading to be timed`() {
-        assertFalse(VehicleController.needsMileageReading(milesOnly(null, null).copy(neverDone = true)))
+        assertFalse(needsMileageReading(milesOnly(null, null).copy(neverDone = true)))
     }
 
     // --- computeNextService, the state the surfaces read ----------------------------------------
@@ -119,38 +123,48 @@ class VehicleControllerNeedsMileageTest {
 
     @Test
     fun `the no-mileage confirmation never claims a date timing an item has no interval for`() {
-        val said = loggedServiceMessage("Oil Change", statedMileage = null, timedByDate = false, timedByMiles = true)
-
-        assertFalse("there is no months interval to time this by: $said", said.contains("by date"))
-        assertTrue("it must say why it cannot say when it is next due: $said", said.contains("mileage"))
+        // One sentence of three, picked at random, so every variant is checked.
+        repeat(20) {
+            val said = logged(statedMileage = null, months = null, miles = 5_000)
+            assertFalse("there is no months interval to time this by: $said", said.contains("by date"))
+            assertTrue("it must say why it cannot say when it is next due: $said", said.contains("mileage"))
+        }
     }
 
     @Test
     fun `an item with no interval at all is told nothing times it, never that it is on a mileage interval`() {
         // The shape an earlier unmatched log creates: an item with an anchor and no intervals.
-        val said = loggedServiceMessage("Oil Change", statedMileage = null, timedByDate = false, timedByMiles = false)
-
-        assertFalse("there is no mileage interval to be tracked on: $said", said.contains("mileage interval"))
-        assertFalse(said, said.contains("by date"))
-        assertTrue("it must say there is no interval: $said", said.contains("interval"))
+        repeat(20) {
+            val said = logged(statedMileage = null, months = null, miles = null)
+            assertFalse("there is no mileage interval to be tracked on: $said", said.contains("mileage interval"))
+            assertFalse(said, said.contains("by date"))
+            assertTrue("it must say there is no interval: $said", said.contains("interval"))
+        }
     }
 
     @Test
-    fun `an item with a months interval is still told it is timed by date`() {
-        val said = loggedServiceMessage("Oil Change", statedMileage = null, timedByDate = true, timedByMiles = true)
-        assertTrue(said, said.contains("date"))
+    fun `an item with a months interval is never told that nothing times it`() {
+        // Every variant in this set is one sentence of three, picked at random, so the assertion is
+        // about what the set may never say rather than about one wording: the date axis DOES time
+        // this item, so neither the miles-only nor the no-interval wording may be reachable here.
+        repeat(20) {
+            val said = logged(statedMileage = null, months = 6, miles = 5_000)
+            assertFalse(said, said.contains("can't say when it's next due"))
+            assertFalse(said, said.contains("mileage interval"))
+            assertFalse(said, said.contains("no interval"))
+        }
     }
 
     @Test
     fun `a stated reading is named in the confirmation, as the figure on the row`() {
-        val said = loggedServiceMessage("Oil Change", statedMileage = 42_300, timedByDate = false, timedByMiles = true)
+        val said = logged(statedMileage = 42_300, months = null, miles = 5_000)
         assertTrue(said, said.contains("42300"))
     }
 
     @Test
     fun `the low-reading note rides in front of the log confirmation, never dropped`() {
         val note = VehicleController.odometerQuestionNote(miles = 42_300, priorEstimate = 50_000, baselineSet = true)
-        val said = noteThen(note, loggedServiceMessage("Oil Change", 42_300, timedByDate = false, timedByMiles = true))
+        val said = noteThen(note, logged(42_300, null, 5_000))
 
         assertTrue("the driver must hear that his reading is below the estimate: $said", said.contains("50000"))
         assertTrue(said, said.contains("42300"))
@@ -158,7 +172,7 @@ class VehicleControllerNeedsMileageTest {
 
     @Test
     fun `with nothing to question the confirmation is unchanged`() {
-        val message = loggedServiceMessage("Oil Change", 42_300, timedByDate = false, timedByMiles = true)
+        val message = logged(42_300, null, 5_000)
         assertEquals(message, noteThen(null, message))
     }
 
