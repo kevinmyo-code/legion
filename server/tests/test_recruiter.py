@@ -458,8 +458,8 @@ def test_every_denied_route_refuses_a_recruiter_in_words(
     credential, recruiter_web, recruiter_token_client, settings, monkeypatch
 ):
     # Doors that are a 404 before authentication while dark are switched on, so the fence is seen.
+    # Head-unit sign-in needs no switch any more: it is live, and the fence is its route list.
     settings.LEGION_MCP = True
-    monkeypatch.setenv("LEGION_HEADUNIT_SIGNIN", "on")
     monkeypatch.setenv("LEGION_BOARD", "on")
     monkeypatch.setenv("LEGION_BOARD_ACTIONS", "on")
     client = recruiter_web if credential == "session" else recruiter_token_client

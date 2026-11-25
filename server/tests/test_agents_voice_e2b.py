@@ -828,10 +828,9 @@ def test_a_missing_or_broken_lists_file_fails_closed_for_the_relay_only(tmp_path
         assert closed["engine_tools_leaving_engine"] is None
 
 
-def test_a_head_unit_sends_no_client_facts(auth_client, engine, monkeypatch):
-    from tests.test_headunit_signin import SIGNIN_ENV, _paired, unit_client
+def test_a_head_unit_sends_no_client_facts(auth_client, engine):
+    from tests.test_headunit_signin import _paired, unit_client
 
-    monkeypatch.setenv(SIGNIN_ENV, "on")
     _id, raw = _paired(auth_client)
     body = {"transcript": "hello", "client_facts": {"language": "Spanish"}}
     response = unit_client(raw).post("/api/agents/turn", body, format="json")

@@ -46,8 +46,8 @@ from releases.models import APPS, HEX64, AppRelease
 
 # The two READ routes also take a head unit's own token (`headunit_signin.scope`): a paired unit
 # holds no member sign-in, so without this its updater can never ask for its own OTA. Listed
-# ahead of the defaults, and the class itself 401s every `hu1_` key while
-# `LEGION_HEADUNIT_SIGNIN` is off, so with the switch off these views behave exactly as before.
+# ahead of the defaults. A unit token still reads only its own app's rows
+# (`scope.releases_refusal`), so it can never list or fetch the phone's APK.
 # `ReleasePublishView` deliberately keeps the defaults: a unit never publishes.
 READ_AUTHENTICATION = [
     HeadUnitTokenAuthentication,

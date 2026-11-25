@@ -25,8 +25,8 @@ urlpatterns = [
     path("healthz", healthz, name="healthz"),
     path("health", healthz, name="health"),
     path("api/auth/", include("household.urls")),
-    # T3b: a head unit's own sign-in, minted by the member's phone while it pairs, DARK (404
-    # unless LEGION_HEADUNIT_SIGNIN=on; `headunit_signin/views.py`).
+    # T3b: a head unit's own sign-in, minted by the member's phone while it pairs. Live; a unit's
+    # token reaches only `headunit_signin.scope`'s routes (`headunit_signin/views.py`).
     path("api/auth/", include("headunit_signin.urls")),
     # The factory board's off-laptop copy, DARK (404 unless LEGION_BOARD=on; `board/views.py`).
     path("api/", include("board.urls")),
