@@ -17,8 +17,8 @@ tags: [ticket]
 
 **Because the sitrep disappeared.** [Ticket 08](08-morning-brief.md) was resolved on 2026-08-21 and
 immediately dropped off `docs/index.html`, which lists only OPEN tickets - so a fully-decided,
-entirely unbuilt feature became invisible. Kevin noticed within the hour: *"where is the daily brief?
-dont see it on pending work anymore. was it built?"*
+entirely unbuilt feature became invisible. Kevin noticed within the hour and asked where the daily
+brief had gone, since it no longer showed on pending work, and whether it had been built.
 
 It was not. Nothing is written.
 

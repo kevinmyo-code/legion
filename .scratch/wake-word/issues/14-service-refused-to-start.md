@@ -15,7 +15,7 @@ tags: [ticket]
 
 ## Found by chasing something else
 
-Kevin: *"call came in > no announcement from ai."* The raise history had **no `incoming_call` row**,
+Kevin: a call came in with no announcement. The raise history had **no `incoming_call` row**,
 and rows are only written once a raise passes the gate - so it never reached the gate. That ruled
 out the call code immediately.
 

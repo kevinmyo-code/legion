@@ -14,8 +14,8 @@ what the Body side has (bodyweight, meals, sleep, workouts, goals, the BIO advis
 generator, the wellbeing digest) and proposed a loop: a small profile, a deterministic energy
 estimate, a smoothed weight trend, a two-weekly adjustment Kevin accepts or dismisses, a Monday
 trend line, and saved meals so logging food by voice is one sentence. Kevin answered its questions
-the same day. Then: *"revamp body screens too then, today it has a bunch of checklists and the
-visuals are a bit hard to understand"*.
+the same day. Then he asked for the Body screens to be revamped as well, since today they are a
+set of checklists whose visuals are hard to read.
 
 ## Destination
 

@@ -12,11 +12,10 @@ tags: [map]
 
 # AI tooling upgrade
 
-**Kevin, 2026-10-22:** *"im thinking of switching to openai's api instead of gemini. using their gpt
-live, gpt 6 sol for reasoning etc. and i was interested in their decisions api... can speed up some of
-the pure bool decision making here"*, and then *"new tech has come, things like grokbot and dots from
-openai, they run on their own sandboxes etc. what can we upgrade to legion with the latest ai
-technology?"*
+**Kevin, 2026-10-22:** raised switching from Gemini to OpenAI's API (GPT Live for voice, GPT-6 Sol
+for reasoning) and was interested in their Decisions API for the pure boolean decision making here.
+He then asked, given newer sandboxed agent products such as Grok Bot and Dots, what LEGION could
+upgrade with the latest AI technology.
 
 Research: `research/2026-10-22-landscape.md`.
 

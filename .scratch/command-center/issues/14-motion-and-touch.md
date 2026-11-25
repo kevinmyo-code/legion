@@ -13,7 +13,7 @@ tags: [ticket]
 ---
 # The app learns to move
 
-Kevin, 2026-08-22: *"the UI still doesnt feel polished enough."* The screenshots show layouts that
+Kevin, 2026-08-22: said the UI still did not feel polished enough. The screenshots show layouts that
 are broadly right and an app that is COMPLETELY STATIC - no pressed feedback beyond the default
 ripple, no entrance, no transition between routes. Static reads as unpolished even when the layout
 is correct.

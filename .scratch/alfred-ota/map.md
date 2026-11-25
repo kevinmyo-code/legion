@@ -12,8 +12,8 @@ tags: [map]
 
 # Patch Alfred over the internet
 
-**Kevin, 2026-11-05:** *"today we deploy via adb installs, is there anyway to patch alfred over the
-internet"*, then *"lets do it. write a plan then we implement"*.
+**Kevin, 2026-11-05:** asked whether Alfred could be patched over the internet instead of by adb
+install, then *"lets do it. write a plan then we implement"*.
 
 Today the only way to change Alfred on the phone is a laptop, wireless adb and `install_phone.sh`.
 This map has two halves, and both are needed:

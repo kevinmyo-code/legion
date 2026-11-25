@@ -11,8 +11,8 @@ tags: [ticket]
 ---
 # Workouts LEGION writes and Kevin ticks off; the old tickboxes go
 
-Kevin, 2026-11-06: *"i wanna have it make workouts for me that i can tick off, log meals etc. right
-now theres the old workout tickboxes left over from before and its confusing"*.
+Kevin, 2026-11-06: asked for generated workouts he can tick off, alongside meal logging, and said
+the leftover workout tickboxes from before are confusing.
 
 - Two static prototypes went to Kevin: 1 ticks on the Body card, 2 a session screen. **He picked
   2**, with the week-1 calibration card.

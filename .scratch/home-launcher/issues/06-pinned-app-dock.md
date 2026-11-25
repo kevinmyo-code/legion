@@ -22,8 +22,8 @@ tags: [ticket]
 
 # A dock of five pinned apps above the talk bar
 
-**Kevin, 2026-09-27:** *"on the main screen, i want a dynamic shortcut list of apps. like 5 apps
-that i open the most. quick shortcuts."* Then, offered launch-counting or Android usage stats:
+**Kevin, 2026-09-27:** asked for a dynamic shortcut row on the main screen, about five of the apps
+he opens most. Then, offered launch-counting or Android usage stats:
 *"actually just let me manually pin apps to home screen like the usual android home does"*, and the
 dock above the talk bar over a row under the today card.
 

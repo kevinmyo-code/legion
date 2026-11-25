@@ -15,9 +15,9 @@ tags: [ticket]
 
 ## Question
 
-**Kevin, 2026-10-03:** *"im still struggling with if the wake word should open only 1 turn and close
-or keep it open. i did this previously by keeping it open, and having a close phrase to close the
-convo."*
+**Kevin, 2026-10-03:** undecided between a wake that opens one turn and closes and a conversation
+that stays open. He had done it before by keeping it open, with a close phrase to end the
+conversation.
 
 As built on 2026-10-03, a hands-free conversation stays open until the model calls
 `end_conversation` (the close phrase). Only speak-only sessions have an idle timeout

@@ -24,7 +24,7 @@ tags: [ticket]
 # Delete MetersScreen
 
 Split from [[03-calendar-becomes-home]] on 2026-09-10. The rename went ahead because it was decided;
-this did not, because *"thinking of retiring meters page"* is not a ruling and because deleting the
+this did not, because the meters retirement was floated rather than ruled and because deleting the
 file without [[02-rehome-the-orphans]] would take `show_generated_view`'s only hands path with it
 (ADR 0035).
 

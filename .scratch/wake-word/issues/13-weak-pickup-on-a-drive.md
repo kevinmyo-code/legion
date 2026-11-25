@@ -15,7 +15,7 @@ tags: [ticket]
 
 ## The report
 
-Kevin, from a real drive, 2026-08-21: *"wake word sometimes weak (doesnt hear me)."* Otherwise
+Kevin, from a real drive, 2026-08-21: the wake word sometimes failed to hear him. Otherwise
 acceptable - it worked often enough that he called the feature usable.
 
 Filed separately from

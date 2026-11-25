@@ -11,8 +11,8 @@ tags: [ticket]
 ---
 # Body screens: two or three directions to pick from
 
-Kevin, 2026-11-05: *"revamp body screens too then, today it has a bunch of checklists and the
-visuals are a bit hard to understand"*. The Money screens were revamped by prototypes first and
+Kevin, 2026-11-05: asked for the Body screens to be revamped as well, since today they are a set
+of checklists whose visuals are hard to read. The Money screens were revamped by prototypes first and
 Kevin liked it; the same process.
 
 1. Look at today's Body tab on the phone (verify-on-phone, read-only) and note what confuses.

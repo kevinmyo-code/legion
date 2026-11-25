@@ -36,8 +36,8 @@ card + tiles / bare tile grid / tiles + list cards on home).
 - **2 columns x 4 rows**, bigger tiles (*"2 x 4, bigger tiles"*), in this order: Calendar, Lists,
   Money, Body, Fleet, Recordings, News, Reports. Each tile: a coloured icon chip, a name, one short
   status line.
-- **Groceries is not a tile.** Kevin: *"u put list and groceries as separate things, grocery is just
-  a list no?"* Right - the proposed tile opened the pantry (receipts, grocery budget), which is
+- **Groceries is not a tile.** Kevin queried why the proposal had lists and groceries as separate
+  tiles when groceries is just another list. He was right - the proposed tile opened the pantry (receipts, grocery budget), which is
   spending and lives under Money. The grocery LIST is a card on Lists like any other list; the
   receipts page is reached from Money.
 - **"Reports"** is the ASK screen: the closed-enum builder over ledger and pantry.

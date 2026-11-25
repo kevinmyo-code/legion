@@ -15,7 +15,7 @@ tags: [ticket]
 
 # No Cube
 
-Kevin: *"also wondering if we really need cube."* No.
+Kevin asked whether Cube is needed at all. No.
 
 The doc argues Cube for hundreds of concurrent dashboard users over millions of rows, with metric
 drift across departments and row-level security to enforce in one place. LEGION is a family of six

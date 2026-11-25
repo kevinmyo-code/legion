@@ -16,7 +16,8 @@ tags: [ticket]
 ## Question
 
 Does not exist. `pantry/` reads grocery receipts, which is shopping, not eating. Kevin: *"meals same
-. just an estimate of calories and macros. maybe cross checked against groceries and food spending."*
+. just an estimate of calories and macros."* He also floated cross-checking that against groceries
+and food spending.
 
 1. **What is a meal log entry?** A photo, a spoken description, or both? `PantryReceiptAgent` already
    does LLM vision on receipts, and `SubAgent` takes an inline image - the machinery exists.
@@ -27,7 +28,7 @@ Does not exist. `pantry/` reads grocery receipts, which is shopping, not eating.
 3. **What is the target?** A daily calorie and macro goal, presumably. Daily, or weekly average?
 4. **What is the gap?** Distance from today's target, and what happens to a day you did not log -
    does an unlogged day read as zero eaten, which would be a lie?
-5. **The cross-check.** *"maybe cross checked against groceries and food spending"* - the only
+5. **The cross-check.** The cross-check against groceries and food spending he floated is the only
    cross-domain idea in the whole set. Is it in this domain's first loop, or deferred? Note it needs
    category parity between food spend and meals (ticket 07 question 1).
 6. **The first closed loop.** Smallest useful version.

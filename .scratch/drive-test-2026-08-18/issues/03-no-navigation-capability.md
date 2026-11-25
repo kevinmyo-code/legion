@@ -15,8 +15,8 @@ tags: [ticket]
 
 ## Question
 
-Kevin, on a real drive, 2026-08-18: *"nav > google map doesnt work. ai doesnt open map. says hes
-opening it but it doesnt."*
+Kevin, on a real drive, 2026-08-18: reported that navigation does not work. The assistant says it
+is opening Google Maps and nothing opens.
 
 **This is not an intent bug, a resolution bug, or a permissions bug.** There is no navigation
 capability anywhere in the app.

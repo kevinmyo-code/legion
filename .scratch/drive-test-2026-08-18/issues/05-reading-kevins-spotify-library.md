@@ -15,7 +15,7 @@ tags: [ticket]
 
 ## Question
 
-Kevin, on a real drive, 2026-08-18: *"music > can we look up our favorite or recent albums?"*
+Kevin, on a real drive, 2026-08-18: asked whether LEGION could look up favourite or recent albums.
 
 Today the answer is no, and the obstacle is not the code.
 

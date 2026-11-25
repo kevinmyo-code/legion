@@ -13,7 +13,7 @@ tags: [ticket]
 ---
 # Vault entry from the web desk (write-only)
 
-Kevin, 2026-11-05: *"can i enter it on the pc man, but later. not important now"*.
+Kevin, 2026-11-05: asked for vault entry from the PC as well, as later, lower-priority work.
 
 ## What
 

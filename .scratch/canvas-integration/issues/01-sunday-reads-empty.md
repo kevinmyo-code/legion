@@ -22,8 +22,8 @@ tags: [ticket]
 
 # Sunday reads empty
 
-**Kevin, 2026-09-11:** *"the AI doesnt see anything thats due on sunday for sch. i asked it and it
-didnt know."*
+**Kevin, 2026-09-11:** reported that the assistant, asked what was due on Sunday, did not know about
+anything.
 
 He is right that it is wrong, and the cause is not an empty calendar.
 

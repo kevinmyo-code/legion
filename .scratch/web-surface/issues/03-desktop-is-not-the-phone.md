@@ -14,8 +14,8 @@ tags: [ticket]
 
 # Desktop is not the phone reflowed
 
-**Kevin, 2026-09-12:** *"computer brwoser is for me to edit and review data etc. ledger ingestion all
-that. pwa for wife"*.
+**Kevin, 2026-09-12:** the desktop browser is his surface for editing and reviewing data, ledger
+ingestion included; the PWA is Member B's.
 
 Today the desktop renders the phone's column into `max-w-lg` inside a 1707px window. About 70% of the
 screen is empty and the rail holds two items. **It cannot review or edit anything.**

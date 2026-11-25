@@ -14,9 +14,9 @@ tags: [ticket]
 
 # Build: LEGION reachable from Claude and the Gemini app
 
-Kevin, 2026-10-22: picked Claude and the Gemini app. He asked whether the Gemini app means *"the literal
-gemini app on my phone? so can i pull up gemini live voice session and ask it questions about my legion
-data"*.
+Kevin, 2026-10-22: picked Claude and the Gemini app. He asked whether that meant the Gemini app on
+the phone itself, and whether a Gemini Live voice session could then answer questions about his
+LEGION data.
 
 ## Rulings
 

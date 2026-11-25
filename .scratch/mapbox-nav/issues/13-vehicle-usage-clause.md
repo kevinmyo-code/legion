@@ -27,7 +27,7 @@ Detail: [research/01-sdk-facts.md](../research/01-sdk-facts.md) section 6.
 
 ## Answer (2026-10-03)
 
-**Kevin's ruling:** *"covers a phone app. im not gonna email mapbox man its just a hobby app for my
-self."* LEGION is a personal app with no commercial model (§2), and Kevin reads 1.2.2 as aimed at
+**Kevin's ruling:** the clause covers a phone app, and he declined to email Mapbox for a written
+answer. LEGION is a personal app with no commercial model (§2), and Kevin reads 1.2.2 as aimed at
 in-vehicle systems, not a phone feature. The clause's text stays ambiguous; the risk is accepted
 knowingly, not resolved. If Mapbox ever says otherwise, this is the ticket to reopen.

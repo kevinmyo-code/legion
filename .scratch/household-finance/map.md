@@ -12,10 +12,10 @@ tags: [map]
 
 # Household finance
 
-**Kevin, 2026-11-05:** *"expand the finance sources to the entire household's networth and draw
-alerts analyses and budgeting. with alfred proactively telling me hey youve spent too much, or ur
-approaching ur grocery budget, u might have to transfer money over from singapore etc."* The goal:
-hold net worth steady until Kevin graduates and starts full-time work.
+**Kevin, 2026-11-05:** widen the finance sources to the whole household's net worth and draw alerts,
+analyses and budgeting off them, with Alfred raising unprompted that spending is over, that a
+category cap is close, or that money may need moving between accounts. The goal: hold net worth
+steady until Kevin graduates and starts full-time work.
 
 **This repo is public.** Every figure, account, income and balance lives in a private file outside
 the repo (`legion-household-finance.md` in Kevin's Documents), loaded into Postgres by

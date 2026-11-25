@@ -17,8 +17,8 @@ tags: [ticket]
 
 **No. There is no `summary_text` field anywhere.**
 
-The idea came from Kevin's opening framing on 2026-09-01 - *"a summary md etc. that states the
-project state, whats left to do"* - and the scope answers closed it without needing the argument.
+The idea came from Kevin's opening framing on 2026-09-01 - a summary markdown file stating the
+project state and what is left - and the scope answers closed it without needing the argument.
 On the GitHub side only LEGION matters for now, and LEGION does not need a paragraph explaining
 what LEGION is. On the Azure side every project is Kevin's own solo work, which he already knows.
 

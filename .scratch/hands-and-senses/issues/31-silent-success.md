@@ -13,9 +13,9 @@ tags: [ticket]
 ---
 # It did the thing and did not say so
 
-Kevin, 2026-08-22, twice: *"i typed 227483 and tried to save anchor but nothing happened"* and
-*"i tried to log date for brake fluid flush by saying it was done at the same time as the oil
-change. but it didnt register too."*
+Kevin, 2026-08-22, twice: saving a 227,483 mile anchor appeared to do nothing, and logging the
+brake-fluid flush date by saying it happened at the same time as the oil change appeared not to
+register either.
 
 **Both writes succeeded.** From his own conversation audit and database:
 

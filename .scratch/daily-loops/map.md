@@ -8,9 +8,9 @@ tags: [map]
 
 # Daily loops
 
-**Kevin, 2026-11-12:** *"I have been using all3. Canvas calendar todos groceries and bank. How can we
-improve or expand"*, then *"Receipts are being retired... I'd rather canvas grades, location
-reminders, leave by times and budget pace"*. Rulings in `memory/library/decisions.md` 2026-11-12.
+**Kevin, 2026-11-12:** asked how the loops he uses daily (Canvas, calendar, todos, groceries, bank)
+could be improved or expanded, then ruled: *"Receipts are being retired... I'd rather canvas grades,
+location reminders, leave by times and budget pace"*. Rulings in `memory/library/decisions.md` 2026-11-12.
 
 | # | Type | What |
 |---|---|---|

@@ -90,5 +90,5 @@ resolved until someone says they heard it.
 
 ### Verified by ear, 2026-08-20
 
-Kevin, after using it: *"hey alfred, nevermind and no works as we expect."* The acknowledgement
-speaks. `on-device`, not `reasoned`.
+Kevin, after using it: the acknowledgement and the never-mind phrase both behaved as expected.
+`on-device`, not `reasoned`.

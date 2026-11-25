@@ -14,9 +14,10 @@ tags: [ticket]
 
 # Households are tenants
 
-**Kevin, 2026-09-08:** *"my parents can also register as users, they create a new household group."*
+**Kevin, 2026-09-08:** ruled that other family members may register as users of their own and
+create a new household group.
 
-That sentence reopens two standing rulings, and this ticket exists so the reopen is explicit rather
+That ruling reopens two standing rulings, and this ticket exists so the reopen is explicit rather
 than slid past (ADR-FORMAT rule 4):
 
 | Ruling | Text today | After |

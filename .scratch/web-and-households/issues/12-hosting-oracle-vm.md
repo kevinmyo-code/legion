@@ -14,9 +14,9 @@ tags: [ticket]
 
 # Hosting: an always-on Oracle VM
 
-**Kevin, 2026-09-08:** *"why cold start? wont the linux vm we host on be always on"* - then, told the
-engine was on Cloud Run at min-instances 0 with a measured 5.4 s cold start - *"we are reopening the
-oracle VM. new hosting decisions."* Asked the two forks it opens, he chose **Postgres on the VM in
+**Kevin, 2026-09-08:** asked why the engine cold-starts at all when the Linux VM it is hosted on is
+always on - then, told the engine was on Cloud Run at min-instances 0 with a measured 5.4 s cold
+start - *"we are reopening the oracle VM. new hosting decisions."* Asked the two forks it opens, he chose **Postgres on the VM in
 compose** and **upgrade the tenancy to Pay As You Go**.
 
 ## What was decided, in one table

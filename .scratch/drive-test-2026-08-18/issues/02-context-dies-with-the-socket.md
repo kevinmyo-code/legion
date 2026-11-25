@@ -15,8 +15,8 @@ tags: [ticket]
 
 ## Question
 
-Kevin, on a real drive, 2026-08-18: *"after a few turns, it doesnt remember the previous turn what
-we said. the context drops"*
+Kevin, on a real drive, 2026-08-18: reported that after a few turns the assistant no longer
+remembered what was said in the previous turn, so the context drops.
 
 **This is not [ticket 01](01-conversation-waits-for-the-driver.md).** Kevin reported both in one
 breath and they are separate defects. Ticket 01 was a timer parking the socket; this one is what

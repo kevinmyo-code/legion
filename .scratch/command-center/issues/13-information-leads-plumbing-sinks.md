@@ -13,7 +13,7 @@ tags: [ticket]
 ---
 # The information leads, the plumbing sinks
 
-Kevin, 2026-08-22: *"not just polish, the UX itself, the way the information is displayed etc."*
+Kevin, 2026-08-22: scoped this at the UX itself and the way information is displayed, not polish alone.
 
 Grounded in real screenshots off the A25 (scratchpad `shots/`), not taste. Five findings, each
 with its evidence:

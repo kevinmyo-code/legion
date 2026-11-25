@@ -14,8 +14,9 @@ tags: [map]
 
 **Kevin, 2026-09-10, on the Android app:** *"calendar home page > today's plan > no need since we
 have bio to do list. the advisor would tell me what would be a good daily todo list for workouts >
-and populate it that way. A news feed page > pulled from my gmail or just rss feeds. thinking of
-retiring meters page. just everything on home page (rename it from calendar)"*
+and populate it that way. A news feed page > pulled from my gmail or just rss feeds."* He also
+floated retiring the meters page, and asked for *"just everything on home page (rename it from
+calendar)"*.
 
 Four asks in one sentence, and they are not the same size. Two are a deletion and a rename. One
 turns out to be **the same mechanism it asks to delete, re-pointed** - and that is the finding that
@@ -91,7 +92,7 @@ workout list, and it lands in `checklists` like everything else. Tickets 04 and 
 
 | Ask | Status | Ticket |
 |---|---|---|
-| *"retiring meters page, just everything on home page"* | Two tabs become one. Three things need a new address first, one of them under ADR 0035 | 01, 02 |
+| Retiring the meters page, everything on home | Two tabs become one. Three things need a new address first, one of them under ADR 0035 | 01, 02 |
 | *"rename it from calendar"* | Mechanical, but touches routes, the start destination, deep links, alarm targets, tests and docs | 03 |
 | *"today's plan > no need"* | It is `GoalChecklistPanel`. Retiring it retires the only surface for `accept_goal_plan`'s output, so 05 must land with it | 04 |
 | *"the advisor would populate it that way"* | The write door exists (`AdvisorProposalExecutor`, allowlisted handlers incl. `createWorkoutPlan`, `addTask`). **No handler writes a checklist.** That is the gap | 05 |

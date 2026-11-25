@@ -16,9 +16,9 @@ tags: [map]
 **Kevin states a goal in prose, gets a plan he can argue with, and sees a daily checklist he can
 tick.**
 
-Kevin, 2026-08-21: *"I want the ai to generate a list of todos or habits for each aspect based on my
-goals. my current bio goal is lose fat, gain muscle etc. via prose. and the ai should generate
-calorie targets, macros, a daily checklist of workouts etc."*
+Kevin, 2026-08-21: asked for the AI to generate a list of todos or habits per aspect from a goal
+stated in prose, and for a body goal to produce calorie targets, macros and a daily checklist of
+workouts.
 
 And on what "finished" means: *"accept recommended with user being able to tweak the plan or ask the
 agent - hey i dont have access to a gym, can we mix in kettlebell workouts etc."*

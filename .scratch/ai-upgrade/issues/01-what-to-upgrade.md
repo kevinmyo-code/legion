@@ -45,7 +45,7 @@ Evidence: `research/2026-10-22-landscape.md`.
 3. **No decision model** (proposal item 2 stands).
 4. **Build the MCP update and connect it to Claude and the Gemini app.** That is ticket 03.
 5. **Build a daily brief rather than a general agent platform.** That is ticket 02.
-   - Kevin: *"i want a personal daily digest delivered to my phone. canvas, money, car, ai news + topics im interested in, a morning brief basically. it should be a button, pressing it opens a modal i can dismiss. so i can bring it back up anytime. updates daily."*
+   - Kevin asked for a personal daily digest on the phone, covering Canvas, money, car and AI news plus the topics he follows: a morning brief behind a button that opens a dismissible modal he can reopen at any time, rebuilt daily.
    - It runs as a server job on the existing Gemini key and Cloud Scheduler. No hosted agent runtime (Claude or Gemini Managed Agents) is used: the job's shape is one grounded call per day, and a new vendor would add cost and send bank data further out for no gain.
 
 ## Questions asked (answered above)
