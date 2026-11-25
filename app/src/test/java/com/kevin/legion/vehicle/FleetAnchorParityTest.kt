@@ -199,4 +199,28 @@ class FleetAnchorParityTest {
 
         assertEquals(240_000 to today, FleetRecordBridge.projectAnchorLegacy(rows))
     }
+
+    @Test
+    fun `a fresh log with a reading supersedes a pinned one, both sides`() {
+        // The remedy for a reading `set_odometer` pinned at the wrong figure: log the service again
+        // with the right one. `insertObserved` stamps `updatedAt` with the event millis, so a log
+        // made after the pin out-ranks it here; `created_at` does the same on the engine.
+        // Editing the row instead does NOT fix it on either side: `editMileageAndCost` sets
+        // `mileage` and `costCents` and leaves `updatedAt` alone, so the edited row still loses to
+        // a newer assertion. Engine: `test_logging_the_service_again_with_a_reading_supersedes...`.
+        val anHourIn = today + 3_600_000L
+        val twoHoursIn = today + 7_200_000L
+        val rows = listOf(
+            observed(id = 11, name = "oil change", mileage = null, date = today),
+            asserted(id = 12, name = "oil change", mileage = 335_000, date = today, statedAt = anHourIn),
+            observed(id = 13, name = "oil change", mileage = 235_000, date = twoHoursIn),
+        )
+
+        assertEquals(
+            "the pin stands until something newer lands",
+            335_000 to today,
+            FleetRecordBridge.projectAnchorLegacy(rows.take(2)),
+        )
+        assertEquals(235_000 to twoHoursIn, FleetRecordBridge.projectAnchorLegacy(rows))
+    }
 }
