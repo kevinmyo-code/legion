@@ -29,9 +29,11 @@ they need different fixes:
    some track's title clears it. The rule exists to reject the wrong RECORDING of a named song; it
    was never meant to adjudicate a phrase that names no song.
 
-The 2026-11-24 leftover-token fix narrows fault 2: an unexplained leftover query token now rejects
-a title hit, so a descriptive phrase has to match the candidate's title or artist almost wholly to
-be accepted. It does not create fault 1's capability.
+The 2026-11-24 leftover-token fix does NOT narrow fault 2. It bites only where a candidate's whole
+title sits inside a longer request; a descriptive phrase that shares most of its words with some
+title is accepted by the overlap rule, which that fix deliberately left alone (an unmatched token
+there is a mis-said title word, and rejecting on it would break requests that work today). So
+fault 2 is open, and fault 1 has no capability either way.
 
 ## Scope of the build
 
