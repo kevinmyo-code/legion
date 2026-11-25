@@ -36,6 +36,8 @@ import com.kevin.legion.service.checkin.ClosingLines
 import com.kevin.legion.service.GeminiLiveSession
 import com.kevin.legion.service.LiveAudit
 import com.kevin.legion.service.LiveLatency
+import com.kevin.legion.service.MicLevel
+import com.kevin.legion.service.MicSignal
 import com.kevin.legion.service.LiveSessionController
 import com.kevin.legion.service.Farewells
 import com.kevin.legion.service.ListenCue
@@ -50,6 +52,7 @@ import com.kevin.legion.quiet.QuietMode
 import com.kevin.legion.service.conversationlog.ConversationLog
 import com.kevin.legion.service.turn.AudioRoute
 import com.kevin.legion.service.turn.BargeInGate
+import com.kevin.legion.service.turn.BluetoothMic
 import com.kevin.legion.service.turn.CallAudioMode
 import com.kevin.legion.service.turn.EndOfTurnPolicy
 import com.kevin.legion.service.turn.MicReopen
@@ -258,6 +261,17 @@ internal class CascadeSession(
     private var player: ReplyPlayer? = null
     private var callAudio: CallAudioMode? = null
     private var micJob: Job? = null
+
+    /**
+     * This capture's first-buffer time, its loudest sample so far, and whether the hands-free mic has
+     * already been given up on: the three inputs of [BluetoothMic.fallBack]. Reset per capture in
+     * [startMic], except the verdict, which stands for the whole conversation.
+     */
+    @Volatile private var captureOpenedAtMs = 0L
+    @Volatile private var capturePeak = 0
+    @Volatile private var fellBackToPhoneMic = false
+    @Volatile private var peakLoggedAtMs = 0L
+
     /** The mic claim, released as the claimant it was asked as (a ring's too). */
     private val micHold = MicArbiter.Hold(micClaimant)
     private var focus: AudioFocusRequest? = null
@@ -3821,6 +3835,10 @@ internal class CascadeSession(
     // --- microphone ([CascadeMic], a trimmed copy of Live's micLoop) ---------------------------------
 
     private fun startMic(chime: Boolean = false) {
+        // A new capture, a new window for the level and the deaf-mic fallback: the first buffer stamps
+        // the open time, so the count never includes the route's own settle.
+        captureOpenedAtMs = 0L
+        capturePeak = 0
         micJob = scope.launch(Dispatchers.IO) {
             // The car's hands-free link, when it was asked for, carries the route before capture.
             audioRoute.awaitBluetoothMic()
@@ -3861,6 +3879,7 @@ internal class CascadeSession(
     private fun onMicBuffer(buf: ByteArray, n: Int) {
         // A call came: nothing more reaches any speech-to-text, from this buffer on ([pauseForCall]).
         if (callPaused) return
+        if (readLevel(buf, n)) return
         if (micBufferSeen.compareAndSet(false, true)) {
             LiveLatency.log(LiveLatency.TAG, "open_capture_ms=${System.currentTimeMillis() - openStartedAtMs}")
         }
@@ -3872,6 +3891,66 @@ internal class CascadeSession(
             val taker = turnTaker
             if (taker != null) taker.feed(buf, n, playbackActive) else backlog?.add(buf, n, playbackActive)
         }
+    }
+
+    /**
+     * One buffer's loudness: published for the screen's mic bar ([MicLevel]), logged about once a
+     * second, and fed to the hands-free deaf-mic fallback ([BluetoothMic.fallBack]). Returns true when
+     * this buffer belongs to a capture that is being given up on, so nothing deaf reaches a turn.
+     *
+     * A level is one number per read, never audio ([MicSignal]'s own note on why that is the only
+     * thing here safe to log at all), so `mic_peak=` carries nothing of what he said. It exists
+     * because the cascade logged no level: the mic that did not hear him in the car on 2026-11-24
+     * left no measurement behind, and [BluetoothMic.DEAF_MS] is a guess until one does.
+     */
+    private fun readLevel(buf: ByteArray, n: Int): Boolean {
+        val peak = MicSignal.peakAmplitude(buf, n)
+        MicLevel.publish(peak)
+        if (peak > capturePeak) capturePeak = peak
+        val nowMs = System.currentTimeMillis()
+        if (captureOpenedAtMs == 0L) captureOpenedAtMs = nowMs
+        if (nowMs - peakLoggedAtMs >= PEAK_LOG_INTERVAL_MS) {
+            peakLoggedAtMs = nowMs
+            val route = if (callAudio?.onBluetoothMic == true) "hands_free" else "phone"
+            LiveLatency.log(LiveLatency.TAG, "mic_peak=$peak mic_peak_open=$capturePeak mic_route=$route")
+        }
+        if (!BluetoothMic.fallBack(
+                onBluetoothMic = callAudio?.onBluetoothMic == true,
+                alreadyFellBack = fellBackToPhoneMic,
+                elapsedMs = nowMs - captureOpenedAtMs,
+                peakSinceOpen = capturePeak,
+            )
+        ) {
+            return false
+        }
+        fellBackToPhoneMic = true
+        scope.launch(loop) { fallBackToPhoneMic(capturePeak, nowMs - captureOpenedAtMs) }
+        return true
+    }
+
+    /**
+     * The car's hands-free mic delivered nothing audible: the link goes, the phone's own mic opens in
+     * its place, and he is told in words, because he has just said something nothing heard and only he
+     * can say it again (CLAUDE.md section 7: the app says what did NOT happen).
+     *
+     * The conversation, its backend and its prompt all stay up; only the capture and the route are
+     * rebuilt, as every other mid-conversation reopen does, after the route's own settle
+     * ([MicReopen.settleMs]). [startMic] hands [callWatch] the new capture's session id.
+     */
+    private suspend fun fallBackToPhoneMic(peak: Int, heldMs: Long) {
+        if (closing.get()) return
+        LiveLatency.log(
+            TurnTaker.BARGE_TAG,
+            "hands-free mic deaf peak=$peak held_ms=$heldMs: the phone's own mic takes over (cascade)",
+        )
+        runCatching { micJob?.cancelAndJoin() }
+        micJob = null
+        callAudio?.let { if (it.isActive) it.exit("hands-free mic deaf") }
+        callAudio = null
+        delay(MicReopen.settleMs(CallAudioMode.route(audioManager)))
+        if (closing.get()) return
+        host.notice("The car's microphone isn't picking anything up. Listening on the phone's mic now.")
+        startMic()
     }
 
     /**
@@ -4047,6 +4126,9 @@ internal class CascadeSession(
         /** The open's "refusal" token when the engine is Cloud: no laptop was asked. */
         private const val CLOUD_ENGINE = "cloud_engine"
         private const val SCOPE_GRACE_MS = 2_000L
+
+        /** How often the capture's level is logged ([readLevel]); Live's own cadence. */
+        private const val PEAK_LOG_INTERVAL_MS = 1_000L
 
         private val ACK = AckLines()
 
