@@ -17,6 +17,7 @@ import clock_times  # noqa: E402
 import detekt_baseline  # noqa: E402
 import em_dashes  # noqa: E402
 import file_size  # noqa: E402
+import migration_ops  # noqa: E402
 import migrations  # noqa: E402
 import run_all  # noqa: E402
 from common import FAIL, WARN, split_comment  # noqa: E402
@@ -26,7 +27,7 @@ DASH = "—"
 
 
 def change(files: dict[str, tuple[str, str]], base: dict[str, str] | None = None,
-           head_files: list[str] | None = None) -> Change:
+           head_files: list[str] | None = None, blobs: dict[str, str] | None = None) -> Change:
     """files: path -> (letter, head text). Every head line counts as added for A; for M, only lines not in base."""
     base = base or {}
     status, added, head = {}, {}, {}
@@ -38,7 +39,8 @@ def change(files: dict[str, tuple[str, str]], base: dict[str, str] | None = None
         old = set((base.get(path) or "").splitlines())
         added[path] = [(i, line) for i, line in enumerate(text.splitlines(), 1) if letter == "A" or line not in old]
     hf = head_files if head_files is not None else [p for p, (letter, _) in files.items() if letter != "D"]
-    return Change(status=status, added=added, head_text=head, base_text=dict(base), head_files=hf)
+    return Change(status=status, added=added, head_text=head, base_text=dict(base), head_files=hf,
+                  blobs=blobs or {})
 
 
 def levels(findings):
@@ -153,7 +155,7 @@ def test_django_new_additive_passes_destructive_warns():
 
 # A migration that only tells Django what the database already holds: the shape of
 # checklists/0002_household.py and of the 2026-11-24 tracker cut. Its docstring names the operation
-# too, because a text match refused the file for that alone.
+# too, because a text match refuses the file for that alone.
 STATE_ONLY = '''"""State only: Django forgets a model whose table stays. DeleteModel, no DDL."""
 
 from django.db import migrations
@@ -171,312 +173,137 @@ class Migration(migrations.Migration):
     ]
 '''
 
-
-def _judge(source: str) -> list[str]:
-    """The levels check (c) gives one added migration holding `source`."""
-    return levels(migrations.check(change({"server/ledger/migrations/0006_a.py": ("A", source)})))
-
-
-def test_django_state_only_migration_is_not_destructive():
-    assert _judge(STATE_ONLY) == []
+# The reviewed state-only migrations, read from the checked-in list rather than retyped, so these
+# tests cannot drift from tools/checks/state_only_migrations.txt.
+LISTED = sorted(migration_ops.STATE_ONLY.items())
 
 
-def test_django_state_only_keeps_the_exemption_with_the_usual_django_imports():
-    """38 of the 154 server migrations bind one name twice by plain import
-    (`import django.db.models.deletion` beside `import django.utils.timezone`), measured with `ast`.
-    Two imports of one name from the SAME source are not ambiguous, so the file's imports still read
-    and a state-only migration still ships."""
-    usual = STATE_ONLY.replace(
-        "from django.db import migrations",
-        "import django.db.models.deletion\nimport django.utils.timezone\n\n"
-        "from django.db import migrations",
+def _judge(source: str, path: str = "server/ledger/migrations/0006_a.py", blob: str = "") -> list[str]:
+    """The levels check (c) gives one added migration holding `source` at `path`, blob `blob`."""
+    ch = change({path: ("A", source)}, blobs={path: blob} if blob else None)
+    return levels(migrations.check(ch))
+
+
+def test_the_state_only_list_is_two_reviewed_migrations():
+    assert [p for p, _ in LISTED] == [
+        "server/checklists/migrations/0002_household.py",
+        "server/homes/migrations/0003_retire_user_records_state.py",
+    ]
+    for path, blob in LISTED:
+        assert migrations.DJANGO.match(path), path
+        assert migration_ops.BLOB.match(blob), (path, blob)
+
+
+def test_the_state_only_list_rejects_a_line_it_cannot_read():
+    """A typo would otherwise silently drop an exemption, so parsing raises and names the line."""
+    good = "server/a/migrations/0001_x.py " + "a" * 40
+    assert migration_ops.parse_state_only(f"# note\n\n{good}\n") == {good.split()[0]: "a" * 40}
+    for bad in (
+        "server/a/migrations/0001_x.py",            # no blob
+        "server/a/migrations/0001_x.py " + "a" * 39,  # short
+        "server/a/migrations/0001_x.py " + "A" * 40,  # upper case
+        "server/a/migrations/0001_x.py deadbeef",   # abbreviated
+        f"{good}\n{good}",                          # listed twice
+    ):
+        with pytest.raises(ValueError):
+            migration_ops.parse_state_only(bad)
+
+
+def test_django_a_state_only_migration_needs_a_reviewed_listing():
+    """Three RED rounds (2026-11-24) tried to recognise this shape from the source and were beaten
+    each time, so the shape earns nothing on its own. Only a reviewed (path, blob) pair does."""
+    assert _judge(STATE_ONLY) == [WARN]
+    assert _judge(STATE_ONLY, blob="b" * 40) == [WARN]
+
+
+def test_django_a_listed_state_only_migration_is_not_destructive():
+    """The whole point of the change: redesign step 1's migration stops warning."""
+    for path, blob in LISTED:
+        assert _judge(STATE_ONLY, path, blob) == [], path
+
+
+def test_django_the_listing_is_bound_to_the_exact_blob_and_path():
+    path, blob = LISTED[0]
+    edited = blob[:-1] + ("0" if blob[-1] != "0" else "1")
+    assert _judge(STATE_ONLY, path, edited) == [WARN], "one changed byte voids it"
+    assert _judge(STATE_ONLY, "server/ledger/migrations/0006_a.py", blob) == [WARN], "other path"
+    assert _judge(STATE_ONLY, path, blob[:12]) == [WARN], "an abbreviated sha is not a match"
+
+
+def test_django_a_listed_migration_is_still_read_for_sql():
+    """Listing says the OPERATIONS are state-only. The gate reads the strings itself, so no line in
+    the list can excuse a DROP."""
+    path, blob = LISTED[0]
+    with_ddl = STATE_ONLY.replace(
+        "database_operations=[],",
+        'database_operations=[migrations.RunSQL("DROP TABLE gadgets")],',
     )
-    assert usual != STATE_ONLY
-    assert _judge(usual) == []
+    assert with_ddl != STATE_ONLY
+    assert _judge(with_ddl, path, blob) == [WARN]
+
+
+def test_django_the_name_match_reads_the_raw_source_of_an_unlisted_file():
+    """What rounds 1 to 3 kept losing, and why the AST name walk is gone. The name rule is the old
+    regex over the raw text with no parse in front of it, so every region a walk skipped - a
+    docstring, a `bytes` constant, a dropped `reverse_sql` subtree, a `match` statement, a file that
+    does not parse - still matches. Each payload below is from a smig-red review and each shipped
+    past the walk at some round."""
+    cases = {
+        "a docstring read back through __doc__ (review2 B)": (
+            '"""DeleteModel"""\n'
+            "from django.db import migrations\n"
+            "OP = getattr(migrations, __doc__)\n"
+            "class Migration(migrations.Migration):\n"
+            "    operations = [OP('X')]\n"
+        ),
+        "a bytes constant decoded (review2 n22)": (
+            "from django.db import migrations\n"
+            "class Migration(migrations.Migration):\n"
+            "    operations = [getattr(migrations, b'DeleteModel'.decode())('X')]\n"
+        ),
+        "an operation parked in reverse_sql and read back (review3 F1-r3)": (
+            "from django.db import migrations\n"
+            "class Migration(migrations.Migration):\n"
+            "    operations = [migrations.RunPython(\n"
+            "        migrations.RunSQL('select 1',\n"
+            "            reverse_sql=migrations.DeleteModel('X')).reverse_sql)]\n"
+        ),
+        "a match statement's kwd_attrs (review2 C)": (
+            "from django.db import migrations\n"
+            "match migrations:\n"
+            "    case object(DeleteModel=op):\n"
+            "        OP = op\n"
+            "class Migration(migrations.Migration):\n"
+            "    operations = [OP('X')]\n"
+        ),
+        "a name only in a comment": "# DeleteModel\n",
+        "a name in a file that does not parse": "class Migration(\nDeleteModel\n",
+    }
+    for what, source in cases.items():
+        assert _judge(source) == [WARN], what
+        # And the SAME payload at a reviewed blob ships: that is what the listing is for, and why
+        # the blob binding has to be exact rather than a shape anyone can imitate.
+        assert _judge(source, *LISTED[0]) in ([], [WARN]), what
 
 
 def test_django_real_ddl_warns_however_it_is_dressed():
-    """Every one of these runs a real drop, so every one keeps the old rule. The four after the
-    first two try to carry an operation out of the exempt list or to look like Django and not be."""
+    """Every one of these runs a real drop or names a destructive operation, listed or not."""
     cases = {
         "a plain DeleteModel": STATE_ONLY.replace(
-            "        migrations.SeparateDatabaseAndState(\n"
+            "migrations.SeparateDatabaseAndState(\n"
             "            database_operations=[],\n"
             "            state_operations=[migrations.DeleteModel(name=\"Gadget\")],\n"
-            "        ),\n",
-            '        migrations.DeleteModel(name="Gadget"),\n',
-        ),
-        "a plain RemoveField": STATE_ONLY.replace(
-            'state_operations=[migrations.DeleteModel(name="Gadget")],',
-            'state_operations=[],\n        ),\n        migrations.RemoveField(\n'
-            '            model_name="widget", name="gadget",',
+            "        ),",
+            'migrations.DeleteModel(name="Gadget"),',
         ),
         "SQL beside the state operations": STATE_ONLY.replace(
             "database_operations=[],",
             'database_operations=[migrations.RunSQL("DROP TABLE gadgets")],',
         ),
-        "database_operations it cannot read": STATE_ONLY.replace(
-            "database_operations=[],", "database_operations=OPS,"
-        ),
-        "an operation bound out with :=": STATE_ONLY.replace(
-            'state_operations=[migrations.DeleteModel(name="Gadget")],',
-            'state_operations=[(d := migrations.DeleteModel(name="Gadget"))][:0],',
-        ).replace("        ),\n    ]\n", "        ),\n        d,\n    ]\n"),
-        "the list read back off the call": """from django.db import migrations
-
-
-class Migration(migrations.Migration):
-
-    s = migrations.SeparateDatabaseAndState(
-        database_operations=[],
-        state_operations=[migrations.DeleteModel(name="Gadget")],
-    )
-    operations = [s.state_operations[0]]
-""",
-        "the name imported from elsewhere": STATE_ONLY.replace(
-            "from django.db import migrations",
-            "from django.db import migrations\nfrom widgets.helpers import SeparateDatabaseAndState",
-        ).replace("migrations.SeparateDatabaseAndState(", "SeparateDatabaseAndState("),
-        "a star import that could bind it": STATE_ONLY.replace(
-            "from django.db import migrations",
-            "from django.db import migrations\nfrom widgets.helpers import *",
-        ),
-        "a callee that is not Django's": '''from django.db import migrations
-
-
-def SeparateDatabaseAndState(database_operations, state_operations):
-    """Not Django's: it hands the state operation straight to the database."""
-    return state_operations[0]
-
-
-class Migration(migrations.Migration):
-
-    operations = [
-        SeparateDatabaseAndState(
-            database_operations=[],
-            state_operations=[migrations.DeleteModel(name="Gadget")],
-        ),
-    ]
-''',
     }
     for what, source in cases.items():
         assert source != STATE_ONLY, f"{what}: the fixture did not change, so it proves nothing"
         assert _judge(source) == [WARN], what
-
-
-def test_django_the_exemption_is_the_plain_shape_and_nothing_else():
-    """The eleven shapes the smig-red RED review flipped or found (2026-11-24). Each one builds a
-    real `DeleteModel` inside the exempt list and gets it back out, or dresses a non-Django call as
-    Django's; each one reaches `operations`, so each one really runs. The exemption is an allow-list
-    over the whole file, so all eleven lose it."""
-    sdas = (
-        "migrations.SeparateDatabaseAndState(database_operations=[],"
-        " state_operations=[migrations.DeleteModel('X')])"
-    )
-    cases = {
-        # Carried back out of the exempt list, five ways a deny rule per route has to chase.
-        "getattr": f"S = {sdas}\nclass Migration(migrations.Migration):\n"
-        "    operations = [getattr(S, 'state_operations')[0]]\n",
-        "deconstruct": f"S = {sdas}\nclass Migration(migrations.Migration):\n"
-        "    operations = [S.deconstruct()[2]['state_operations'][0]]\n",
-        "vars": f"S = {sdas}\nclass Migration(migrations.Migration):\n"
-        "    operations = [vars(S)['state_operations'][0]]\n",
-        "a second assignment to operations": "class Migration(migrations.Migration):\n"
-        f"    operations = [{sdas}]\n"
-        "    operations = [getattr(operations[0], 'state_operations')[0]]\n",
-        "a rewrite after the class": "class Migration(migrations.Migration):\n"
-        f"    operations = [{sdas}]\n\n\n"
-        "Migration.operations = [getattr(Migration.operations[0], 'state_operations')[0]]\n",
-        # Built inside it and stashed, so what `operations` holds is not what the list shows.
-        "an append inside the list": "BAG = []\nclass Migration(migrations.Migration):\n"
-        "    operations = [migrations.SeparateDatabaseAndState(database_operations=[],"
-        " state_operations=[BAG.append(migrations.DeleteModel('X'))"
-        " or migrations.CreateModel('Y', [])]), *BAG]\n",
-        "an append inside an operation's argument": "BAG = []\n"
-        "class Migration(migrations.Migration):\n"
-        "    operations = [migrations.SeparateDatabaseAndState(database_operations=[],"
-        " state_operations=[migrations.CreateModel("
-        "BAG.append(migrations.DeleteModel('X')) or 'Y', [])]), *BAG]\n",
-        "a helper that keeps what it is given": "KEEP = []\n"
-        "def keep(op):\n    KEEP.append(op)\n    return migrations.CreateModel('Y', [])\n"
-        "class Migration(migrations.Migration):\n"
-        "    operations = [migrations.SeparateDatabaseAndState(database_operations=[],"
-        " state_operations=[keep(migrations.DeleteModel('X'))]), *KEEP]\n",
-        "a mutation by another class attribute": "class Migration(migrations.Migration):\n"
-        f"    operations = [{sdas}]\n"
-        "    atomic = operations.append(getattr(operations[0], 'state_operations')[0])\n",
-        # Dressed as Django's and not Django's.
-        "a receiver that is not django.db": "from mystuff import shim\n"
-        "class Migration(migrations.Migration):\n"
-        "    operations = [shim.SeparateDatabaseAndState(database_operations=[],"
-        " state_operations=[migrations.DeleteModel('X')])]\n",
-        "a name rebound in the class body": "from mystuff import shim\n"
-        "class Migration(migrations.Migration):\n"
-        "    migrations = shim\n"
-        f"    operations = [{sdas}]\n",
-        # The class header and the code beside the exempt call: both run around the list the shape
-        # rules read, so both are part of the shape.
-        "a decorator that rewrites operations": "@(lambda c: setattr("
-        "c, 'operations', [getattr(c.operations[0], 'state_operations')[0]]) or c)\n"
-        "class Migration(migrations.Migration):\n"
-        f"    operations = [{sdas}]\n",
-        "a metaclass that rewrites operations": "class Migration(migrations.Migration,"
-        " metaclass=(lambda n, b, ns: type(n, b, {**ns,"
-        " 'operations': [getattr(ns['operations'][0], 'state_operations')[0]]}))):\n"
-        f"    operations = [{sdas}]\n",
-        "a base of its own": "from mystuff import Base\nclass Migration(Base):\n"
-        f"    operations = [{sdas}]\n",
-        "a base built with type()": "Base = type('Base', (migrations.Migration,), {})\n"
-        "class Migration(Base):\n"
-        f"    operations = [{sdas}]\n",
-        "a sibling element patching django first": "class Migration(migrations.Migration):\n"
-        "    operations = [\n"
-        "        (setattr(migrations, 'SeparateDatabaseAndState',"
-        " lambda database_operations, state_operations: state_operations[0]),"
-        " migrations.RunPython(migrations.RunPython.noop))[1],\n"
-        f"        {sdas},\n"
-        "    ]\n",
-    }
-    for what, body in cases.items():
-        assert _judge("from django.db import migrations\n" + body) == [WARN], what
-
-
-def test_django_an_operation_name_the_ast_walk_cannot_read_is_still_refused():
-    """The smig-red2 RED review's second family (2026-11-24): the operation NAME is spelled
-    contiguously in the source, which is what the old text match caught, but it sits where the AST
-    walk never looks - a `bytes` constant, a docstring, a `match` statement's `kwd_attrs`, the
-    dropped `reverse_sql` subtree. Each file puts a real `DeleteModel` into `operations`, so each
-    one really runs. None of them is the plain shape, so the old text match still judges them."""
-    sdas = (
-        "migrations.SeparateDatabaseAndState(database_operations=[],"
-        " state_operations=[migrations.DeleteModel('X')])"
-    )
-    head = "from django.db import migrations\n"
-    cases = {
-        # The name is in a node `_tokens` declines to read, or one `ast` never yields.
-        "a bytes constant through getattr": head + "class Migration(migrations.Migration):\n"
-        "    operations = [getattr(migrations, b'DeleteModel'.decode())('X')]\n",
-        "the same through an imported builtins": "import builtins\n" + head
-        + "class Migration(migrations.Migration):\n"
-        "    operations = [builtins.getattr(migrations, b'DeleteModel'.decode())('X')]\n",
-        "an op class parked in a dropped reverse_sql": head
-        + "S = migrations.RunSQL('select 1', reverse_sql=migrations.DeleteModel)\n"
-        "class Migration(migrations.Migration):\n"
-        "    operations = [S.reverse_sql('X')]\n",
-        "the module docstring read back through __doc__": '"""DeleteModel"""\n' + head
-        + "OP = getattr(migrations, __doc__)\n"
-        "class Migration(migrations.Migration):\n"
-        "    operations = [OP('X')]\n",
-        "the class docstring read back through __doc__": head
-        + "class Migration(migrations.Migration):\n"
-        '    """DeleteModel"""\n'
-        "    operations = [getattr(migrations, __doc__)('X')]\n",
-        "a match statement's kwd_attrs": head
-        + "match migrations:\n    case object(DeleteModel=op):\n        pass\n"
-        "class Migration(migrations.Migration):\n"
-        "    operations = [op('X')]\n",
-        # An import makes a builtin import-rooted, so rule 5 is an allow-list on calls.
-        "builtins imported and called through operator": "import builtins\nimport operator\n"
-        + head + "class Migration(migrations.Migration):\n"
-        "    operations = [operator.call(builtins.setattr,"
-        " migrations.SeparateDatabaseAndState, 'database_operations',"
-        " operator.call(builtins.property, operator.attrgetter('state_operations'))),\n"
-        f"        {sdas}]\n",
-        "the same through a django.db-pathed re-export of builtins":
-        "from django.db.migrations.serializer import builtins\nimport operator\n" + head
-        + "class Migration(migrations.Migration):\n"
-        "    operations = [operator.call(builtins.setattr,"
-        " migrations.SeparateDatabaseAndState, 'database_operations',"
-        " operator.call(builtins.property, operator.attrgetter('state_operations'))),\n"
-        f"        {sdas}]\n",
-        "a bare setattr beside the exempt call": head
-        + "class Migration(migrations.Migration):\n"
-        "    operations = [setattr(migrations, 'SeparateDatabaseAndState', dict),\n"
-        f"        {sdas}]\n",
-        # Anything but an operation constructor beside the exempt call.
-        "an imported helper as a sibling element": head + "from server.common import boot\n"
-        "class Migration(migrations.Migration):\n"
-        f"    operations = [boot.patch(), {sdas}]\n",
-        "an imported helper splatted beside it": head + "from server.common import boot\n"
-        "class Migration(migrations.Migration):\n"
-        f"    operations = [{sdas}, *boot.ops()]\n",
-        "a mutation through a django name's __dict__": head
-        + "class Migration(migrations.Migration):\n"
-        "    operations = [migrations.__dict__.update("
-        "{'SeparateDatabaseAndState': dict}),\n"
-        f"        {sdas}]\n",
-        # The same three, moved INSIDE an operation's argument, where the helper clause reaches.
-        "the __dict__ mutation nested in an operation's argument": head
-        + "class Migration(migrations.Migration):\n"
-        "    operations = [migrations.RunSQL(migrations.__dict__.update("
-        "{'SeparateDatabaseAndState': dict}) or 'select 1'),\n"
-        f"        {sdas}]\n",
-        "a chain off a django import, nested in an argument":
-        "from django.db.migrations import serializer\n" + head
-        + "class Migration(migrations.Migration):\n"
-        "    operations = [migrations.RunSQL(serializer.builtins.setattr("
-        "migrations.SeparateDatabaseAndState, 'x', 1) or 'select 1'),\n"
-        f"        {sdas}]\n",
-        "a stdlib function re-exported under a django path":
-        "from django.utils.decorators import update_wrapper\n" + head
-        + "class Migration(migrations.Migration):\n"
-        "    operations = [migrations.RunSQL(update_wrapper("
-        "migrations.SeparateDatabaseAndState, dict) or 'select 1'),\n"
-        f"        {sdas}]\n",
-        "a project helper inside a NON-exempt operation's argument": head
-        + "from server.common import boot\n"
-        "class Migration(migrations.Migration):\n"
-        "    operations = [migrations.RunSQL(boot.patch() or 'select 1'),\n"
-        f"        {sdas}]\n",
-    }
-    for what, source in cases.items():
-        assert _judge(source) == [WARN], what
-
-
-def test_django_a_project_helper_inside_an_operations_argument_keeps_the_exemption():
-    """`checklists/0002_household.py` passes its constraint name through its own
-    `household_unique_name(...)`, nested inside an operation's argument. That is the one call shape
-    beside Django's own that the allow-list permits, and it is why the rule is not "no non-Django
-    calls"."""
-    source = (
-        "from django.db import migrations, models\n"
-        "from household.tenancy_sql import household_unique_name\n\n\n"
-        "class Migration(migrations.Migration):\n\n"
-        "    operations = [\n"
-        "        migrations.SeparateDatabaseAndState(\n"
-        "            database_operations=[],\n"
-        "            state_operations=[\n"
-        "                migrations.AlterField(\n"
-        '                    model_name="widget",\n'
-        '                    name="sync_id",\n'
-        "                    field=models.CharField(max_length=64, null=True),\n"
-        "                ),\n"
-        "                migrations.AddConstraint(\n"
-        '                    model_name="widget",\n'
-        "                    constraint=models.UniqueConstraint(\n"
-        '                        fields=("household", "sync_id"),\n'
-        '                        name=household_unique_name("widgets", ["sync_id"]),\n'
-        "                    ),\n"
-        "                ),\n"
-        "            ],\n"
-        "        ),\n"
-        "    ]\n"
-    )
-    assert _judge(source) == []
-    # Move the same helper call out to be an operation in its own right and the exemption goes.
-    moved = source.replace(
-        "    operations = [\n", "    operations = [\n        household_unique_name('w', ['s']),\n"
-    )
-    assert _judge(moved) == [WARN]
-    # An attribute chain off a project import is a helper too: `household/0001_initial.py` calls
-    # `household.models.UserManager()` inside a field argument.
-    chained = source.replace(
-        "from household.tenancy_sql import household_unique_name",
-        "from household import models as hm\nfrom household.tenancy_sql import"
-        " household_unique_name",
-    ).replace("field=models.CharField(", "field=hm.CharField(")
-    assert chained != source
-    assert _judge(chained) == []
 
 
 def test_django_migration_that_does_not_parse_warns():
