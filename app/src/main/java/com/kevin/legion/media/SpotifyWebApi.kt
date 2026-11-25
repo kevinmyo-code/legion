@@ -475,7 +475,7 @@ object SpotifyWebApi {
          * caller can say what it saw and let the user choose. Nothing was picked: this is a
          * refusal to guess, never a fallback to the most popular result.
          */
-        data class Rejected(val closest: List<String>) : SearchOutcome
+        data class Rejected(val closest: List<ClosestHit>) : SearchOutcome
 
         /**
          * Spotify answered with an error this code does not map. [code] is the HTTP
@@ -627,7 +627,7 @@ object SpotifyWebApi {
             } else {
                 listOf(query)
             }
-            val closest = mutableListOf<String>()
+            val closest = mutableListOf<ClosestHit>()
             for (q in attempts) {
                 when (val raw = fetchCandidates(q, type, token)) {
                     is RawSearch.Error -> return@withContext raw.outcome
@@ -651,7 +651,7 @@ object SpotifyWebApi {
                     }
                 }
             }
-            val named = closest.distinct().take(SpotifyMatch.CLOSEST_COUNT)
+            val named = closest.distinctBy { it.label }.take(SpotifyMatch.CLOSEST_COUNT)
             if (named.isEmpty()) SearchOutcome.NoMatch else SearchOutcome.Rejected(named)
         } catch (e: Exception) {
             // A thrown IOException here is a transport failure, never a verdict on

@@ -3,6 +3,7 @@ package com.kevin.legion.service
 import android.content.Context
 import com.kevin.legion.media.NowPlayingController
 import com.kevin.legion.media.SpotifyController
+import com.kevin.legion.media.ClosestHit
 import com.kevin.legion.media.SpotifyWebApi
 import com.kevin.legion.media.VolumeController
 import com.kevin.legion.service.LiveToolbox.result
@@ -150,22 +151,49 @@ object MusicToolbox {
                     (artist?.takeIf { it.isNotBlank() }?.let { " by $it" } ?: "") +
                     " on Spotify, so I didn't play or queue anything.",
             ))
-            is SpotifyWebApi.SearchOutcome.Rejected -> SpotifyUriResolution.Failed(result(
-                success = false,
-                // Hits existed and none fit the request. Name them so the model can ask the user
-                // which one was meant; nothing was started, and the message says so.
-                message = "I couldn't find \"$query\"" +
-                    (artist?.takeIf { it.isNotBlank() }?.let { " by $it" } ?: "") +
-                    " on Spotify, so I didn't play or queue anything. Closest hits: " +
-                    outcome.closest.joinToString("; ") +
-                    ". Ask the user whether one of those is what they meant.",
-            ))
+            is SpotifyWebApi.SearchOutcome.Rejected -> SpotifyUriResolution.Failed(
+                result(
+                    success = false,
+                    // Hits existed and none fit the request. Name them so the model can ask the user
+                    // which one was meant; nothing was started, and the message says so.
+                    message = "I couldn't find \"$query\"" +
+                        (artist?.takeIf { it.isNotBlank() }?.let { " by $it" } ?: "") +
+                        " on Spotify, so I didn't play or queue anything. Closest hits: " +
+                        outcome.closest.joinToString("; ") { it.label } +
+                        ". Ask the user whether one of those is what they meant.",
+                ).put("closestHits", closestHitsJson(outcome.closest)),
+            )
             is SpotifyWebApi.SearchOutcome.Failed -> SpotifyUriResolution.Failed(result(
                 success = false,
                 message = "Spotify's search returned an error (${outcome.code})" +
                     (outcome.detail?.let { ": $it" } ?: "."),
             ))
         }
+    }
+
+    /**
+     * The near-misses a rejection named, as playable rows (music-suggestions-1124 P3).
+     *
+     * The result's own instruction is to ask the user which of these they meant, and until this
+     * existed there was no way to honour a yes: the model had a name and no URI, so its only route
+     * was to search again for a title it would have to reproduce in the catalogue's own spelling.
+     * Each row carries `spotifyUri` exactly as every other playable row does, so "yes, that one"
+     * is one `play_music` call with the URI. Result-side only, so it costs no declaration tokens.
+     */
+    internal fun closestHitsJson(hits: List<ClosestHit>): org.json.JSONArray {
+        val arr = org.json.JSONArray()
+        hits.forEach { h ->
+            arr.put(
+                JSONObject()
+                    .put("name", h.name)
+                    .put("artist", h.artist ?: JSONObject.NULL)
+                    // A hit Spotify indexed without a playable URI can be NAMED but not played,
+                    // the same shape legion_history's replayable-false rows already have.
+                    .put("spotifyUri", h.uri ?: JSONObject.NULL)
+                    .put("playable", h.uri != null),
+            )
+        }
+        return arr
     }
 
     // --- Shared Spotify failure wording (ticket 08) --------------------------------------------

@@ -37,7 +37,7 @@ object MediaSearchResolver {
         SpotifyWebApi.SearchOutcome.NoMatch ->
             "Spotify has nothing matching \"$query\"."
         is SpotifyWebApi.SearchOutcome.Rejected ->
-            "Spotify has nothing matching \"$query\". Closest: ${outcome.closest.joinToString("; ")}."
+            "Spotify has nothing matching \"$query\". Closest: ${outcome.closest.joinToString("; ") { it.label }}."
         is SpotifyWebApi.SearchOutcome.Failed ->
             "Spotify's search returned an error (${outcome.code})" + (outcome.detail?.let { ": $it" } ?: ".")
     }

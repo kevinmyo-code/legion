@@ -152,7 +152,30 @@ class SpotifyMatchTest {
             track("A", "B", "spotify:track:3"),
             track("D", "E", "spotify:track:4"),
         )
-        assertEquals(listOf("Changes by 2Pac", "Penny by Sparrow", "A by B"), SpotifyMatch.describe(hits))
+        assertEquals(
+            listOf("Changes by 2Pac", "Penny by Sparrow", "A by B"),
+            SpotifyMatch.describe(hits).map { it.label },
+        )
+    }
+
+    @Test
+    fun `a named near-miss keeps the uri a yes would need`() {
+        // The rejection tells the model to ask which of these was meant. Without the URI there was
+        // no way to honour a yes: only a re-search by a name it would have to reproduce exactly.
+        val hits = listOf(track("Paper Lanterns", "Hana Reed", "spotify:track:hr"))
+        val hit = SpotifyMatch.describe(hits).single()
+        assertEquals("spotify:track:hr", hit.uri)
+        assertEquals("Hana Reed", hit.artist)
+        assertEquals("Paper Lanterns by Hana Reed", hit.label)
+    }
+
+    @Test
+    fun `a hit Spotify indexed with no uri is named and marked unplayable`() {
+        val noUri = JSONObject().put("name", "Paper Lanterns")
+            .put("artists", JSONArray(listOf(JSONObject().put("name", "Hana Reed"))))
+        val hit = SpotifyMatch.describe(listOf(noUri)).single()
+        assertNull(hit.uri)
+        assertEquals("Paper Lanterns by Hana Reed", hit.label)
     }
 
     // Voice audit finding 4 cases not covered above: S35 "Wakare Michi" and the S18 queue query.
