@@ -1,6 +1,22 @@
 package com.kevin.midnightai.media
 
 import org.json.JSONObject
+import java.text.Normalizer
+
+/**
+ * One near-miss a rejection named, with the URI that makes it actionable.
+ *
+ * The URI is the point (music-suggestions-1124 P3). A rejection's own instruction to the model
+ * is to ask which of these was meant - and the rejection used to carry display strings only,
+ * so a "yes, that one" had nothing to hand back to `play_music`. Its only route was to
+ * re-search by a name it would have to reproduce exactly, in the catalogue's own spelling.
+ * Every other music result that names a playable row already carries its URI; this was the
+ * inconsistency, not a policy.
+ */
+data class ClosestHit(val name: String, val artist: String?, val uri: String?) {
+    /** "Title by Artist", for the spoken line. */
+    val label: String get() = if (artist != null) "$name by $artist" else name
+}
 
 /**
  * The acceptance check between what was ASKED for and what Spotify's search handed back.
@@ -15,8 +31,14 @@ import org.json.JSONObject
  *
  * Rules (thresholds are choices, covered by SpotifyMatchTest):
  *  - Normalisation: lowercase; drop "feat./ft./with" tails, parentheticals/brackets and
- *    " - remastered / - live / - radio edit"-style dash suffixes from CANDIDATE titles; drop
- *    punctuation except `*`; collapse whitespace.
+ *    " - remastered / - live / - radio edit"-style dash suffixes from CANDIDATE titles; fold
+ *    diacritics (`Beyoncé` is `beyonce`); turn a letter-standing symbol into the `*` wildcard
+ *    (`A$AP` is `a*ap`, which matches `asap`); drop other punctuation except `*`; collapse
+ *    whitespace. BOTH sides go through the same function, so a gap between how he says a name and
+ *    how Spotify prints it never decides anything.
+ *  - Joining words (`and`, `n`, `x`, `plus`, `with`) are skipped on both sides when an ARTIST's
+ *    name is matched, because `&` and `+` normalise to nothing: "simon and garfunkel",
+ *    "simon garfunkel" and `Simon & Garfunkel` are one artist. Title matching keeps them.
  *  - Censored spellings: a token compares equal when, after folding `ck`->`kk` and `c`->`k`, the
  *    two have the same length and every position is equal or a `*` on either side. So `fukk`,
  *    `f*kk`, `f**k` and `fuck` are all one word, while `bike` and `bake` stay different.
@@ -26,7 +48,17 @@ import org.json.JSONObject
  *    With a confirmed artist the containment minimum drops to one token.
  *  - Artist match (when an artist is known): some candidate artist's tokens contain the wanted
  *    artist's tokens as a whole sequence, or vice versa, after normalisation.
+ *  - **Artist agreement is derived from the request, not waited for** (2026-11-24). The `artist`
+ *    argument is routinely left unset by the model, so the query's own words are matched against
+ *    the candidate's artists. Two rules follow from that one piece of evidence:
+ *    - a CONTAINED title match whose surplus query words (filler aside) name neither this
+ *      candidate's artist nor anything in its raw title is REJECTED, so a title that happens to
+ *      sit inside a request for a different artist's song no longer plays;
+ *    - a title in a wholly different writing system from the request is ACCEPTED when the artist
+ *      agrees, the candidate is Spotify's own first hit, and a non-empty title remainder is left
+ *      once the artist's words come out of the query.
  */
+@Suppress("TooManyFunctions") // one pure helper per pipeline step
 internal object SpotifyMatch {
 
     const val TOKEN_OVERLAP_THRESHOLD = 0.6
@@ -47,10 +79,36 @@ internal object SpotifyMatch {
     private val DASH_SUFFIX = Regex("""\s+-\s+.*$""")
     private val NON_WORD = Regex("""[^\p{L}\p{N}*\s]""")
     private val SPACES = Regex("""\s+""")
+    private val APOSTROPHES = Regex("""['’`´]""")
+    private val COMBINING = Regex("""\p{Mn}+""")
 
-    /** Lowercase, punctuation out (`*` stays: it is a censor mark), whitespace collapsed. */
-    fun normalize(s: String): String =
-        NON_WORD.replace(s.lowercase().replace('&', ' ').replace("'", ""), " ").let { SPACES.replace(it, " ").trim() }
+    /**
+     * Symbols a catalogue writes where a letter is said: `A$AP` for "asap", `$uicideboy$` for
+     * "suicideboys". Mapped to `*`, which [tokensMatch] already reads as "any letter here", rather
+     * than dropped (leaving `aap`) or spaced (leaving `a ap`) - neither of which the request's own
+     * spelling can ever match.
+     *
+     * Only where the symbol TOUCHES a letter, so it is standing in for one. A price (`100$ Bill`)
+     * or a title of nothing but symbols keeps its old reading: `***` would be a wildcard that
+     * matches every three-letter word there is.
+     */
+    private val LETTER_SYMBOL = Regex("""(?<=\p{L})[$@]|[$@](?=\p{L})""")
+
+    /**
+     * Lowercase, diacritics folded (`Beyoncé` -> `beyonce`), letter-standing symbols turned into
+     * the `*` wildcard, other punctuation out (`*` stays: it is a censor mark), whitespace
+     * collapsed.
+     *
+     * Both sides of every comparison in this file go through this one function, which is the
+     * point: a gap between how he says a name and how Spotify prints it must not decide anything.
+     * Folding runs BEFORE [NON_WORD], because a combining mark left in place becomes a space and
+     * splits the word in half.
+     */
+    fun normalize(s: String): String {
+        val folded = COMBINING.replace(Normalizer.normalize(s.lowercase(), Normalizer.Form.NFD), "")
+        val letters = LETTER_SYMBOL.replace(APOSTROPHES.replace(folded.replace('&', ' '), ""), "*")
+        return NON_WORD.replace(letters, " ").let { SPACES.replace(it, " ").trim() }
+    }
 
     /** [normalize] after shedding the decoration a streaming catalogue adds to a title. */
     fun normalizeCandidateTitle(title: String): String {
@@ -63,6 +121,7 @@ internal object SpotifyMatch {
 
     private fun fold(token: String): String = token.replace("ck", "kk").replace('c', 'k')
 
+    @Suppress("ReturnCount") // guard clauses, one worded exit each
     internal fun tokensMatch(a: String, b: String): Boolean {
         if (a == b) return true
         val x = fold(a)
@@ -77,16 +136,66 @@ internal object SpotifyMatch {
     private fun sequencesEqual(a: List<String>, b: List<String>) =
         a.size == b.size && a.indices.all { tokensMatch(a[it], b[it]) }
 
-    private fun containsSequence(long: List<String>, short: List<String>): Boolean {
-        if (short.isEmpty() || short.size > long.size) return false
-        return (0..long.size - short.size).any { start ->
+    /** Where [short] sits inside [long] as a whole run, or -1. */
+    private fun indexOfSequence(long: List<String>, short: List<String>): Int {
+        if (short.isEmpty() || short.size > long.size) return -1
+        return (0..long.size - short.size).firstOrNull { start ->
             short.indices.all { tokensMatch(long[start + it], short[it]) }
+        } ?: -1
+    }
+
+    private fun containsSequence(long: List<String>, short: List<String>): Boolean =
+        indexOfSequence(long, short) >= 0
+
+    /**
+     * Words that only ever JOIN two names. The catalogue prints "Simon & Garfunkel", "Earth, Wind
+     * & Fire", "Florence + The Machine", and [normalize] leaves those joiners as nothing at all,
+     * while the request says "simon and garfunkel". Either side may carry a joiner the other left
+     * out, so an artist's name is matched with them skipped on BOTH sides, and a joiner is never
+     * evidence of a different artist.
+     *
+     * Only the ARTIST comparisons skip them. Title matching stays exact, because
+     * [containmentLeftovers] measures its surplus by the matched run's own length.
+     */
+    private val CONNECTIVES = setOf("and", "n", "x", "plus", "with")
+
+    /**
+     * Where [short] sits inside [long] as one run with connectives on either side skipped, as a
+     * range over [long]'s own indices, or null when it does not. The range is what a caller takes
+     * back out of its list, so it covers the joiners the run swallowed too.
+     *
+     * At least one token must really match. Skipping a connective is not evidence, so an artist
+     * written as nothing BUT connectives (`X`, a real band name and how `XXXTentacion` gets said)
+     * would otherwise be "found" in every query at an empty range and confirm every candidate.
+     * A spoken "x" still matches a catalogue "X", because [tokensMatch] is tried first.
+     */
+    // NestedBlockDepth: one walk, one when; splitting it hides the two cursors.
+    // ReturnCount: the empty guard, the hit and the miss, one worded exit each.
+    @Suppress("NestedBlockDepth", "ReturnCount")
+    private fun artistRun(long: List<String>, short: List<String>): IntRange? {
+        if (short.isEmpty()) return null
+        for (start in long.indices) {
+            var i = start
+            var j = 0
+            var matched = 0
+            while (i < long.size && j < short.size) {
+                when {
+                    tokensMatch(long[i], short[j]) -> { i++; j++; matched++ }
+                    long[i] in CONNECTIVES -> i++
+                    short[j] in CONNECTIVES -> j++
+                    else -> break
+                }
+            }
+            while (j < short.size && short[j] in CONNECTIVES) j++
+            if (j == short.size && matched > 0) return start until i
         }
+        return null
     }
 
     // ---------------------------------------------------------------- the checks
 
     /** Does the candidate TITLE (already raw from Spotify) fit the wanted title? */
+    @Suppress("ReturnCount") // guard clauses, one worded exit each
     fun titleMatches(candidateTitle: String, wantedTitle: String, artistConfirmed: Boolean = false): Boolean {
         val c = tokens(normalizeCandidateTitle(candidateTitle))
         val w = tokens(normalize(wantedTitle))
@@ -110,13 +219,77 @@ internal object SpotifyMatch {
     fun titleIsExact(candidateTitle: String, wantedTitle: String): Boolean =
         sequencesEqual(tokens(normalizeCandidateTitle(candidateTitle)), tokens(normalize(wantedTitle)))
 
+    /**
+     * Words a spoken request puts around a title. They are never evidence of a different artist,
+     * so a leftover that is only filler ("play the mask off song") must not reject a hit.
+     */
+    private val FILLER = setOf(
+        "song", "songs", "track", "tune", "music", "version", "please", "the", "a", "an",
+        "by", "on", "for", "me", "some", "that", "it", "spotify",
+    )
+
+    /**
+     * The wanted tokens a CONTAINED title match left unused, filler dropped; null when the
+     * candidate's title was not wholly contained in the wanted tokens.
+     *
+     * Only the containment branch, deliberately. That is the branch where the wanted side is
+     * LONGER than the title it matched, so the surplus is extra information the request carried -
+     * usually the artist (music-suggestions-1124 P5: a two-token title sat inside a four-token
+     * query, the title matched, and the two words naming a DIFFERENT artist were never looked at,
+     * so the wrong artist's song of the same name played). In the overlap branch an unmatched
+     * token is a mis-said title word rather than surplus ("keep your head up" against "Keep Ya
+     * Head Up"), and rejecting on it would break requests that work today.
+     */
+    @Suppress("ReturnCount") // guard clauses, one worded exit each
+    internal fun containmentLeftovers(candidateTitle: String, wantedTitle: String): List<String>? {
+        val c = tokens(normalizeCandidateTitle(candidateTitle))
+        val w = tokens(normalize(wantedTitle))
+        if (c.isEmpty() || w.isEmpty() || c.size >= w.size) return null
+        val at = indexOfSequence(w, c)
+        if (at < 0) return null
+        return (w.take(at) + w.drop(at + c.size)).filterNot { it in FILLER }
+    }
+
+    /**
+     * Is every token in [leftovers] accounted for by this candidate - as part of an artist's name,
+     * or as a word the catalogue's own raw title carries (a "- Live" suffix, a "(Remix)", a
+     * "feat. X" tail) that [normalizeCandidateTitle] had stripped before the comparison?
+     *
+     * Per token, not as one sequence: the surplus words need not be adjacent in the request.
+     */
+    internal fun leftoversExplained(
+        leftovers: List<String>,
+        candidateArtists: List<String>,
+        candidateRawTitle: String,
+    ): Boolean {
+        val artistTokens = candidateArtists.flatMap { tokens(normalize(it)) }
+        val pool = artistTokens + tokens(normalize(candidateRawTitle))
+        return leftovers.withIndex().all { (i, l) ->
+            pool.any { tokensMatch(it, l) } || joinsArtistWords(leftovers, i, artistTokens)
+        }
+    }
+
+    /**
+     * Is [leftovers]`[at]` a connective sitting BETWEEN two of this candidate's own artist words?
+     *
+     * That is the one place a joiner carries no information: "mrs robinson simon and garfunkel"
+     * against a catalogue that prints `Simon & Garfunkel`, whose `&` [normalize] left as nothing,
+     * so his "and" has no token to match. Deliberately not filler - a surplus "and chill" still
+     * names something nobody involved has, and must still reject.
+     */
+    private fun joinsArtistWords(leftovers: List<String>, at: Int, artistTokens: List<String>): Boolean =
+        leftovers[at] in CONNECTIVES &&
+            at > 0 && at < leftovers.lastIndex &&
+            artistTokens.any { tokensMatch(it, leftovers[at - 1]) } &&
+            artistTokens.any { tokensMatch(it, leftovers[at + 1]) }
+
     fun artistMatches(candidateArtists: List<String>, wantedArtist: String): Boolean {
         val w = tokens(normalize(wantedArtist))
         if (w.isEmpty()) return true
         // Whole-token containment, never raw substrings: "ye" must not accept "Yeat".
         return candidateArtists.any {
             val c = tokens(normalize(it))
-            c.isNotEmpty() && (containsSequence(c, w) || containsSequence(w, c))
+            c.isNotEmpty() && (artistRun(c, w) != null || artistRun(w, c) != null)
         }
     }
 
@@ -160,12 +333,15 @@ internal object SpotifyMatch {
 
     // ---------------------------------------------------------------- picking
 
-    /** The top hits (Spotify's order) as "Title by Artist", for naming what a rejection saw. */
-    fun describe(candidates: List<JSONObject>): List<String> =
+    /** The top hits in Spotify's own order, for naming what a rejection saw. */
+    fun describe(candidates: List<JSONObject>): List<ClosestHit> =
         candidates.take(CLOSEST_COUNT).mapNotNull { c ->
             val name = c.optString("name").takeIf { it.isNotBlank() } ?: return@mapNotNull null
-            val by = artistsOf(c).firstOrNull()?.takeIf { it.isNotBlank() }
-            if (by != null) "$name by $by" else name
+            ClosestHit(
+                name = name,
+                artist = artistsOf(c).firstOrNull()?.takeIf { it.isNotBlank() },
+                uri = c.optString("uri").takeIf { it.isNotBlank() },
+            )
         }
 
     private fun artistsOf(c: JSONObject): List<String> =
@@ -173,13 +349,111 @@ internal object SpotifyMatch {
             ?.let { arr -> (0 until arr.length()).mapNotNull { arr.optJSONObject(it)?.optString("name") } }
             .orEmpty()
 
-    private fun accepts(c: JSONObject, reading: Wanted): Boolean =
-        if (reading.artist == null) {
-            titleMatches(c.optString("name"), reading.title)
-        } else {
-            artistMatches(artistsOf(c), reading.artist) &&
-                titleMatches(c.optString("name"), reading.title, artistConfirmed = true)
+    // ---------------------------------------------------------------- across scripts
+
+    /** The writing systems [s]'s letters are in, ignoring punctuation, digits and spaces. */
+    private fun scriptsOf(s: String): Set<Character.UnicodeScript> {
+        val out = mutableSetOf<Character.UnicodeScript>()
+        var i = 0
+        while (i < s.length) {
+            val cp = s.codePointAt(i)
+            if (Character.isLetter(cp)) {
+                val script = Character.UnicodeScript.of(cp)
+                val neutral = script == Character.UnicodeScript.COMMON ||
+                    script == Character.UnicodeScript.INHERITED ||
+                    script == Character.UnicodeScript.UNKNOWN
+                if (!neutral) out.add(script)
+            }
+            i += Character.charCount(cp)
         }
+        return out
+    }
+
+    /**
+     * True when these two titles are written in entirely different writing systems, so no token
+     * rule in this file can ever relate them: every comparison here is over normalised Latin-ish
+     * tokens, and a translated or romanised title shares not one token with the catalogue's own
+     * spelling. Scoring zero is then a fact about the alphabets, not evidence about the song.
+     */
+    internal fun noSharedScript(a: String, b: String): Boolean {
+        val x = scriptsOf(a)
+        val y = scriptsOf(b)
+        return x.isNotEmpty() && y.isNotEmpty() && x.intersect(y).isEmpty()
+    }
+
+    /**
+     * The confirmed-artist escape from a cross-script title (music-suggestions-1124 P2: the right
+     * track, by the right artist, came back as Spotify's own first hit and the gate rejected it
+     * because the asked-for title was in another script).
+     *
+     * All three conditions carry weight. The artist is independent evidence, already established
+     * by the caller. [isTopHit] keeps this to Spotify's own best answer for the query, so it can
+     * never promote hit three. And [wantedTitle] must be a non-empty REMAINDER after the artist's
+     * own words: without that, a query naming only an artist would "match" that artist's top
+     * foreign-script track and play it as the song he asked for.
+     */
+    private fun crossScriptAccepts(candidateTitle: String, wantedTitle: String, isTopHit: Boolean): Boolean =
+        isTopHit && noSharedScript(candidateTitle, wantedTitle)
+
+    /**
+     * The title half of [query] once one of [artistNames]'s own words are taken out of it, or null
+     * when nothing but filler is left.
+     *
+     * Null is the load-bearing case. A request that is ONLY an artist's name has no title in it, so
+     * there is no title for any rule here to have matched, and without this a query of "<artist>"
+     * would take that artist's top foreign-script track as the song asked for. It is also why one
+     * token cannot do two jobs: a single word that names the artist cannot simultaneously be
+     * evidence of the artist and the title ("queen" must not accept "Killer Queen" by Queen).
+     */
+    internal fun titleRemainder(query: String, artistNames: List<String>): String? {
+        val q = tokens(normalize(query))
+        for (a in artistNames) {
+            val run = artistRun(q, tokens(normalize(a))) ?: continue
+            return (q.take(run.first) + q.drop(run.last + 1)).filterNot { it in FILLER }
+                .joinToString(" ").takeIf { it.isNotBlank() }
+        }
+        return q.filterNot { it in FILLER }.joinToString(" ").takeIf { it.isNotBlank() }
+    }
+
+    /**
+     * Artist agreement derived from the query itself, returning the title remainder it leaves.
+     *
+     * Null means no agreement: either no candidate artist's whole name sits inside the query, or
+     * one does and consumes the entire query, which proves nothing about a title. The model leaves
+     * `artist` unset in practice, so this is the only artist evidence most calls ever have.
+     */
+    internal fun artistEvidence(query: String, candidateArtists: List<String>): String? {
+        val q = tokens(normalize(query))
+        for (a in candidateArtists) {
+            val run = artistRun(q, tokens(normalize(a))) ?: continue
+            val rest = (q.take(run.first) + q.drop(run.last + 1)).filterNot { it in FILLER }
+            if (rest.isNotEmpty()) return rest.joinToString(" ")
+        }
+        return null
+    }
+
+    @Suppress("ReturnCount") // guard clauses, one worded exit each
+    private fun accepts(c: JSONObject, reading: Wanted, isTopHit: Boolean): Boolean {
+        val name = c.optString("name")
+        val artists = artistsOf(c)
+        if (reading.artist != null) {
+            if (!artistMatches(artists, reading.artist)) return false
+            if (titleMatches(name, reading.title, artistConfirmed = true)) return true
+            // The remainder guard applies here too: a model that put the artist's name in `query`
+            // as well leaves no title behind, and must not get that artist's top hit as the song.
+            val left = titleRemainder(reading.title, artists + reading.artist) ?: return false
+            return crossScriptAccepts(name, left, isTopHit)
+        }
+        // No artist argument: the query is everything known, so artist agreement is derived from
+        // the query's own words rather than waited for. The model left `artist` unset on every
+        // one of the four calls that went wrong on 2026-11-24, so nothing here may depend on it.
+        val remainder = artistEvidence(reading.title, artists)
+        if (titleMatches(name, reading.title, artistConfirmed = remainder != null)) {
+            val leftovers = containmentLeftovers(name, reading.title) ?: return true
+            return leftovers.isEmpty() || leftoversExplained(leftovers, artists, name)
+        }
+        return remainder != null && crossScriptAccepts(name, remainder, isTopHit)
+    }
 
     /**
      * Picks from [candidates] (Spotify's own order) for a track or album, or null when nothing is
@@ -191,6 +465,7 @@ internal object SpotifyMatch {
      * accepted hit is an exact title match: then the most popular exact match wins (first on a
      * tie, or when Spotify sent no popularity at all).
      */
+    @Suppress("ReturnCount") // guard clauses, one worded exit each
     fun pick(
         candidates: List<JSONObject>,
         query: String,
@@ -198,8 +473,12 @@ internal object SpotifyMatch {
         isImposter: (JSONObject) -> Boolean = { false },
     ): JSONObject? {
         val readings = readings(query, artist)
+        // Spotify's own first answer for the query, taken from the UNFILTERED list: the
+        // cross-script rule leans on "this is the best hit Spotify had", which the imposter
+        // filter's ordering must not be able to redefine.
+        val topHit = candidates.firstOrNull()
         fun acceptedFrom(pool: List<JSONObject>): List<Pair<JSONObject, Wanted>> =
-            pool.mapNotNull { c -> readings.firstOrNull { accepts(c, it) }?.let { c to it } }
+            pool.mapNotNull { c -> readings.firstOrNull { accepts(c, it, c === topHit) }?.let { c to it } }
 
         val clean = candidates.filterNot(isImposter)
         val accepted = acceptedFrom(clean).ifEmpty { acceptedFrom(candidates) }
