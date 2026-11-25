@@ -5,11 +5,15 @@ import com.kevin.legion.carlink.protocol.FakeUnit
 import com.kevin.legion.carlink.protocol.FixSample
 import com.kevin.legion.carlink.protocol.Mnai2
 import com.kevin.legion.carlink.protocol.Mnai2Feed
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -79,11 +83,14 @@ class CarLinkControllerTest {
     private var wallNow = 1_000_000_000_000L
     @Volatile private var senders = 0
 
-    private fun controller(store: CarLinkStore = this.store) = CarLinkController(
+    private fun controller(
+        store: CarLinkStore = this.store,
+        tokens: UnitTokenSource = NoUnitTokens(),
+    ) = CarLinkController(
         store = store,
         transport = { h, p -> connects++; transport.connect(h, p) },
         handover = HandoverPlan(
-            HandoverSources({ keyReads++; null }, { keyReads++; null }, { null }), NoUnitTokens(),
+            HandoverSources({ keyReads++; null }, { keyReads++; null }, { null }), tokens,
         ) {},
         newSender = { ring, onEvent, sendFixes, mode ->
             if (senders > 0) port = BlockingPort()
@@ -386,8 +393,57 @@ class CarLinkControllerTest {
         assertEquals("no Gemini key or map token read (no KeyVault decrypt)", 0, keyReads)
     }
 
+    // ---- Break 1: the hand-over frame must carry the unit's engine sign-in.
+    /**
+     * A mint that answers only when the test lets it, so the pairing's own ordering is observable.
+     * [NoUnitTokens] cannot express this: its mint returns null without ever suspending.
+     */
+    private class GatedUnitTokens(
+        val entered: CompletableDeferred<Unit>,
+        val release: CompletableDeferred<Unit>,
+    ) : UnitTokenSource {
+        override suspend fun mint(name: String, vehicleId: String?): UnitToken {
+            entered.complete(Unit)
+            release.await()
+            return UnitToken(id = MINTED_ID, token = MINTED_TOKEN, expires = null)
+        }
+        override suspend fun rotate(id: String): UnitToken? = null
+        override suspend fun revoke(id: String): Boolean = false
+    }
+
+    private fun field(json: String, name: String): String? =
+        Json.parseToJsonElement(json).jsonObject[name]?.jsonPrimitive?.content
+
+    /**
+     * 2026-11-24, break 1. [PairingClient] builds the hand-over frame the instant `code_ok` arrives,
+     * so the mint has to be finished before the pairing loop takes that message, which is why
+     * `pair` awaits `handover.prepare` instead of launching it. Revert that one line to
+     * `scope.launch(io)` and both assertions here go red: the unit's `code_ok` is already waiting,
+     * so the frame goes out while the mint is still in flight and carries `engine_token: null`
+     * while the phone stores the unit's id and shows the car as paired.
+     */
+    @Test fun `the hand-over waits for the mint, so the frame the unit opens carries the token`() = runBlocking {
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val unit = FakePairingUnit()
+        transport = com.kevin.legion.carlink.protocol.PairingTransport { _, _ -> unit }
+        val c = controller(tokens = GatedUnitTokens(entered, release))
+        c.pair(unit.qrText())
+        entered.await()
+        // The loop must be held inside the mint. A mint launched into the background leaves it free to
+        // take the code_ok that is already waiting and seal the frame now; this is the window for that.
+        Thread.sleep(500)
+        assertTrue("the hand-over went out while the mint was still running", unit.handovers.isEmpty())
+        release.complete(Unit)
+        waitFor("the pairing") { c.status.value.pairing == com.kevin.legion.carlink.protocol.PairingStage.Paired }
+        assertEquals(MINTED_TOKEN, field(unit.handovers.single(), "engine_token"))
+        assertEquals(MINTED_ID, store.unitDeviceId())
+    }
+
     private companion object {
         const val DAY = 86_400_000L
+        const val MINTED_ID = "hu-for-tests-1"
+        const val MINTED_TOKEN = "unit-token-for-tests"
     }
 
     private fun revokes(p: BlockingPort) =
