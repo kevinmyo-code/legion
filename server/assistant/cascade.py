@@ -134,7 +134,7 @@ from agents.runtime.model import (
 )
 from agents.runtime.spec import AgentSpec
 from agents.runtime.tools import ToolCall, ToolOutcome
-from agents.voice import crisis
+from agents.voice import crisis, wait_lines
 from agents.voice import filler_audio as voice_filler_audio
 from agents.voice import speaker as voice_speaker
 from agents.voice.speaker import (  # noqa: F401 - the web door's tuning, read and set as cascade.X
@@ -216,24 +216,10 @@ _ROBOTIC = re.compile(
 )
 ROBOTIC_ACK = "Noted. I'll get that one looked at."
 ACK_TOOL = fillers.ACK_TOOL
-_SMALL_TALK = re.compile(
-    r"^\W*(hi|hey|hello|thanks|thank you|cheers|ok|okay|cool|great|nice|bye|good ?bye|"
-    r"good (morning|evening|night)|yes|no|yeah|nope|sure)\b",
-    re.I,
-)
 
 
 def is_robotic_remark(words: str | None) -> bool:
     return bool(_ROBOTIC.search(words or ""))
-
-
-def needs_work(words: str | None) -> bool:
-    """A turn that is clearly a request needing a look (an acknowledgement goes first), not small
-    talk or a sign-off."""
-    text = (words or "").strip()
-    if len(text.split()) < 4 or _SMALL_TALK.match(text) or is_stop_utterance(text):
-        return False
-    return True
 
 
 def mark_robotic(request, conversation_id, turn: int, *, source: str) -> None:
@@ -310,6 +296,18 @@ def failure_audio(voice: str, wrote: bool) -> ev.Event | None:
     if not clip:
         return None
     return ev.Event("audio", {"pcm": base64.b64encode(clip).decode("ascii"), "rate": OUTPUT_RATE})
+
+
+def _clip_ms(pcm: bytes) -> int:
+    """How long `pcm` plays for: 16-bit mono at `OUTPUT_RATE`. What the chain's gaps measure from
+    (`agents/voice/wait_lines.py`: each gap runs from the END of the clip before it)."""
+    return len(pcm) * 1000 // (OUTPUT_RATE * 2)
+
+
+def _silence(ms: int) -> bytes:
+    """`ms` of silence at `OUTPUT_RATE`, 16-bit mono: what leads a clip that still owes the one
+    before it some spacing (`wait_lines.TurnFillers.lead_ms`)."""
+    return bytes(2 * (ms * OUTPUT_RATE // 1000))
 
 
 # ---- fillers kept in memory (spec 22): `agents/voice/filler_audio.py` --------------------------
@@ -683,9 +681,6 @@ class TurnInput:
     # A text turn the page transcribed early and sends as spoken (the phone's speculation, spec
     # 33 adapted): answered aloud like an utterance, recorded as spoken.
     spoken: bool = False
-    # Utterances this conversation received before this one, answered or not (round 3 speech
-    # S5): only the first may get the acknowledgement.
-    heard_before: int = 0
     # The page marked this utterance a barge-in (it began while a reply played), and the reply
     # that was playing: only then is the transcript checked for an echo (round 4 ruling).
     barge_in: bool = False
@@ -842,10 +837,15 @@ TICK_S = 0.1
 
 
 class Ticking:
-    """Reads the model on a thread of its own and, until a round's first item arrives, yields
-    `Waiting` every `every` seconds: the turn's only moments to act while a round is silent (a
-    lookup's line on time). Only the HTTP read is on that thread; the loop, the door and the
-    database stay on the turn's own. Once the round has started, items pass straight through."""
+    """Reads the model on a thread of its own and yields `Waiting` every `every` seconds whenever
+    the round has nothing to hand over: the turn's moments to act while a round is silent (a
+    lookup's line and the chained wait lines on time). Only the HTTP read is on that thread; the
+    loop, the door and the database stay on the turn's own.
+
+    It used to tick only until the round's FIRST item, which made the chain impossible: a model that
+    sends a thought part and then thinks for seconds had one tick, at the very start, and
+    `wait_lines` would never come due again (2026-11-24). `runtime/loop.py` takes `Waiting`
+    anywhere in a stream, so ticking throughout costs nothing else."""
 
     _END = object()
 
@@ -876,11 +876,10 @@ class Ticking:
                 items.put(Ticking._END)
 
         threading.Thread(target=read, name="legion-model-read", daemon=True).start()
-        started = False
         try:
             while True:
                 try:
-                    item = items.get(timeout=None if started else self.every)
+                    item = items.get(timeout=self.every)
                 except queue.Empty:
                     yield Waiting()
                     continue
@@ -888,7 +887,6 @@ class Ticking:
                     return
                 if isinstance(item, Exception):
                     raise item
-                started = True
                 yield item
         finally:
             stop.set()
@@ -1177,20 +1175,35 @@ def _answer(
         yield from speaker.drain()
         yield ev.done("done", late_reply.text, False)
         return
-    acked = False
-    if speak and turn_input.heard_before == 0 and needs_work(words):
-        # First sound within about a second (section 8.2): a short acknowledgement from memory
-        # while the model's first round runs. Only on the first utterance after the tap, which is
-        # for the assistant by construction (round 2 speech review 5): on any later turn nothing
-        # is said until the model has started an answer or a lookup has started.
+    # This turn's fillers of every kind: the acknowledgement, the task line and the chained wait
+    # lines, counted together against one cap (`agents/voice/wait_lines.py`, the phone's rule).
+    held = wait_lines.TurnFillers(last_end=clock())
+    # Why no acknowledgement was said, for the turn's log; None once one was.
+    ack_skip = fillers.ack_skip(
+        from_user=True,
+        over_reply=turn_input.barge_in,
+        words=words,
+        crisis=False,
+        goodbye=is_stop_utterance(words),
+    )
+    if speak and ack_skip is None:
+        # The first sound, on EVERY turn of theirs (Kevin, 2026-11-24: the phone's behavior is the
+        # one to match, and the phone plays one every turn). A short acknowledgement from memory
+        # while the model's first round runs. It used to be the conversation's first utterance only
+        # (round 2 speech review 5, round 3 S5), which left every later question silent until the
+        # answer: `fillers.ack_skip` carries the phone's skip list instead.
         picked = filler_audio.pick(voice, ACK_TOOL)
-        if picked is not None:
+        if picked is None:
+            ack_skip = "not_in_memory"
+        else:
             line, audio = picked
-            acked = True
             timings["ack"] = 1
             timings["filler_ms"] = int((clock() - t0) * 1000)
+            held.note(line, _clip_ms(audio), clock(), wait=False)
             yield ev.Event("filler", {"tool": "", "text": speech_tags.untagged(line)})
             yield speaker.audio_event(audio, filler=True)
+    if ack_skip is not None:
+        timings["ack_skip"] = ack_skip
     last_reply = next(
         (c["parts"][0].get("text", "") for c in reversed(history) if c.get("role") == "model"), ""
     )
@@ -1223,8 +1236,9 @@ def _answer(
 
     first_sentence = None
     verbatim_said = False
-    # The acknowledgement is this turn's one line: a lookup's line is never stacked on it.
-    filler_said = acked
+    # One TASK line a turn (the contract's rule): the wait lines chain on top of it, never a second
+    # line naming a tool.
+    task_said = False
     filler_dropped = 0
     no_answer = False
     money_dropped = 0
@@ -1265,8 +1279,8 @@ def _answer(
 
     def lookup_line():
         """The lookup's line, once FILLER_WAIT_S has passed since it started with nothing said;
-        never once an answer sentence is ready, never a second line in the turn."""
-        if lookup is None or filler_said or sentences or not speak:
+        never once an answer sentence is ready, never a second TASK line in the turn."""
+        if lookup is None or task_said or sentences or not speak or held.capped:
             return None
         if clock() - lookup[1] < FILLER_WAIT_S or cancelled_often():
             # Never after a cancel. Asked only once the line is due, through the door's rate-limited
@@ -1279,9 +1293,41 @@ def _answer(
         if picked is None:
             return None
         line, audio = picked
+        # Never back to back with the acknowledgement: the clip is led by the remaining spacing
+        # rather than held on a timer, because a tool's start is not a moment the door can wait at.
+        lead = held.lead_ms(clock())
         timings["filler_line"] = line
         timings["filler_ms"] = int((clock() - t0) * 1000)
+        held.note(line, lead + _clip_ms(audio), clock(), wait=False)
         yield ev.Event("filler", {"tool": tool, "text": line})
+        yield speaker.audio_event(_silence(lead) + audio, filler=True)
+        return line
+
+    def wait_line():
+        """The next chained holding line, if one is due (the phone's `WaitFillers`: 1.5 s after the
+        last filler ended, then every 2.5 s, at most six fillers of all kinds in a turn).
+
+        The dead-air rule: never once an answer sentence is ready, and never after a cancel, because
+        a clip already pushed cannot be recalled. `wait_lines.MAX_CLIP_MS` bounds how long an answer
+        ready just after a line starts has to wait behind it.
+        """
+        if not speak or sentences or not held.due_now(clock()) or cancelled_often():
+            return None
+        ready = held.ready(lambda line: filler_audio.get(voice, line) is not None)
+        if not ready:
+            return None
+        line = ready[timings.get("wait_lines", 0) % len(ready)]
+        audio = filler_audio.get(voice, line)
+        clip_ms = _clip_ms(audio)
+        if not wait_lines.clip_fits(clip_ms):
+            # Outside the phone's 200 to 1,300 ms window: nothing, rather than a clip that could
+            # still be playing when the answer is ready.
+            held.words.add(line)
+            return None
+        timings["wait_lines"] = timings.get("wait_lines", 0) + 1
+        timings["wait_ms"] = int((clock() - t0) * 1000)
+        held.note(line, clip_ms, clock(), wait=True)
+        yield ev.Event("filler", {"tool": "", "text": line, "wait": True})
         yield speaker.audio_event(audio, filler=True)
         return line
 
@@ -1339,9 +1385,13 @@ def _answer(
                 result = stop.value
                 break
             if event.type == "waiting":
-                # A round has said nothing yet: the lookup's line, if it is due (`Ticking`).
+                # The round is silent (`Ticking`, every TICK_S): the lookup's line if it is due,
+                # else the next chained wait line. The task line goes first: it says what is really
+                # happening, a wait line only asks them to hold on.
                 line = yield from lookup_line()
-                filler_said = filler_said or line is not None
+                task_said = task_said or line is not None
+                if line is None:
+                    yield from wait_line()
                 continue
             if event.type != "sentence":
                 # A round ended (a tool is next, or the turn): what it said goes to speech now.
@@ -1356,13 +1406,16 @@ def _answer(
                     speak
                     and fillers.is_slow(tool)
                     and sentences == 0
-                    and not filler_said
+                    and not task_said
+                    and not held.capped
                     and not door.cancelled()
                     and door.would_accept(tool)
                 ):
-                    # Never for a call the door is about to refuse (round 2 speech review 7).
+                    # Never for a call the door is about to refuse (round 2 speech review 7). A line
+                    # right behind the acknowledgement is led by the spacing it still owes
+                    # (`filler`), so the tool's own start is never held up for it.
                     line = yield from filler(tool)
-                    filler_said = line is not None
+                    task_said = line is not None
                 continue
             if event.type == "tool" and door.calls[-1].name == NOT_FOR_ME_TOOL:
                 if door.not_for_me:
@@ -1403,7 +1456,9 @@ def _answer(
                     # answer still is not, FILLER_WAIT_S after the lookup started.
                     lookup = (done.name, clock() - done.ms / 1000)
                 line = yield from lookup_line()
-                filler_said = filler_said or line is not None
+                task_said = task_said or line is not None
+                if line is None:
+                    yield from wait_line()
                 continue
             if event.type == "sentence":
                 tagged = event.data["text"]
@@ -1447,7 +1502,7 @@ def _answer(
             sentences=sentences,
             money_dropped=money_dropped,
             verbatim=int(verbatim_said),
-            filler=int(filler_said and not acked),
+            filler=int(task_said),
         )
         _meter(request, model_name, rounds)
 

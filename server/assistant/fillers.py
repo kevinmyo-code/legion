@@ -12,7 +12,9 @@ Rules (applied in `assistant.cascade`):
   perf/try-faster-first-word): a quick answer, or one code speaks at
   once (his profile), gets none, so a line never holds an answer up behind it. Never once an answer
   sentence is ready, and never after the first question's acknowledgement (one line per turn).
-- **Never twice running, never two in a turn.** Two or three light variants each.
+- **Never twice running, and one TASK line a turn.** Two or three light variants each. The holding
+  lines that fill a long wait are chained, up to six fillers of all kinds in a turn, and their rule
+  is `agents/voice/wait_lines.py` (the phone's `WaitFillers`), not this table's.
 - **From memory.** Each line's speech is made once per voice and kept in the process
   (`cascade.FillerAudio`), so it starts at once; a line not yet in memory is skipped and fetched.
 - **Every tool a role can reach is mapped or deliberately silent**: a test walks both roles' tool
@@ -130,21 +132,57 @@ SILENT: frozenset[str] = frozenset(
 
 FALLBACK = ("Working on it.", "One moment.")
 
+# The chained holding lines on a long wait (`agents/voice/wait_lines.py`, the phone's
+# `WaitFillers.LINES`). Named here only so `all_lines()` warms them: which one is said when is that
+# module's rule, not this table's. Kept out of `FILLERS` because no tool owns them. "Working on it."
+# is already `FALLBACK`'s first line, so the set costs four new renders per voice, not five.
+WAIT = ("Still on it.", "Still checking.", "One moment more.", "Bear with me.", "Working on it.")
+
 # The acknowledgement said at once when a turn clearly needs a look (voice-persona section 8.2),
 # before any tool starts. It claims nothing: it says a look is coming, not that one ran.
 ACK_TOOL = "__ack__"
 ACK = ("Yeah, one sec.", "Sure, one sec.", "Okay, one sec.", "Mm, one sec.")
 
 
+def ack_skip(*, from_user: bool, over_reply: bool, words: str, crisis: bool, goodbye: bool):
+    """Why this turn says no acknowledgement, or None to say one.
+
+    The phone's rule (`app/.../service/cascade/Backchannel.kt`, `decide` then `wordsSkip`), in its
+    order, minus the three skips that are phone routes a browser does not have: `quiet`, `on_call`
+    and `half_duplex`. Kevin, 2026-11-24: the guide and Alfred behave the same in every voice
+    behavior and the phone is the default, so the phone's list is the list.
+
+    The phone plays one on EVERY turn of his and has no small-talk and no minimum-length skip; the
+    web used to say one only on a conversation's first utterance and only when the words looked like
+    work (`cascade.needs_work`, now deleted with its only caller), which is what left every later
+    question silent until the answer. That narrowing is reversed here.
+
+    Pure: the caller answers each question, so nothing here reads a request or a clock.
+    """
+    if not from_user:
+        return "not_his"
+    if over_reply:
+        return "over_reply"
+    if not (words or "").strip():
+        return "noise"
+    if crisis:
+        return "crisis"
+    if goodbye:
+        return "goodbye"
+    return None
+
+
 def all_lines() -> tuple[str, ...]:
     """Every line, in the order they are fetched (`cascade.FillerAudio.warm`, during the greeting):
-    the acknowledgement first, then one line for each slow tool, then the fallback, then the rest,
-    so a turn right after the greeting already has what it needs (2026-11-18: it once had none)."""
+    the acknowledgement first, then one line for each slow tool, then the wait lines and the
+    fallback, then the rest, so a turn right after the greeting already has what it needs
+    (2026-11-18: it once had none). The wait lines come early because every waiting turn can need
+    them, tool or no tool (`agents/voice/wait_lines.py`)."""
     seen: dict[str, None] = dict.fromkeys(ACK)
     for slow, lines in FILLERS.values():
         if slow and lines:
             seen.setdefault(lines[0])
-    for line in FALLBACK:
+    for line in (*WAIT, *FALLBACK):
         seen.setdefault(line)
     for _slow, lines in FILLERS.values():
         for line in lines:

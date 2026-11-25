@@ -118,20 +118,25 @@ captured audio is replayed into the detector.**
 
 ## 4. Backchannel and fillers
 
-Two kinds of short line fill the wait:
+Three kinds of short line fill the wait:
 - the **backchannel**, a content-free clip the client plays ("Mm.");
-- the **task line**, chosen by the engine when a tool runs ("Checking the car.").
+- the **task line**, chosen by the engine when a tool runs ("Checking the car.");
+- the **wait lines**, a chain of neutral holding lines on a long wait ("Still on it.").
 
 Vectors: `backchannel.json`.
+
+The wait lines are NEWER than this document: the phone gained them on 2026-11-20/21, a day after
+v1 was written, so section 4 described a world with one line a turn. Kevin ruled on 2026-11-24 that
+every voice surface behaves the same and the phone is the default, so the chain is part of the
+contract and the rows below are the phone's current values, not v1's original ones.
 
 **Backchannel constants** (P `service/cascade/Backchannel.kt`):
 
 | Constant | Value | Line |
 |---|---|---|
-| Delay after end of speech | 600 ms (about 1.3 s after the last word, the end-of-speech wait included) | `:47` |
-| Minimum speech | 1,200 ms | `:50` |
-| Tic gap | 20,000 ms | `:53` |
-| Spacing before a task line | 400 ms after the backchannel ends | `:56` |
+| Delay after end of speech | 0 ms: at the end-of-turn decision (`FillerTiming.ACK_DELAY_MS`; it was 600 ms until 2026-11-21) | `:55` |
+| Latest its first sample may reach the player | 900 ms from end of turn (`MAX_START_AFTER_EOT_MS`) | `:58` |
+| Spacing before a task line | 400 ms after the backchannel ends (`FillerTiming.SPACING_MS`) | `:61` |
 | Rotation | none of the last 5 words, seeded with the last word of the previous conversation | `:59` |
 | Takes | 2 renders kept per word, played in turn | `:62` |
 | Clip length | 120 to 700 ms, measured after trimming; outside that it is not played | `:65-66` |
@@ -139,7 +144,11 @@ Vectors: `backchannel.json`.
 | Clip must be in memory within | 300 ms | P `service/cascade/CascadeSession.kt:3219` |
 | Lines | "Mm.", "Right.", "Yeah.", "Hmm.", "Okay.", "Mhm.", "Uh-huh.", "Alright." | `:69` |
 
-At most one backchannel a turn. The web has no backchannel today; v1 adds it to the web.
+At most one backchannel a turn. The web still plays no backchannel of its own: it has no clip store
+and all its audio is engine-rendered PCM pushed over the stream, so the ENGINE's acknowledgement is
+what fills that slot there, and since 2026-11-24 it is said on every turn of theirs under the
+phone's skip list (E `assistant/fillers.py`, `ack_skip`), not only the conversation's first. v1's
+target of a client-played backchannel on the web (Q3) is unchanged and still owed.
 
 **Skip reasons, checked in this order** (P `service/cascade/Backchannel.kt:112-123`; the first that holds wins):
 
@@ -167,8 +176,29 @@ After `decide` passes, at the timer:
 **Task line (filler) timing.** Chosen by the engine, played by the client:
 - A slow tool's line is sent when the tool starts. Any other tool's line is sent only if it is still running after 700 ms (P `service/cascade/ToolFillers.kt:24`; E `assistant/cascade.py:1354`, `FILLER_WAIT_S = 0.7`).
 - A write is never slow. Writes are silent on the engine (E `assistant/fillers.py:87`).
-- Never two in a turn, never once reply text exists.
-- The client plays a task line no sooner than 400 ms after a backchannel ends.
+- Never two TASK lines in a turn, and never once reply text exists.
+- The client plays a task line no sooner than 400 ms after a backchannel ends. A door that streams
+  audio and has no timer at a tool's start leads the clip with that much silence instead
+  (E `agents/voice/wait_lines.py`, `TurnFillers.lead_ms`).
+
+**Wait-line timing** (P `service/cascade/FillerTiming.kt`, `WaitFillers.kt`; E
+`agents/voice/wait_lines.py`, whose test reads both phone files so the two cannot drift):
+
+| Constant | Value |
+|---|---|
+| First wait line | 1,500 ms after the last filler of any kind ENDED |
+| Each further wait line | 2,500 ms after the one before ended |
+| Cap, all kinds in one turn | 6 |
+| Clip length | 200 to 1,300 ms; outside that the line is not played |
+| Lines | "Still on it.", "Still checking.", "One moment more.", "Bear with me.", "Working on it." |
+
+- No line twice in one turn, and the task line's own words count as said.
+- Never once the answer's text or audio is in hand, and never after a cancel: a clip already handed
+  over cannot be recalled, which is what the 1,300 ms ceiling bounds (P `service/cascade/DeadAir.kt`
+  cuts a line the answer caught, with at most 300 ms left to play; a door that pushes audio has no
+  equivalent and relies on the ceiling alone).
+- Every waiting turn, tool or no tool. This is what the web was missing: before 2026-11-24 a later
+  question with no tool was silent for the whole model round.
 
 **The engine's acknowledgement** ("Yeah, one sec.", E `assistant/fillers.py:133`, sent as a `filler` with `tool: ""` on the first utterance when the words need a look, E `assistant/cascade.py:1736-1745`) and the client's backchannel could both fall in one turn. **Kevin, 2026-11-19 (Q3):** a client that plays backchannels sends `backchannel: true` on the request, and the engine then sends no acknowledgement. The slow-tool task line stays, no sooner than 400 ms after the backchannel ends (P `service/cascade/Backchannel.kt:56`).
 
