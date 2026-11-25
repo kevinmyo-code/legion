@@ -395,6 +395,71 @@ class SpotifyMatchTest {
     }
 
     @Test
+    fun `a decoration word the request carried is not evidence of another artist`() {
+        // music-fix-1124 review round 2, finding 1: right song, right artist, refused because the
+        // surplus word was the command verb or a credit word. Each of these played on the base.
+        val c = track("Paper Lanterns", "Hana Reed", "spotify:track:pl")
+        fun uriFor(q: String) = SpotifyMatch.pick(listOf(c), q, null)?.optString("uri")
+        for (q in listOf(
+            "play paper lanterns hana reed",
+            "play paper lanterns hana reed now",
+            "paper lanterns from hana reed",
+            "paper lanterns feat hana reed",
+            "paper lanterns ft hana reed",
+            "paper lanterns featuring hana reed",
+        )) {
+            assertEquals(q, "spotify:track:pl", uriFor(q))
+        }
+        // The other direction: a surplus word that names nobody involved still rejects.
+        assertNull(SpotifyMatch.pick(listOf(c), "play paper lanterns north sail now", null))
+        assertNull(SpotifyMatch.pick(listOf(c), "paper lanterns feat north sail", null))
+    }
+
+    @Test
+    fun `the feat tail is shed from the request as well as the catalogue`() {
+        // The strip ran on the candidate only, so the request kept a tail the title had lost.
+        assertEquals("mask off", SpotifyMatch.normalizeWantedTitle("Mask Off feat. Kendrick"))
+        assertEquals("mask off", SpotifyMatch.normalizeWantedTitle("mask off ft Kendrick Lamar"))
+        // A catalogue's own decorations are NOT shed from a request: nobody says them, and a dash
+        // or a bracket he did say is part of what he asked for.
+        assertEquals("mask off remastered", SpotifyMatch.normalizeWantedTitle("Mask Off - Remastered"))
+        assertEquals("mask off live", SpotifyMatch.normalizeWantedTitle("Mask Off [Live]"))
+        val c = track("Mask Off", "Future", "spotify:track:mo")
+        assertEquals(
+            "spotify:track:mo",
+            SpotifyMatch.pick(listOf(c), "Mask Off feat. Kendrick", "Future")?.optString("uri"),
+        )
+    }
+
+    @Test
+    fun `a possessive is the same word, one trailing s and no more`() {
+        assertTrue(SpotifyMatch.tokensMatch("reeds", "reed"))
+        assertTrue(SpotifyMatch.tokensMatch("reed", "reeds"))
+        // The other direction: one character off is not a licence for any near-miss.
+        assertFalse(SpotifyMatch.tokensMatch("bike", "bake"))
+        assertFalse(SpotifyMatch.tokensMatch("head", "heard"))
+        assertFalse(SpotifyMatch.tokensMatch("reed", "reedy"))
+        assertFalse(SpotifyMatch.tokensMatch("reed", "reedss"))
+        val c = track("Paper Lanterns", "Hana Reed", "spotify:track:pl")
+        assertEquals(
+            "spotify:track:pl",
+            SpotifyMatch.pick(listOf(c), "hana reeds paper lanterns", null)?.optString("uri"),
+        )
+    }
+
+    @Test
+    fun `a symbol run standing in for letters matches the word that was said`() {
+        // A catalogue prints Joey Bada$$ for "badass": two letters said, two symbols printed, so
+        // the run is two wildcards. One `*` would be five characters against the request's six.
+        // The single-symbol and no-adjacent-letter readings are covered by `normalize folds` above.
+        assertEquals("joey bada**", SpotifyMatch.normalize("Joey Bada\$\$"))
+        assertTrue(SpotifyMatch.artistMatches(listOf("Joey Bada\$\$"), "joey badass"))
+        // The other direction: the wildcards are letter-for-letter, not match-anything.
+        assertFalse(SpotifyMatch.artistMatches(listOf("Joey Bada\$\$"), "joey badasses"))
+        assertFalse(SpotifyMatch.artistMatches(listOf("Joey Bada\$\$"), "joey bad"))
+    }
+
+    @Test
     fun `Despacito and the audited wrong-song hits never cross`() {
         // S36/S37: a play for Despacito must not land on any of the earlier wrong tracks.
         assertNull(SpotifyMatch.pick(wrongHits, "Despacito", null))
