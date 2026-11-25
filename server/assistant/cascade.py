@@ -1334,7 +1334,10 @@ def _answer(
         timings["wait_lines"] = timings.get("wait_lines", 0) + 1
         timings["wait_ms"] = int((clock() - t0) * 1000)
         held.note(line, clip_ms, clock(), wait=True)
-        yield ev.Event("filler", {"tool": "", "text": line, "wait": True})
+        # The same shape as any other filler, so nothing on the wire or in the generated API types
+        # changes: a holding line is not a step the engine took, and `wait_lines.LINES` and
+        # `fillers.ACK` share no words, so a reader can tell which kind a line is from its text.
+        yield ev.Event("filler", {"tool": "", "text": line})
         yield speaker.audio_event(audio, filler=True)
         return line
 
