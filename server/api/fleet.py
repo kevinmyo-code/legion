@@ -456,6 +456,35 @@ class ServiceHistorySerializer(SyncedSerializer):
             raise minimum_error("mileage", value, 0, exclusive=False)
         return value
 
+    def update(self, instance, validated_data: dict):
+        """A PUT that changes nothing is not a statement, so it does not move
+        `updated_at`.
+
+        This table is the only one whose `updated_at` is READ AS MEANING:
+        `brief.maintenance._stated_at` ranks an ASSERTED row by the later of its
+        two timestamps, because the phone keeps one anchor row per item and
+        re-states it in place. The `touch_updated_at` trigger fires on any
+        UPDATE, so an identical re-send would read here as a fresh statement,
+        and `HomesSync.pushServiceRecords` re-sends every local record whose
+        `serverId` is still null - which is the state left behind when an upsert
+        commits here and its response is lost. The phone re-stamps nothing for
+        that re-send, so neither may this side; otherwise a year-old anchor takes
+        the anchor back and the brief speaks "overdue" off its figure.
+
+        Skipping the UPDATE rather than preserving `updated_at` around it: the
+        trigger owns that column and nothing here may write it.
+
+        Residual, deliberate: re-stating an anchor with the identical figure and
+        day no longer moves the statement time. It cannot change the anchor
+        either, since the row it would have promoted holds exactly the values it
+        already holds."""
+        unchanged = all(
+            getattr(instance, field) == value for field, value in validated_data.items()
+        )
+        if unchanged:
+            return instance
+        return super().update(instance, validated_data)
+
 
 # =============================================================================
 # SHAPE 2: keyed by `sync_id`. Six tables, none of them an engine record - each
