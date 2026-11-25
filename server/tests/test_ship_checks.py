@@ -253,6 +253,14 @@ class Migration(migrations.Migration):
     assert len(problems) == 1 and "(DeleteModel)" in problems[0], problems
 
 
+def test_files_outside_the_image_are_named_not_counted():
+    """A supabase schema change is collected by neither the pins nor the migration check, so the
+    ship log's own line is the only place its name appears."""
+    line = sc.outside_image_line(["supabase/migrations/0041_x.sql", "docs/process/x.md"])
+    assert "2 files" in line and "supabase/migrations/0041_x.sql" in line
+    assert sc.outside_image_line([]) == "outside the image (not deployed by this ship): 0 files"
+
+
 def test_a_migration_that_does_not_parse_is_refused():
     problems = _one_migration("operations = [  # truncated\n")
     assert len(problems) == 1

@@ -168,6 +168,15 @@ def migration_problems(
     return problems
 
 
+def outside_image_line(paths: list[str]) -> str:
+    """The ship log's line for the files this ship does not deploy, NAMED rather than counted.
+
+    `supabase/migrations/*.sql` is collected by neither the pins nor the migration check, so a
+    schema change there would otherwise leave no name anywhere in the log (smig-red review)."""
+    named = ": " + ", ".join(sorted(paths)) if paths else ""
+    return f"outside the image (not deployed by this ship): {len(paths)} files{named}"
+
+
 def switch_names(extra: str) -> list[str]:
     """The fixed switches plus the ones a ship adds (never fewer)."""
     names = list(SWITCHES)
@@ -355,7 +364,7 @@ def cmd_scope(a) -> list[str]:
         for p in git("diff", "--no-renames", "--name-only", a.live_code, a.fix).split()
         if not p.startswith(("server/", "deploy/"))
     ]
-    print(f"outside the image (not deployed by this ship): {len(other)} files")
+    print(outside_image_line(other))
     return problems
 
 
