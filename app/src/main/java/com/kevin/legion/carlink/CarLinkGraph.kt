@@ -44,6 +44,27 @@ class CarLinkGraph(private val app: Application) {
 
     val store = CarLinkStore(KeystoreSecretBox(), PrefsRecordFile(app), LogcatRedactor::addLiteral)
 
+    /** The unit's own engine sign-in, minted and revoked on the member's own device token. */
+    private val unitTokens by lazy {
+        com.kevin.legion.backend.engine.DjangoUnitTokenSource(
+            com.kevin.legion.backend.engine.EngineHttp(
+                com.kevin.legion.backend.engine.EngineConfig(app),
+            ),
+        )
+    }
+
+    /** Renews that sign-in before it runs out, so the car never needs a monthly re-pair (5.6). */
+    private val renewal by lazy {
+        UnitTokenRenewal(
+            store = store,
+            tokens = unitTokens,
+            directory = unitTokens,
+            scope = scope,
+            io = Dispatchers.IO,
+            wallClock = System::currentTimeMillis,
+        )
+    }
+
     val controller: CarLinkController by lazy {
         CarLinkController(
             store = store,
@@ -56,12 +77,7 @@ class CarLinkGraph(private val app: Application) {
                     phoneName = { Build.MODEL },
                     spotifyClientId = { com.kevin.legion.ai.CompanionProfile.spotifyClientId(app) },
                 ),
-                // The unit's own engine sign-in, minted on the member's own device token.
-                tokens = com.kevin.legion.backend.engine.DjangoUnitTokenSource(
-                    com.kevin.legion.backend.engine.EngineHttp(
-                        com.kevin.legion.backend.engine.EngineConfig(app),
-                    ),
-                ),
+                tokens = unitTokens,
                 redact = LogcatRedactor::addLiteral,
             ),
             newSender = { ring, onEvent, sendFixes, mode ->
@@ -79,6 +95,9 @@ class CarLinkGraph(private val app: Application) {
                             // A revoke-only or healing listener sends no zone.
                             zoneId = { if (revokeOnly || mode.healOn != null) null else TimeZone.getDefault().id },
                             onRingEvent = onEvent,
+                            // 4.3 rev 9: the unit confirming it stored a renewed sign-in. A
+                            // revoke-only or healing listener hands nothing over, so it hears none.
+                            onTokenStored = { fp -> if (!revokeOnly && mode.healOn == null) renewal.onTokenStored(fp) },
                         ),
                         port = port,
                         clock = SystemClock::elapsedRealtime,
@@ -95,6 +114,7 @@ class CarLinkGraph(private val app: Application) {
             ownHotspotNow = ::isTethered,
             vehicles = ::householdCars,
             locationService = CarLinkLocationService.host(app),
+            renewal = renewal,
             recordNetwork = { host ->
                 val net = PairingNetwork.recordFor(host, PairingNetwork.systemInterfaces(), ::isTethered)
                 store.setPairingNetwork(net) && net != null

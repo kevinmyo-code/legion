@@ -23,6 +23,15 @@ class FakeUnit(linkKey: ByteArray, val session: ByteArray = ByteArray(16) { (0xA
         return header + LinkCrypto.seal(key, LinkCrypto.nonce("U2P ", c), header, body)
     }
 
+    /** Rev 9: the unit's "I stored it", on the same session and counter ladder as its HELLOs. */
+    fun tokenOk(fingerprint: ByteArray, counterOverride: Long? = null): ByteArray {
+        val c = counterOverride ?: ++counter
+        val header = ByteBuffer.allocate(31).put("MNAI2".toByteArray()).put(1).put('C'.code.toByte())
+            .put(session).putLong(c).array()
+        val key = Mnai2.sessionKey(keys.u2p, session)
+        return header + LinkCrypto.seal(key, LinkCrypto.nonce("U2P ", c), header, fingerprint.copyOf())
+    }
+
     private var challengeSeed = 0
     fun nextChallenge(): ByteArray = ByteArray(8) { (challengeSeed * 8 + it).toByte() }.also { challengeSeed++ }
 }

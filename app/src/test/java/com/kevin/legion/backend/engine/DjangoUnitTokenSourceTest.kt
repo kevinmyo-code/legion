@@ -49,6 +49,13 @@ class DjangoUnitTokenSourceTest {
         assertTrue(sent, sent.contains(""""vehicle_id":"vehicle-id-for-tests""""))
     }
 
+    @Test fun `rotate is not how a renewal works and is never called by this app`() = runBlocking {
+        // Kept only so the engine's route has a client at all; 5.5 mints and hands over instead,
+        // because rotate kills the old token before the car can be told about the new one.
+        val (tokens, _) = source(HttpStatusCode.OK, ISSUED)
+        assertEquals("hu1_invented-token", tokens.rotate("hu-id-for-tests")!!.token)
+    }
+
     @Test fun `no car chosen means no vehicle_id field at all, never a null`() = runBlocking {
         val (tokens, engine) = source()
         tokens.mint("Head unit", null)
@@ -60,6 +67,26 @@ class DjangoUnitTokenSourceTest {
      * The switch is gone, but an engine behind this build, or a rollback, answers the same 404, and
      * the pairing must go on handing over everything else rather than failing.
      */
+    @Test fun `the list gives each unit's id, expiry and car, and null when the engine cannot answer`() = runBlocking {
+        val (tokens, engine) = source(HttpStatusCode.OK, LISTED)
+        val rows = tokens.list()!!
+        assertEquals(2, rows.size)
+        assertEquals("hu-id-for-tests", rows.first().id)
+        assertEquals("vehicle-id-for-tests", rows.first().vehicleId)
+        assertEquals(1893456000000L, rows.first().expiresAtMs)
+        // An expiry in a shape this build does not read is null, which means "do not renew on this
+        // answer": a date nobody parsed must never read as "renew now".
+        assertNull(rows[1].expiresAtMs)
+        assertNull(rows[1].vehicleId)
+        val request = engine.requests.single()
+        assertEquals(HttpMethod.Get, request.method)
+        assertEquals("/api/auth/head-units", request.url.encodedPath)
+
+        // Unreachable or refused is null, which is never the same as "this member has no units".
+        assertNull(source(HttpStatusCode.Unauthorized, """{"detail":"no"}""").first.list())
+        assertNull(source(HttpStatusCode.OK, "not json at all").first.list())
+    }
+
     @Test fun `an engine that does not serve the route mints nothing and does not throw`() = runBlocking {
         val (tokens, _) = source(HttpStatusCode.NotFound, """{"detail":"Not found."}""")
         assertNull(tokens.mint("Head unit", null))
@@ -120,6 +147,16 @@ class DjangoUnitTokenSourceTest {
     private companion object {
         const val ISSUED =
             """{"id":"hu-id-for-tests","token":"hu1_invented-token","expires":"2030-01-01T00:00:00Z"}"""
+        /** Two live units as the engine lists them; the second's expiry is a shape this build
+         * does not read, and it has no car. */
+        const val LISTED =
+            """[{"id":"hu-id-for-tests","label":"Head unit","created_at":"2026-11-24T00:00:00Z",""" +
+                """"last_used_at":null,"expires_at":"2030-01-01T00:00:00Z",""" +
+                """"vehicle_id":"vehicle-id-for-tests","rotated_at":null,"stale_use_count":0,""" +
+                """"stale_used_at":null},""" +
+                """{"id":"hu-id-second","label":"Head unit","created_at":"2026-11-24T00:00:00Z",""" +
+                """"last_used_at":null,"expires_at":"next tuesday","vehicle_id":null,""" +
+                """"rotated_at":null,"stale_use_count":0,"stale_used_at":null}]"""
         const val ROTATED =
             """{"id":"hu-id-for-tests","token":"hu1_invented-rotated","expires":"2030-02-01T00:00:00Z"}"""
     }

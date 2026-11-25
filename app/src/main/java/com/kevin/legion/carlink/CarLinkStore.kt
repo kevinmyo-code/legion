@@ -25,6 +25,11 @@ sealed interface StoredLink {
     object Broken : StoredLink
 }
 
+/** A minted unit sign-in the unit has not yet said it stored. Not a data class: it holds a token. */
+class PendingUnitToken(val id: String, val token: String, val vehicleId: String?) {
+    override fun toString() = "PendingUnitToken($id)"
+}
+
 /**
  * The phone's car link record, `car_link.xml`: the current link key, the reserve key (3.7), the unit
  * token's engine id for revocation (5.4) and two switches. Excluded from backup and device transfer.
@@ -77,6 +82,9 @@ class CarLinkStore(
                     put(REVOKE_ONLY, null)
                     put(REVOKE_SINCE, null)
                     put(PAIRING_NET, null)
+                    put(PENDING_ID, null)
+                    put(PENDING_TOKEN, null)
+                    put(PENDING_VEHICLE, null)
                 }
             },
         )
@@ -102,6 +110,7 @@ class CarLinkStore(
             mapOf(
                 CURRENT to null, RESERVE to null, UNIT_DEVICE_ID to null, SEND_LOCATION to null,
                 REVOKE_ONLY to blob, REVOKE_SINCE to sinceMs.toString(),
+                PENDING_ID to null, PENDING_TOKEN to null, PENDING_VEHICLE to null,
             ),
         )
     }
@@ -115,6 +124,31 @@ class CarLinkStore(
 
     fun unitDeviceId(): String? = file.read()[UNIT_DEVICE_ID]
 
+    /**
+     * A replacement engine sign-in for the paired unit, minted and waiting for the unit to say it
+     * stored it (5.6). It outlives the process on purpose: the unit may hold a token whose TOKEN_OK
+     * was lost, so the same one is handed over again at the next contact rather than a new one
+     * minted and this one abandoned live on the engine.
+     */
+    fun pendingUnitToken(): PendingUnitToken? {
+        val values = file.read()
+        val id = values[PENDING_ID] ?: return null
+        val token = values[PENDING_TOKEN]?.let(::openText) ?: return null
+        return PendingUnitToken(id, token, values[PENDING_VEHICLE])
+    }
+
+    /** Writes or (null) clears it. False = nothing was written, so nothing changed. */
+    fun setPendingUnitToken(pending: PendingUnitToken?): Boolean {
+        val sealed = pending?.let { sealedText(it.token) ?: return false }
+        return file.writeAll(
+            mapOf(
+                PENDING_ID to pending?.id,
+                PENDING_TOKEN to sealed,
+                PENDING_VEHICLE to pending?.vehicleId,
+            ),
+        )
+    }
+
     fun setUnitDeviceId(id: String?): Boolean = file.writeAll(mapOf(UNIT_DEVICE_ID to id))
 
     fun sendLocation(): Boolean = file.read()[SEND_LOCATION] == "1"
@@ -122,6 +156,12 @@ class CarLinkStore(
     fun setSendLocation(on: Boolean): Boolean = file.writeAll(mapOf(SEND_LOCATION to if (on) "1" else null))
 
     private fun sealedOk(plain: ByteArray?, sealed: String?) = plain == null || sealed != null
+
+    private fun sealedText(text: String): String? =
+        box.seal(text.toByteArray(Charsets.US_ASCII))?.let(LinkCrypto::b64)?.also { redact(text) }
+
+    private fun openText(blob: String): String? =
+        openWithRetry(blob)?.let { String(it, Charsets.US_ASCII) }?.also(redact)
 
     private fun sealed(plain: ByteArray): String? = box.seal(plain)?.let(LinkCrypto::b64)
 
@@ -145,6 +185,9 @@ class CarLinkStore(
         private const val REVOKE_ONLY = "revoke_only_key"
         private const val REVOKE_SINCE = "revoke_only_since"
         private const val PAIRING_NET = "pairing_network"
+        private const val PENDING_ID = "pending_unit_id"
+        private const val PENDING_TOKEN = "pending_unit_token"
+        private const val PENDING_VEHICLE = "pending_unit_vehicle"
         private val RETIRED = listOf("car_gemini_key", "hand_over_gemini")
     }
 }
