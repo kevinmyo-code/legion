@@ -23,21 +23,27 @@ review, 2026-11-24: eight shapes reached `operations` with a real `DeleteModel` 
 per smuggling route was being added, and that chase does not converge). The invariant wanted is
 that nothing built inside the exempt list is reachable from outside it, so the exemption is an
 allow-list, and a file that does not fit it is judged by its operations exactly as the old text
-match judged them. All four must hold:
+match judged them. All five must hold:
 
 1. the module body holds only a docstring, `import` / `from ... import` statements and one
-   `class Migration`, and every name an import binds is bound once, never rebound by an assignment,
-   a `def`, a `class` or an argument, and never by `import *`;
+   `class Migration` with no decorator, no `metaclass=` keyword and every base a name taken from
+   `django.db` (a decorator, a class keyword and a base all run code around the class body and can
+   rewrite `operations`), and every name an import binds is bound once, never rebound by an
+   assignment, a `def`, a `class` or an argument, and never by `import *`;
 2. the class body holds only a docstring and single-name assignments, `operations` is assigned
    exactly once, and every other assignment's value is a literal (so nothing can mutate
    `operations` or rebind a name the next rule trusts);
 3. the exempt `SeparateDatabaseAndState` call is a DIRECT element of that `operations` literal, its
    callee is a name taken from `django.db`, it takes no positional argument and no keyword but the
    two, and both are literal lists or tuples with `database_operations` empty;
-4. every element of `state_operations` is a call whose callee is a name taken from `django.db`.
+4. every element of `state_operations` is a call whose callee is a name taken from `django.db`;
+5. nowhere in the file is there a `lambda` or a `:=`, and every call's callee is rooted at a name an
+   import bound. A builtin is not import-bound, and that is what shuts the routes needing one: a
+   sibling `operations` element running `setattr(migrations, 'SeparateDatabaseAndState', ...)` to
+   patch Django before the exempt call is evaluated, `BAG.append(...)`, `getattr`, `vars`, `type`.
 
-What is exempt is then the CALLEE of each of those elements and nothing else: an element's
-arguments are read like any other code, so an operation stashed inside one is still refused.
+What is exempt is then the CALLEE of each state operation and nothing else: an element's arguments
+are read like any other code, so an operation stashed inside one is still refused.
 
 **It fails closed.** A file that does not parse, a positional, absent, variable or non-empty
 `database_operations`, `**kwargs`, a locally defined function of the same name, a name that could
@@ -75,9 +81,10 @@ Three deliberate narrowings, each measured against the tree rather than guessed:
 
 Not covered, and deliberately not chased: SQL the module never spells out (a name built at runtime
 by `+`, `%`, `.format`, `.join` or `bytes.decode`, a comment inside the statement, a string read
-from a file, an imported helper's SQL, an ORM `.objects.all().delete()` inside `RunPython`, anything
-reached through `gc` or `sys.modules`). Every one of those passed the old text match too, so none is
-a regression; writing rules for them would not converge either.
+from a file, an imported helper's SQL, an ORM `.objects.all().delete()` inside `RunPython`, a
+`reverse_sql` read back off a call, anything reached through `gc`, `sys.modules` or a dunder chain
+on an imported module). Every one of those passed the old text match too, so none is a regression;
+writing rules for them would not converge either.
 
 Stdlib only, pure, and tested in tools/checks/test_checks.py and server/tests/test_ship_checks.py.
 """
@@ -190,7 +197,7 @@ def _bindings(tree: ast.AST) -> dict[str, str]:
 
     Two imports that bind one name to the SAME source are not ambiguous, and they are the norm:
     `import django.db.models.deletion` beside `import django.utils.timezone` binds `django` twice,
-    in 60 of the engine's own migrations.
+    in a good quarter of the engine's own migrations.
     """
     bindings: dict[str, str] = {}
     rebound: set[str] = set()
@@ -225,7 +232,9 @@ def _exempt_callees(tree: ast.AST, bindings: dict[str, str]) -> frozenset[int]:
     Empty for every file that is not the plain state-only shape the module docstring sets out: the
     exemption is an allow-list, and anything else is judged by its operations.
     """
-    klass = _migration_class(tree)
+    if not _only_import_rooted_calls(tree, bindings):
+        return frozenset()
+    klass = _migration_class(tree, bindings)
     if klass is None:
         return frozenset()
     operations = _operations_literal(klass)
@@ -243,9 +252,37 @@ def _exempt_callees(tree: ast.AST, bindings: dict[str, str]) -> frozenset[int]:
     return frozenset(exempt)
 
 
-def _migration_class(tree: ast.AST) -> ast.ClassDef | None:
+def _only_import_rooted_calls(tree: ast.AST, bindings: dict[str, str]) -> bool:
+    """Whether every call in the file is made on a name an import bound, and nothing binds a name
+    with a `lambda` or a `:=` (rule 5).
+
+    A builtin is not import-bound, so this is what stops code beside the exempt call from reaching
+    into it or patching what it calls: `setattr`, `getattr`, `vars`, `type` and a `list.append` all
+    fail it, while `migrations.DeleteModel(...)` and a project helper taken from an import pass.
+    """
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Lambda, ast.NamedExpr)):
+            return False
+        if isinstance(node, ast.Call) and not _import_rooted(node.func, bindings):
+            return False
+    return True
+
+
+def _import_rooted(func: ast.AST, bindings: dict[str, str]) -> bool:
+    """Whether this callee is an imported name, or an attribute chain hanging off one."""
+    while isinstance(func, ast.Attribute):
+        func = func.value
+    return isinstance(func, ast.Name) and func.id in bindings
+
+
+def _migration_class(tree: ast.AST, bindings: dict[str, str]) -> ast.ClassDef | None:
     """The one `class Migration` of a module whose body holds nothing but a docstring, imports and
-    that class, or None when the module is any other shape (rule 1)."""
+    that class, or None when the module is any other shape (rule 1).
+
+    The class header is part of the shape: a decorator, a `metaclass=` (or any other class keyword)
+    and a base of its own all run code around the body, and each of them can rewrite `operations`
+    after the list the rules below read.
+    """
     if not isinstance(tree, ast.Module):
         return None
     found = None
@@ -253,6 +290,10 @@ def _migration_class(tree: ast.AST) -> ast.ClassDef | None:
         if _is_docstring(node) or isinstance(node, (ast.Import, ast.ImportFrom)):
             continue
         if isinstance(node, ast.ClassDef) and node.name == "Migration" and found is None:
+            if node.decorator_list or node.keywords:
+                return None
+            if not node.bases or not all(_from_django(base, bindings) for base in node.bases):
+                return None
             found = node
             continue
         return None
