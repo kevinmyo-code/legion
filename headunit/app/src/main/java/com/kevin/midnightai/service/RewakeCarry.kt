@@ -73,15 +73,14 @@ class RewakeCarry {
     @Synchronized
     fun take(nowMs: Long): String? {
         val endedAt = endedAtMs
-        if (turns.isEmpty()) return null
-        if (endedAt == null || !carries(endedAt, nowMs)) {
-            if (endedAt != null) {
-                turns.clear()
-                endedAtMs = null
-            }
-            return null
+        val expired = endedAt != null && !carries(endedAt, nowMs)
+        // Held too long: emptied on the way past, because nothing will want it again. Turns with no
+        // end stamp belong to a conversation still running, and are left alone.
+        if (expired) {
+            turns.clear()
+            endedAtMs = null
         }
-        return block(turns.toList())
+        return if (endedAt != null && !expired && turns.isNotEmpty()) block(turns.toList()) else null
     }
 
     companion object {
