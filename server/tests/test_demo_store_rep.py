@@ -390,6 +390,189 @@ def test_a_quote_over_the_stock_is_refused(visitor, shop_visit, engine):
     assert not ShopOrder.objects.filter(visit=shop_visit).exists()
 
 
+# =============================================================================
+# Consult before selling (the live run of 2026-11-24)
+# =============================================================================
+
+
+@pytest.mark.parametrize(
+    "words,buying",
+    [
+        # Still asking. A shopper in this shape got a product and an add-on pushed at them on
+        # every turn of the live run, an outright request for advice included. Invented lines.
+        ("What sort of thing do you stock?", False),
+        ("Recommend me a pack", False),
+        ("Which one is lighter?", False),
+        ("Okay, which do you suggest for colder nights?", False),
+        ("Sure, tell me about the tent.", False),
+        ("Which one should I buy?", False),
+        ("Just looking, thanks", False),
+        ("What are my options?", False),
+        ("What do you recommend?", False),
+        # An ask verb with no thing attached is still asking: the object is what separates
+        # "can I get the 40L" from "can I get a recommendation".
+        ("Can I get a recommendation?", False),
+        ("Give me some options", False),
+        ("I need a pack, what do you recommend?", False),
+        # Want or need plus a thing plus "for" is the shopper saying what the use is, which is
+        # what the rep asked for, not an order. Nor is "we have two people" a commit verb.
+        ("I need one for weekend hikes, what do you recommend?", False),
+        ("We have two people, what tent do you recommend?", False),
+        # Number must not decide it here either: these are a request for a list, like the two
+        # above them, however the shopper words it.
+        ("What are the other options?", False),
+        ("Which is the lighter one?", False),
+        # A bare "one" after an ask verb is usually a spec, not a thing.
+        ("I want one that's lighter, which do you suggest?", False),
+        # One price read out is not a cart. These used to pass the gate, so the rep could reach
+        # the read-back purely to say what one thing costs, which the frame forbids.
+        ("How much is the 40L?", False),
+        ("What does the bundle cost?", False),
+        ("What's the price of the rain cover?", False),
+        ("How much for the cover?", False),
+        # Orders, including the shapes the rest of this file already relies on, and the three a
+        # consulting call ends in: the objection answer taken, and the recommendation accepted.
+        ("Okay, the cheaper one then", True),
+        ("I want the cheaper one", True),
+        ("Okay, the one you recommended.", True),
+        ("Let's go with what you suggested.", True),
+        ("One headlamp please", True),
+        ("I'll take the 40L and the rain cover.", True),
+        ("Add a water bladder", True),
+        ("Just place my order", True),
+        ("Yes, place it.", True),
+        ("Which one? I'll take the 40L.", True),
+        ("The 2-person tent please.", True),
+        # A commit verb with a thing attached, which the first cut of this gate refused whenever
+        # an asking word shared the message. Each of these is a real order.
+        ("I want the 40L, what's the total?", True),
+        ("Can I get the 40L? What's that come to?", True),
+        ("Can I get two of those, and what's the total?", True),
+        ("I need the 40L, not sure about the cover", True),
+        ("Yes to the 40L, what's the total with delivery?", True),
+        ("Could I have the 28L instead?", True),
+        ("Put me down for two of the covers", True),
+        # Tense and number must not decide this. Present and past, singular and plural, with the
+        # verb and without it.
+        ("I want the one you recommend", True),
+        ("I want the one you recommended", True),
+        ("The one you recommend, please", True),
+        ("I want the cheaper option", True),
+        ("Okay, the cheaper option then", True),
+        # A question about the order's total. Code's read-back is the only place a total is ever
+        # said, so the gate has to let these through or the rep has no way to answer them.
+        ("What's the total?", True),
+        ("Whats the total", True),
+        ("What's the total with the cover?", True),
+        ("What's that come to with delivery?", True),
+        ("How much altogether?", True),
+        ("What would that come to?", True),
+        ("Can you total that up?", True),
+        ("Total please", True),
+        # A price question covering more than one thing, or the delivery on top of one, is a
+        # question about the order: only the read-back can answer it. Each of these reads like a
+        # one-price question and is not.
+        ("How much for both?", True),
+        ("How much is the 40L with delivery?", True),
+        ("How much for the pack and the cover?", True),
+        ("How much for the pack and the cover", True),
+        ("How much is my order?", True),
+        ("How much for everything?", True),
+        ("How much is the 40L with the cover?", True),
+        ("How much for the 40L and a rain cover?", True),
+    ],
+)
+def test_wants_to_buy_reads_the_shoppers_own_words(words, buying):
+    assert shop_tools.wants_to_buy(words) is buying
+
+
+def _packs_lookup():
+    from types import SimpleNamespace
+
+    data = {
+        "items": [
+            {"sku": "LP-PK40", "price_cents": 12_900, "in_stock": 14},
+            {"sku": "LP-PK28", "price_cents": 9_800, "in_stock": 6},
+            {"sku": "LP-RC40", "price_cents": 2_400, "in_stock": 40},
+        ],
+        "bundles": [{"skus": ["LP-PK40", "LP-RC40"], "saving_cents": 1_000}],
+    }
+    return SimpleNamespace(name="shop_find", ok=True, data=data)
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    [
+        # What the frame now asks the rep for: the reason, the comparison, the question first,
+        # the add-on after. The sentence check has to let all of it through, or the frame asks
+        # for answers that never reach the visitor.
+        "What will you be using it for?",
+        "For a day on the hill I'd take the Ridgeline 40L at $129.00: the padded hip belt "
+        "carries a day's water and food.",
+        "The Ridgeline 40L is $129.00 with a padded hip belt; the Ridgeline 28L is $98.00, "
+        "lighter, with no hip belt.",
+        "Since you want to keep it light, the 28L at $98.00 is the lighter one and there are 6 "
+        "in stock.",
+        "For a loaded day I'd take the 40L for the hip belt.",
+        "Would you like me to put the Ridgeline 40L down for you?",
+        "Now that you've got the 40L, the Pack Rain Cover at $24.00 fits packs from 28 to 40 "
+        "litres.",
+    ],
+)
+def test_a_consulting_answer_survives_the_sentence_check(sentence):
+    assert guards.claim_reason(sentence, [_packs_lookup()]) is None
+
+
+def test_a_quote_while_they_are_still_asking_is_refused_and_nothing_is_priced(
+    visitor, shop_visit, engine
+):
+    """A shopper asking for advice, which in the live run got a product pushed instead. A
+    read-back carries a total and asks for a yes, so it needs their own intent first."""
+    engine.model = FakeModel(
+        [
+            call("shop_find", {"query": "daypack"}),
+            call("shop_quote", PACK_AND_COVER),
+            say("I've put that together for you."),
+        ]
+    )
+    events, _ = _turn(visitor, "Suggest a pack for day hikes")
+    quote = [t for t in _of(events, "tool") if t["name"] == "shop_quote"][0]
+    assert quote["ok"] is False and "do not say they want to buy" in quote["text"]
+    assert not ShopOrder.objects.filter(visit=shop_visit).exists()
+
+
+def test_a_quote_goes_through_once_they_say_they_want_it(visitor, shop_visit, engine):
+    engine.model = FakeModel([call("shop_quote", PACK_AND_COVER)])
+    events, _ = _turn(visitor, "I'll take the 40L and the rain cover.")
+    assert "That's $143.00 in all. Shall I place it?" in _said(events)
+    assert ShopOrder.objects.get(visit=shop_visit).status == ShopOrder.QUOTED
+
+
+def test_the_lookup_tells_the_rep_to_give_a_reason_compare_and_hold_the_add_on(
+    visitor, shop_visit, engine
+):
+    """Two packs come back from one lookup; the result text is what makes the rep use both and
+    keep the add-on until they have chosen (the live run named only the first, every turn)."""
+    engine.model = FakeModel([call("shop_find", {"query": "day pack"}), say("Right.")])
+    events, _ = _turn(visitor, "Something to carry a day's kit up a hill")
+    text = [t for t in _of(events, "tool") if t["name"] == "shop_find"][0]["text"]
+    assert "LP-PK40" in text and "LP-PK28" in text
+    assert "why it suits what they told you" in text
+    assert "name both prices and what separates them" in text
+    assert "offered only after they say they want that product" in text
+
+
+def test_the_frame_asks_for_a_reason_and_holds_the_add_on_until_they_choose():
+    assert "Consult before you sell" in SHOP_FRAME
+    # Consulting is asking when the use is unknown, not asking instead of looking: a shopper who
+    # says what they are after gets a lookup in that same turn.
+    assert "call shop_find in the turn they name a kind of thing" in SHOP_FRAME
+    assert "name no product that turn" in SHOP_FRAME
+    assert "say WHY it suits what THEY said" in SHOP_FRAME
+    assert "ONLY after they have said they want a product" in SHOP_FRAME
+    assert "never end a reply by offering to add something before they have chosen" in SHOP_FRAME
+
+
 def test_the_quote_is_code_arithmetic():
     q = catalogue.quote({"LP-SK": 2})
     assert (q.total_cents, q.shipping_cents) == (2 * 2_200 + 800, 800)
