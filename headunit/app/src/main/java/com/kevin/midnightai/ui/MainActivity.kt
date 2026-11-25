@@ -410,8 +410,11 @@ class MainActivity : ComponentActivity() {
             startAriaServiceAfterPermissions()
         } else {
             // A ROM that cannot show a permission dialog throws from launch, and this runs at
-            // startup with no screen to put a sentence on, so the non-fatal is the whole record
-            // and the service starts anyway rather than leaving the launcher dead on boot.
+            // startup with no screen to put a sentence on, so the non-fatal is the whole record.
+            // A throw means the callback above never runs, so this does what its all-denied branch
+            // does (MainActivity.kt:62-70): start the service anyway. The service does not need the
+            // grant to start, and the tap-time notices already handle a missing mic; the
+            // alternative is a launcher that boots to nothing.
             val trouble = ExternalDoor.attempt(ExternalScreen.PERMISSION_PROMPT) {
                 requestPermissionLauncher.launch(missingPermissions.toTypedArray())
             }
