@@ -621,7 +621,13 @@ object SpotifyWebApi {
      * collapse into the shape of "the request failed".
      */
     sealed interface LibraryOutcome<out T> {
-        data class Found<T>(val items: List<T>) : LibraryOutcome<T>
+        /**
+         * [total] is how many rows Spotify says EXIST, when its response states one, against
+         * [items] which is only the page asked for. Null means the response stated no total,
+         * which is a different fact from "the total equals what you see" and must never be
+         * rendered as one (music-suggestions-1124 P8, mirrored from the phone app).
+         */
+        data class Found<T>(val items: List<T>, val total: Int? = null) : LibraryOutcome<T>
 
         /** The browser grant was never completed, or the stored credentials are gone. */
         object NeedsAuthorization : LibraryOutcome<Nothing>
@@ -636,6 +642,32 @@ object SpotifyWebApi {
         /** Spotify answered with an error, or a body this code could not parse. */
         data class Failed(val code: Int, val detail: String?, val raw: String? = null) : LibraryOutcome<Nothing>
     }
+
+    /**
+     * One page of a Spotify list read: the rows, and how many Spotify says exist, when its
+     * response states that at all. Read from one body, because a reader that returns only the
+     * rows cannot be asked for the total later - which is how a five-row page came to be spoken
+     * as a five-row library (music-suggestions-1124 P8).
+     */
+    internal data class Page<T>(val items: List<T>, val total: Int?)
+
+    /**
+     * Spotify's own `total` on a paged response, or null when the body states none. Never
+     * defaults to the page size: a read that cannot tell a page from a library has to say so.
+     */
+    internal fun pageTotal(json: JSONObject): Int? = json.optInt("total", -1).takeIf { it >= 0 }
+
+    // Which sources STATE a total is a fact about Spotify's response shapes, not a choice, so
+    // each is named rather than inferred: the offset-paged reads carry it; a cursor-paged or
+    // unpaged read does not, and an artist's own figure counts market and edition duplicates
+    // that [parseArtistAlbums] collapses, so it is not a figure about what came back.
+    internal fun savedAlbumsPage(json: JSONObject): Page<SavedAlbum> = Page(parseSavedAlbums(json), pageTotal(json))
+    internal fun topArtistsPage(json: JSONObject): Page<TopArtist> = Page(parseTopArtists(json), pageTotal(json))
+    internal fun topTracksPage(json: JSONObject): Page<TopTrack> = Page(parseTopTracks(json), pageTotal(json))
+    internal fun recentlyPlayedPage(json: JSONObject): Page<RecentlyPlayedTrack> =
+        Page(parseRecentlyPlayed(json), pageTotal(json))
+    internal fun queuePage(json: JSONObject): Page<QueuedTrack> = Page(parseQueue(json), null)
+    internal fun artistAlbumsPage(json: JSONObject): Page<ArtistAlbum> = Page(parseArtistAlbums(json), null)
 
     /** `items[].album` -> [SavedAlbum]. Pure and Android-free: a plain JVM unit test. */
     internal fun parseSavedAlbums(json: JSONObject): List<SavedAlbum> {
@@ -731,7 +763,7 @@ object SpotifyWebApi {
     private suspend fun <T> libraryGet(
         context: Context,
         url: String,
-        parse: (JSONObject) -> List<T>,
+        parse: (JSONObject) -> Page<T>,
     ): LibraryOutcome<T> {
         val first = libraryGetOnce(context, url, parse, forceRefresh = false)
         // A 401 on a token that looked fresh: force ONE refresh and retry once (F13).
@@ -744,7 +776,7 @@ object SpotifyWebApi {
     private suspend fun <T> libraryGetOnce(
         context: Context,
         url: String,
-        parse: (JSONObject) -> List<T>,
+        parse: (JSONObject) -> Page<T>,
         forceRefresh: Boolean,
     ): LibraryOutcome<T> = withContext(Dispatchers.IO) {
         val token = when (val outcome = tokenOutcome(context, forceRefresh)) {
@@ -771,13 +803,13 @@ object SpotifyWebApi {
                     else -> LibraryOutcome.Failed(code, detail, body.trim().take(300))
                 }
             }
-            val items = try {
+            val page = try {
                 parse(JSONObject(body))
             } catch (e: Exception) {
                 Log.w(TAG, "Library parse error: ${e.message}")
                 return@withContext LibraryOutcome.Failed(code, "Could not read Spotify's response", body.trim().take(300))
             }
-            LibraryOutcome.Found(items)
+            LibraryOutcome.Found(page.items, page.total)
         } catch (e: Exception) {
             Log.w(TAG, "Library read error: ${e.message}")
             LibraryOutcome.Unreachable
@@ -789,22 +821,22 @@ object SpotifyWebApi {
 
     /** The driver's saved (liked) albums, newest-saved first. Needs `user-library-read`. */
     suspend fun getSavedAlbums(context: Context, limit: Int = LIBRARY_LIMIT): LibraryOutcome<SavedAlbum> =
-        libraryGet(context, limitUrl(ALBUMS_URL, limit), ::parseSavedAlbums)
+        libraryGet(context, limitUrl(ALBUMS_URL, limit), ::savedAlbumsPage)
 
     /**
      * Spotify's own play history, most recent first, across every device the driver plays on -
      * NOT scoped to this app. Needs `user-read-recently-played`.
      */
     suspend fun getRecentlyPlayed(context: Context, limit: Int = LIBRARY_LIMIT): LibraryOutcome<RecentlyPlayedTrack> =
-        libraryGet(context, limitUrl(RECENTLY_PLAYED_URL, limit), ::parseRecentlyPlayed)
+        libraryGet(context, limitUrl(RECENTLY_PLAYED_URL, limit), ::recentlyPlayedPage)
 
     /** Spotify's own top-artists ranking for this account. Needs `user-top-read`. */
     suspend fun getTopArtists(context: Context, limit: Int = LIBRARY_LIMIT): LibraryOutcome<TopArtist> =
-        libraryGet(context, limitUrl("$TOP_URL/artists", limit), ::parseTopArtists)
+        libraryGet(context, limitUrl("$TOP_URL/artists", limit), ::topArtistsPage)
 
     /** Spotify's own top-tracks ranking for this account. Needs `user-top-read`. */
     suspend fun getTopTracks(context: Context, limit: Int = LIBRARY_LIMIT): LibraryOutcome<TopTrack> =
-        libraryGet(context, limitUrl("$TOP_URL/tracks", limit), ::parseTopTracks)
+        libraryGet(context, limitUrl("$TOP_URL/tracks", limit), ::topTracksPage)
 
     /**
      * "What's coming up": `GET /v1/me/player/queue`, which needs BOTH `user-read-currently-playing`
@@ -812,7 +844,7 @@ object SpotifyWebApi {
      * `limit` parameter and can return its entire queue.
      */
     suspend fun getQueue(context: Context, limit: Int = LIBRARY_LIMIT): LibraryOutcome<QueuedTrack> =
-        when (val outcome = libraryGet(context, QUEUE_URL, ::parseQueue)) {
+        when (val outcome = libraryGet(context, QUEUE_URL, ::queuePage)) {
             is LibraryOutcome.Found -> LibraryOutcome.Found(outcome.items.take(limit))
             else -> outcome
         }
@@ -838,7 +870,7 @@ object SpotifyWebApi {
             // truncation, so duplicate editions cannot crowd out genuinely different albums.
             .appendQueryParameter("limit", LIBRARY_LIMIT.toString())
             .build().toString()
-        return when (val outcome = libraryGet(context, url, ::parseArtistAlbums)) {
+        return when (val outcome = libraryGet(context, url, ::artistAlbumsPage)) {
             is LibraryOutcome.Found -> LibraryOutcome.Found(outcome.items.take(limit))
             else -> outcome
         }

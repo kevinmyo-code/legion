@@ -492,6 +492,35 @@ internal object SpotifyVoice {
     }
 
     /**
+     * The successful shape of every library read: the rows, how many are IN THIS PAGE (`count`),
+     * and - only when Spotify's own response stated one - how many exist (`total`) with whether
+     * the page fell short of it (`truncated`).
+     *
+     * `count` on its own cannot tell a five-row page from a five-row library, so the page size
+     * gets spoken as the library size (music-suggestions-1124 P8, mirrored from the phone app so
+     * Moose and Alfred answer the same way). A source stating no total emits NEITHER field,
+     * because `truncated: false` would stand in for "that is all of them" on exactly the reads
+     * that cannot know it.
+     *
+     * An empty row list stays a real answer ("Spotify said zero"), never a failure shape. Pure
+     * and `internal`: a plain JVM test.
+     */
+    internal fun pageResult(rows: List<JSONObject>, total: Int?, sourceLabel: String): JSONObject {
+        val items = JSONArray()
+        rows.forEach { items.put(it) }
+        val message = if (rows.isEmpty()) "Spotify has no $sourceLabel to show right now." else null
+        return result(true, message)
+            .put("items", items)
+            .put("count", rows.size)
+            .apply {
+                total?.let {
+                    put("total", it)
+                    put("truncated", rows.size < it)
+                }
+            }
+    }
+
+    /**
      * Turns a [SpotifyWebApi.LibraryOutcome] into the tool-result shape with every failure named
      * for what it is, never a bare "couldn't get that". [sourceLabel] ("saved albums", "the
      * upcoming queue") is folded into the message so the driver hears WHICH request failed. An
@@ -504,12 +533,7 @@ internal object SpotifyVoice {
         sourceLabel: String,
         toJson: (T) -> JSONObject,
     ): JSONObject = when (outcome) {
-        is SpotifyWebApi.LibraryOutcome.Found -> {
-            val items = JSONArray()
-            outcome.items.forEach { items.put(toJson(it)) }
-            val message = if (outcome.items.isEmpty()) "Spotify has no $sourceLabel to show right now." else null
-            result(true, message).put("items", items).put("count", outcome.items.size)
-        }
+        is SpotifyWebApi.LibraryOutcome.Found -> pageResult(outcome.items.map(toJson), outcome.total, sourceLabel)
         SpotifyWebApi.LibraryOutcome.NeedsAuthorization -> result(
             false,
             "Spotify isn't finished connecting - open Settings, tap CONNECT under the Spotify client ID, " +

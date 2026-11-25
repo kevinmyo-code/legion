@@ -388,7 +388,10 @@ object LiveToolbox {
                 "land on someone else's album of the same name. Every source needs Spotify " +
                 "connected and approved in Setup; if that's missing or stale this fails and tells " +
                 "the driver what to do - never read a failure as 'you have nothing'. Keep the " +
-                "spoken answer short - name a handful, don't read out the whole list.",
+                "spoken answer short - name a handful, don't read out the whole list. " +
+                "'count' is THIS PAGE, never how many they have: state a library figure only " +
+                "from 'total', say there are more when 'truncated' is true, and with no total " +
+                "name what came back and say you haven't seen the whole list.",
             params = obj(
                 "source" to schema("string", "Which listening data to look up.",
                     enum = SpotifyVoice.BROWSE_SOURCES),
