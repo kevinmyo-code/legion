@@ -28,6 +28,19 @@ interface UnitTokenSource {
     suspend fun revoke(id: String): Boolean
 }
 
+/** One live head unit as the engine lists it. No token: the engine keeps only hashes. */
+class UnitRecord(val id: String, val expiresAtMs: Long?, val vehicleId: String?)
+
+/**
+ * `GET /api/auth/head-units`: the member's own live units, which is how the phone knows when the
+ * car's sign-in runs out and which car it is bound to. Its own interface, not part of
+ * [UnitTokenSource], so a caller that only mints and revokes does not carry a list it never reads.
+ */
+interface UnitTokenDirectory {
+    /** The live units, or null when the engine could not be asked (never an empty list for that). */
+    suspend fun list(): List<UnitRecord>?
+}
+
 /** One of the household's cars, for "which car is this head unit in" (the engine binds ONE). */
 data class VehicleOption(val id: String, val label: String)
 

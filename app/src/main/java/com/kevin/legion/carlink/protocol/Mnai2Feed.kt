@@ -34,12 +34,16 @@ class Outgoing(val bytes: ByteArray, val to: InetAddress, val port: Int) {
  * - A fresh random 16-byte session per key, counter from 1 (4.1): a new link key never continues an
  *   old session, and no challenge held from before a key change is echoed.
  */
+// One function per rule the document states; collapsing them would hide the rules.
+@Suppress("TooManyFunctions")
 class Mnai2Feed(
     private val ring: LinkKeyRing,
     private val newSession: () -> ByteArray,
     private val onLan: (InetAddress) -> Boolean,
     private val zoneId: () -> String?,
     private val onRingEvent: (RingEvent) -> Unit = {},
+    /** The unit stored a handed-over engine sign-in: the fingerprint of the token it holds (4.3 rev 9). */
+    private val onTokenStored: (ByteArray) -> Unit = {},
 ) {
     private class Replay {
         var session: ByteArray? = null
@@ -106,12 +110,49 @@ class Mnai2Feed(
         syncKeys()
         val cur = keys
         cur?.let { k -> Mnai2.openFromUnit(k.u2p, bytes, length) }?.let { d ->
-            return onHello(d, KeySlot.CURRENT, from, fromPort, nowMs)
+            return fromUnit(d, KeySlot.CURRENT, from, fromPort, nowMs)
         }
         reserveKeys?.let { k -> Mnai2.openFromUnit(k.u2p, bytes, length) }?.let { d ->
-            onHello(d, KeySlot.RESERVE, from, fromPort, nowMs)
+            fromUnit(d, KeySlot.RESERVE, from, fromPort, nowMs)
         }
         return emptyList()
+    }
+
+    private fun fromUnit(
+        d: Mnai2Datagram,
+        slot: KeySlot,
+        from: InetAddress,
+        fromPort: Int,
+        nowMs: Long,
+    ): List<Outgoing> = when (d.type) {
+        Mnai2.HELLO -> onHello(d, slot, from, fromPort, nowMs)
+        Mnai2.TOKEN_OK -> onTokenOk(d, slot, from, fromPort)
+        else -> emptyList()
+    }
+
+    /**
+     * The unit says it stored the token it was handed. Authenticated, replay-checked on the same
+     * (session, counter) ladder as its HELLOs, and taken only from the source the feed already sends
+     * to: it moves nothing (no destination, no challenge, no interval), so it can only ever confirm.
+     */
+    private fun onTokenOk(d: Mnai2Datagram, slot: KeySlot, from: InetAddress, fromPort: Int): List<Outgoing> {
+        if (slot != KeySlot.CURRENT) return emptyList()
+        if (destination != from || destinationPort != fromPort) return emptyList()
+        val fingerprint = Mnai2.readTokenOk(d.body) ?: return emptyList()
+        if (!currentReplay.accept(d.session, d.counter)) return emptyList()
+        onTokenStored(fingerprint)
+        return emptyList()
+    }
+
+    /**
+     * The unit's new engine sign-in (4.3 rev 9), when a challenge from the last 10 s is held; null =
+     * not in range. Sending it is never a hand-over: only the unit's TOKEN_OK is.
+     */
+    @Synchronized fun handToken(nowMs: Long, token: String, vehicleId: String?): Outgoing? {
+        syncKeys()
+        val c = challenge ?: return null
+        if (nowMs - challengeAt >= CHALLENGE_WINDOW_MS) return null
+        return send(Mnai2.TOKEN, Mnai2.tokenBody(c, token, vehicleId))
     }
 
     private fun onHello(
@@ -121,7 +162,6 @@ class Mnai2Feed(
         fromPort: Int,
         nowMs: Long,
     ): List<Outgoing> {
-        if (d.type != Mnai2.HELLO) return emptyList()
         val hello = Mnai2.readHello(d.body) ?: return emptyList()
         val replay = if (slot == KeySlot.CURRENT) currentReplay else reserveReplay
         val newUnitSession = replay.session?.contentEquals(d.session) != true
