@@ -34,6 +34,15 @@ class TransportReadbackTest {
     }
 
     @Test
+    fun `a state the player did not state is unknown, never paused`() {
+        // Buffering right after a play, or a session publishing no state at all, is not a failure.
+        // Answering "it still reports not playing" to a play that worked is the same dishonesty in
+        // the other direction.
+        assertEquals(Verdict.CANNOT_TELL, TransportReadback.verdict(Move.PLAY, null, Observation(playing = null)))
+        assertEquals(Verdict.CANNOT_TELL, TransportReadback.verdict(Move.PAUSE, null, Observation(playing = null)))
+    }
+
+    @Test
     fun `a skip needs a different item, not a playing flag`() {
         val before = Observation(playing = true, trackKey = "a", positionMs = 30_000)
         // The flag is unchanged by a successful skip, so it proves nothing either way.
@@ -43,7 +52,7 @@ class TransportReadbackTest {
         )
         assertEquals(
             Verdict.CONTRADICTED,
-            TransportReadback.verdict(Move.NEXT, before, Observation(playing = true, trackKey = "a", positionMs = 31_000)),
+            TransportReadback.verdict(Move.NEXT, before, Observation(true, trackKey = "a", positionMs = 31_000)),
         )
     }
 

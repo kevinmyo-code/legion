@@ -42,6 +42,22 @@ class MusicTransportResultTest {
     }
 
     @Test
+    fun `a state the player did not state is reported as no state`() {
+        val unknown = MusicControlToolbox.readbackResult(Move.PLAY, Verdict.CANNOT_TELL, Observation(playing = null))
+        assertFalse("never 'not playing' off a state nobody stated", unknown.has("playback"))
+        assertTrue(unknown.getBoolean("dispatched"))
+    }
+
+    @Test
+    fun `a contradicted skip names the track, not the playing flag`() {
+        val still = MusicControlToolbox.readbackResult(
+            Move.NEXT, Verdict.CONTRADICTED, Observation(playing = true, trackKey = "a"),
+        )
+        assertTrue(still.getString("message").contains("still on the same track"))
+        assertFalse("a skip's failure is not about the flag", still.getString("message").contains("reports playing"))
+    }
+
+    @Test
     fun `each move is named in its own words`() {
         fun words(m: Move) = MusicControlToolbox.readbackResult(m, Verdict.CANNOT_TELL, null).getString("message")
         assertTrue(words(Move.PLAY).contains("the play"))
