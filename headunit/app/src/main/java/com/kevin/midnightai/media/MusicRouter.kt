@@ -67,17 +67,50 @@ object MusicRouter {
                 VoiceTransport(true, null)
             }
             Source.PHONE -> {
-                val ok = withContext(Dispatchers.Main) {
-                    when (cmd) {
-                        SpotifyController.TransportCmd.PLAY -> MusicController.play(context)
-                        SpotifyController.TransportCmd.PAUSE -> MusicController.pause(context)
-                        SpotifyController.TransportCmd.NEXT -> MusicController.next(context)
-                        SpotifyController.TransportCmd.PREVIOUS -> MusicController.previous(context)
+                // Read back, never dispatch-and-claim (music-suggestions-1124 P4): this branch
+                // used to report success the instant the command left, so a play that reached a
+                // dead Bluetooth session was spoken as done. Mirrored from the phone app, because
+                // Moose and Alfred answer the same way.
+                val move = when (cmd) {
+                    SpotifyController.TransportCmd.PLAY -> TransportReadback.Move.PLAY
+                    SpotifyController.TransportCmd.PAUSE -> TransportReadback.Move.PAUSE
+                    SpotifyController.TransportCmd.NEXT -> TransportReadback.Move.NEXT
+                    SpotifyController.TransportCmd.PREVIOUS -> TransportReadback.Move.PREVIOUS
+                }
+                val report = withContext(Dispatchers.Main) { MusicController.runMove(context, move) }
+                if (!report.dispatched) {
+                    VoiceTransport(false, phoneFailureMessage(cmd))
+                } else {
+                    when (TransportReadback.verdict(move, report.before, report.after)) {
+                        TransportReadback.Verdict.CONFIRMED -> VoiceTransport(true, null)
+                        TransportReadback.Verdict.CONTRADICTED ->
+                            VoiceTransport(false, unconfirmedMessage(cmd, report.after))
+                        TransportReadback.Verdict.CANNOT_TELL -> VoiceTransport(false, unconfirmedMessage(cmd, null))
                     }
                 }
-                VoiceTransport(ok, if (ok) null else phoneFailureMessage(cmd))
             }
         }
+
+    /**
+     * The phone took the command and its own state did not confirm it (P4). Says that, rather
+     * than either claiming the outcome or blaming an unreachable phone, which is a different
+     * fault with a different fix.
+     */
+    internal fun unconfirmedMessage(
+        cmd: SpotifyController.TransportCmd,
+        after: TransportReadback.Observation?,
+    ): String = if (after?.playing == null) {
+        "I sent the ${cmd.verb} to your phone and it reported nothing back, so I can't say whether it took."
+    } else {
+        // A skip never changes the playing flag, so its contradiction names the track instead.
+        when (cmd) {
+            SpotifyController.TransportCmd.NEXT, SpotifyController.TransportCmd.PREVIOUS ->
+                "I sent the ${cmd.verb} to your phone and it's still on the same track, so I can't " +
+                    "tell you it took."
+            else -> "I sent the ${cmd.verb} to your phone and it still reports " +
+                (if (after.playing == true) "playing" else "not playing") + ", so I can't tell you it took."
+        }
+    }
 
     /** Names the PHONE as the thing that could not be reached (F12: it used to blame the phone for Spotify). */
     internal fun phoneFailureMessage(cmd: SpotifyController.TransportCmd): String =
