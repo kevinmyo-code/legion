@@ -390,6 +390,75 @@ def test_a_quote_over_the_stock_is_refused(visitor, shop_visit, engine):
     assert not ShopOrder.objects.filter(visit=shop_visit).exists()
 
 
+# =============================================================================
+# Consult before selling (the live run of 2026-11-24)
+# =============================================================================
+
+
+def _packs_lookup():
+    from types import SimpleNamespace
+
+    data = {
+        "items": [
+            {"sku": "LP-PK40", "price_cents": 12_900, "in_stock": 14},
+            {"sku": "LP-PK28", "price_cents": 9_800, "in_stock": 6},
+            {"sku": "LP-RC40", "price_cents": 2_400, "in_stock": 40},
+        ],
+        "bundles": [{"skus": ["LP-PK40", "LP-RC40"], "saving_cents": 1_000}],
+    }
+    return SimpleNamespace(name="shop_find", ok=True, data=data)
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    [
+        # What the frame now asks the rep for: the reason, the comparison, the question first,
+        # the add-on after. The sentence check has to let all of it through, or the frame asks
+        # for answers that never reach the visitor. Invented lines.
+        "What will you be using it for?",
+        "For a day on the hill I'd take the Ridgeline 40L at $129.00: the padded hip belt "
+        "carries a day's water and food.",
+        "The Ridgeline 40L is $129.00 with a padded hip belt; the Ridgeline 28L is $98.00, "
+        "lighter, with no hip belt.",
+        "Since you want to keep it light, the 28L at $98.00 is the lighter one and there are 6 "
+        "in stock.",
+        "For a loaded day I'd take the 40L for the hip belt.",
+        "Would you like me to put the Ridgeline 40L down for you?",
+        "Now that you've got the 40L, the Pack Rain Cover at $24.00 fits packs from 28 to 40 "
+        "litres.",
+    ],
+)
+def test_a_consulting_answer_survives_the_sentence_check(sentence):
+    assert guards.claim_reason(sentence, [_packs_lookup()]) is None
+
+
+def test_the_lookup_tells_the_rep_to_give_a_reason_compare_and_hold_the_add_on(
+    visitor, shop_visit, engine
+):
+    """Two packs come back from one lookup; the result text is what makes the rep use both and
+    keep the add-on until they have chosen (the live run named only the first, every turn)."""
+    engine.model = FakeModel([call("shop_find", {"query": "day pack"}), say("Right.")])
+    events, _ = _turn(visitor, "Something to carry a day's kit up a hill")
+    text = [t for t in _of(events, "tool") if t["name"] == "shop_find"][0]["text"]
+    assert "LP-PK40" in text and "LP-PK28" in text
+    assert "why it suits what they told you" in text
+    assert "name both prices and what separates them" in text
+    assert "offered only after they say they want that product" in text
+
+
+def test_the_frame_asks_for_a_reason_and_holds_the_add_on_until_they_choose():
+    assert "Consult before you sell" in SHOP_FRAME
+    # Consulting is asking when the use is unknown, not asking instead of looking: a shopper who
+    # says what they are after gets a lookup in that same turn.
+    assert "call shop_find in the turn they name a kind of thing" in SHOP_FRAME
+    assert "name no product that turn" in SHOP_FRAME
+    assert "say WHY it suits what THEY said" in SHOP_FRAME
+    assert "ONLY after they have said they want a product" in SHOP_FRAME
+    assert "never end a reply by offering to add something before they have chosen" in SHOP_FRAME
+    # The quote tool is for buying and for the order's total, which only the read-back says.
+    assert "only once their own words say they want to buy" in SHOP_FRAME
+
+
 def test_the_quote_is_code_arithmetic():
     q = catalogue.quote({"LP-SK": 2})
     assert (q.total_cents, q.shipping_cents) == (2 * 2_200 + 800, 800)
