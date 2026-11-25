@@ -100,7 +100,7 @@ Ticket 03's 360dp assumption itself **holds**, so its 328dp interior figure stan
 | THIRD | 103dp | 85dp | 4 | **rejected** |
 
 **Thirds are rejected on arithmetic, not taste.** At 30sp the mono advance is 18dp per character,
-so a third tile fits four characters. `82.4` fits; `$2,418` does not. A tile shape that cannot hold
+so a third tile fits four characters. A three-digit weight fits; a four-figure amount does not. A tile shape that cannot hold
 this app's most common content is not a tile shape.
 
 **The rule that falls out: a half tile holds at most 7 characters of hero.** This is a hard content

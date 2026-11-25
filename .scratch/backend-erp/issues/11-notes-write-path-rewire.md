@@ -9,7 +9,7 @@ map: backend-erp
 # Notes write path: rewire the controller
 
 **The build ticket ticket 07 leaves behind.** The blocking decision is made (`starts_at` is
-nullable, applied) and the data layer is built and proven: 325 records uploaded and verified in
+nullable, applied) and the data layer is built and proven: every record uploaded and verified in
 Postgres, Room v40 replica migrated on real data. **What does not exist is the write path.** Nothing
 keeps the server fresh after a reconcile - the app still writes only to the engine.
 
@@ -92,7 +92,7 @@ The absence of exactly that test is what let the defect live.
 
 Ticket 07 ruling 2's inferred-tomorrow is a READ-SIDE rendering rule and **nothing implements it**.
 `DatesAgenda`'s two queries hard-filter `dueAt IS NOT NULL` (`EngineRecordDao.kt:70-84`) and
-`toAgendaItems` drops null rows (`DatesAgenda.kt:83`), so 53 of Kevin's 56 Notes items never reach
+`toAgendaItems` drops null rows (`DatesAgenda.kt:83`), so almost every stored Notes item never reaches
 the agenda at all. That is a bug against ruling 2, not a missing feature, and it is fixed in this
 ticket while the surrounding code is open.
 
@@ -147,11 +147,11 @@ whose `startsAt` had passed. His home screen went from "1 missed" to "51 missed"
 second.
 
 **Evidence, traced off a read-only pull of the live database:**
-- The 51 rows carry `missedAt` stamped 08:37:19-08:37:21 on 2026-08-26, sequential, one per row -
+- The affected rows carry `missedAt` stamped within three seconds of each other on 2026-08-26, sequential, one per row -
   the exact moment that build first launched. Nothing else touches `missedAt` at that cadence.
 - The engine has `missedAt` on exactly one Notes `Item`; the Dates `Event` record type has no
   `missedAt` field at all. So all 51 values were minted at sweep time, not carried from the engine.
-- All 106 `source='legion'` replica rows carry `sortOrder`, which only `EventsReconcile`'s Notes
+- Every `source='legion'` replica row carries `sortOrder`, which only `EventsReconcile`'s Notes
   branch ever sets - so all 106 are Notes Items, not Dates Events. **The engine holds only 56
   active Items.** The other 50 are todos Kevin deleted on the phone: the engine soft-deletes them,
   `EventsReconcile` never propagates that deletion to the server, and the replica keeps serving
@@ -180,7 +180,7 @@ precedent for a client deleting or resurrecting server state without that ruling
 ### 1. The discriminator: `events.kind`, set at upload from the originating record type
 
 The merged table needs to say what a row IS, because `NotesController` owns reminders and must not
-own appointments. `source='legion'` cannot do it - all 106 legion-source rows are Notes Items, and a
+own appointments. `source='legion'` cannot do it - every legion-source row is a Notes Item, and a
 legion-AUTHORED calendar event would be indistinguishable from a todo.
 
 **Add `kind text not null default 'reminder' check (kind in ('reminder','appointment'))`.** The

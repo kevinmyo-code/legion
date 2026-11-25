@@ -15,11 +15,11 @@ did exactly the job it was added to do.**
 The pantry reconcile re-checks every stored receipt against its own arithmetic before uploading.
 All three of Kevin's receipts failed and were skipped:
 
-| Store | Sum of lines | Printed total | Unexplained |
+| Store | Sum of lines | Printed total | Unexplained share |
 |---|---|---|---|
-| Walmart | 12084 | 12886 | 802 (6.6%) |
-| Store B | 2293 | 2341 | 48 (2.1%) |
-| Walmart | 2292 | 2443 | 151 (6.6%) |
+| Store A | - | - | 6.6% |
+| Store B | - | - | 2.1% |
+| Store A | - | - | 6.6% |
 
 ## Root cause, traced rather than guessed
 

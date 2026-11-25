@@ -16,7 +16,7 @@ tags: [ticket]
 
 Found in the 2026-08-30 audit, from the real device snapshot.
 
-`maintenance_items`: **54 rows. 48 carry a mile interval, 35 carry a month interval, and ZERO carry a
+`maintenance_items`: **most rows carry a mile interval, many carry a month interval, and ZERO carry a
 `lastDoneDate`.** None is flagged `neverDone` either.
 
 `VehicleController.isDue` is dual-axis - miles **or** months. With no `lastDoneDate` on any row, **the
@@ -61,7 +61,7 @@ came out of the trace.
 `toItemsLegacy` groups `service_records` by `serviceName` and matches on `(vehicleId, serviceName)`.
 No trim, no case-fold, at either end. `"Oil Change"` and `"Oil change"` are different services, and
 the failure is silent: the item simply reads as *unknown* forever, which the tile then reports
-honestly and uselessly. With 6 service records against 54 schedule items, a single casing
+honestly and uselessly. With far fewer service records than schedule items, a single casing
 difference is the whole difference between an anchored item and an unanchored one.
 
 Fix: normalize on both sides of the join (trim + case-fold for MATCHING only - the stored display
@@ -79,7 +79,7 @@ Kevin is due on his cars.
 
 ## Also worth noting
 
-`maintenance_items`' 54 rows are split across FOUR `vehicleId`s, including **`default` (16 rows)** -
+`maintenance_items`' rows are split across FOUR `vehicleId`s, including a **`default`** bucket -
 one of the two year-0 placeholder vehicles that the fleet cutover refuses to export and that halted
 the OBD upload. Sixteen maintenance items hang off a car that does not really exist. Unchanged by
 the correction above, and still owed.

@@ -14,8 +14,8 @@ tags: [ticket]
 
 ## The problem (traced 2026-09-28)
 
-The server held about 850 BofA rows (checking 9001: 208 DETERMINISTIC + 20 UNRECONCILED; card 9002:
-27 DETERMINISTIC + 622 UNRECONCILED) and the Money tile read "$0 of $1,300". Four causes, all traced
+The server held the ingested BofA rows for both accounts, each split between DETERMINISTIC and
+UNRECONCILED, and the Money tile read "$0 of the month's budget". Four causes, all traced
 from code:
 
 1. **Nothing pulled them.** `LedgerTransactionsSync.maybeAutoPull` had a Django branch and no
@@ -101,11 +101,11 @@ one-shot `apply_category_rules` backfill the plan asked for **cannot be built** 
 trigger, and was not. Stopped and reported instead.
 
 - New rows (every ingest from deploy on) carry a category from insert.
-- The ~850 stored rows stay `category NULL` on the server forever. The phone categorises them
+- The stored rows stay `category NULL` on the server forever. The phone categorises them
   locally, so the Money tile is right, but the web app and anything else reading the server sees
   them uncategorised.
-- The 642 UNRECONCILED rows are transient anyway: supersession replaces them. The 235
-  DETERMINISTIC ones are permanent.
+- The UNRECONCILED rows are transient anyway: supersession replaces them. The DETERMINISTIC ones
+  are permanent.
 
 Options, for Kevin: (1) accept it (phone-local categories for the old rows); (2) an authored
 `ledger_transaction_categories` table (txn id, category, source, tombstone) that overlays the
@@ -124,7 +124,7 @@ refuses for gated rows. Recommendation: (2), as its own ticket.
       inserts but deletes nothing whenever a page stalls, and says so in SYNC NOW.
 - [ ] **On the A25**, after installing the APK:
   1. Open the app, wait a few seconds on HOME. The Money tile shows a real September figure
-     against USD 1,300.00, not $0, with "Excludes USD X uncategorized" if any remain, and
+     against the month's budget, not $0, with "Excludes USD X uncategorized" if any remain, and
      "unverified". **If the figure looks roughly double**, the phone still holds rows it parsed
      from files itself before statement ingestion left the phone: those are phone-origin, the
      mirror never deletes them, and they duplicate the server's. Not handled here; say so and it

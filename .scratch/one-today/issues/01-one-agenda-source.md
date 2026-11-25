@@ -87,7 +87,7 @@ to fire.
 ## What must not break
 
 - **`AlarmScheduler`'s reminder-only sweep.** The `kind` discriminator exists because a sweep over the
-  merged table marked 51 rows falsely missed. Widening what screens READ must not widen what the
+  merged table marked rows falsely missed. Widening what screens READ must not widen what the
   alarm path OWNS.
 - **The 5 `structuredMeta` rows.** They are the class blocks and the only reason the cut waited.
   Whatever renders them must keep working after `CalendarReadToolLogic`'s live path goes - the blocks

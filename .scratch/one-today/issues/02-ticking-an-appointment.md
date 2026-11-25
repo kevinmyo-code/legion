@@ -34,7 +34,7 @@ voice tool can report its state.
 ## Why the filter is there, and why it is still half-right
 
 Ticket 11 added `kind` precisely so `AlarmScheduler`'s startup sweep would stop treating appointments
-as reminders it owned - the 2026-08-26 incident where 51 rows were falsely marked missed and written
+as reminders it owned - the 2026-08-26 incident where rows were falsely marked missed and written
 to the live project.
 
 **That reasoning is sound and must survive.** But it answers *"whose alarm is this?"*, and the filter

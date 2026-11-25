@@ -46,7 +46,7 @@ should run on its own - either alone leaves a hole. Option 3 alone just moves th
 
 ## Not urgent, but do not let it sit long
 
-197 rows today and nothing has been lost yet, because the upload path did not exist until today and
+a small store today and nothing has been lost yet, because the upload path did not exist until today and
 the trim has been running against a table nobody was preserving. **The first two weeks after the
 upload lands are when this either works or quietly does not**, and nobody will notice the difference
 without looking.

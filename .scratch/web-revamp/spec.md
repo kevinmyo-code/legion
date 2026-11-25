@@ -279,7 +279,7 @@ One web client, two surfaces, split by viewport.
     "month": "2026-10",
     "currency": "USD",
     "accounts": [
-      {"account_last4": "1199", "label": "BofA card", "spend_cents": 64255,
+      {"account_last4": "1199", "label": "BofA card", "spend_cents": 12345,
        "unverified": true, "unverified_cents": 21000, "latest_row_at": "2026-10-03T09:12:00Z"}
     ],
     "categories": [

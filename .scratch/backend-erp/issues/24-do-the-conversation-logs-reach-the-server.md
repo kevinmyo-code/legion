@@ -64,7 +64,7 @@ finds this rather than assuming the table is already there.
 
 *"same for conversations for audit."*
 
-Schema landed in `20260829000100_obd_samples_and_conversation_audit.sql`, UNAPPLIED. 197 rows today,
+Schema landed in `20260829000100_obd_samples_and_conversation_audit.sql`, UNAPPLIED. A small store today,
 so volume is a non-issue.
 
 **Why this is safe, restated as the reason rather than a hope:** the read-through rule is satisfied
@@ -86,7 +86,7 @@ the key carries which device produced it and `turn_seq` stays an ordinary column
    is his own words by the letter of the rule and someone else's content in substance. **This needs a
    ruling before upload, not after** - it is the one case where the source-side guarantee does not
    cover what actually lands.
-3. **Retention.** A phone-local log is bounded by the device; a server-side one is not. 197 rows is
+3. **Retention.** A phone-local log is bounded by the device; a server-side one is not. The store today is
    nothing, but nothing is what every large table starts as.
 
 ### And one thing the schema change forces
@@ -130,4 +130,4 @@ used to accept a cloud system of record at all.
   currently in `EPISODIC_EXCLUDED_TOOLS` really is redacted before insert, as it stands today rather
   than as the doc comment described it when written. A tool added since is the gap, and it is now a
   gap that reaches a server.
-- **Retention is still unanswered.** 197 rows is nothing; nothing is what every large table starts as.
+- **Retention is still unanswered.** The store is small today; small is what every large table starts as.

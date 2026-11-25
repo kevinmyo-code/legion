@@ -60,7 +60,7 @@ every result and every assistant line after it `[redacted]` in the audit log.
    words, no digit, and contains "check", "look", "moment" or "second".
    - After a result: the first turn that STARTS after the result was sent, if it is a holding line
      with no new tool behind it, gets one note (`nudge reason=late_holding_line`). Once per result.
-     **Deliberately narrower than "the next turn":** at 11:25:57 "Checking the records." began
+     **Deliberately narrower than "the next turn":** one "Checking the records." line began
      0.7 s before its result went back, and its answer was the following turn; a rule keyed on
      "the next turn to complete" would have interrupted that answer mid-generation.
    - No result pending, no tool called in the turn, nothing in flight, and the turn is a holding

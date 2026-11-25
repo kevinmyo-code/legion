@@ -41,7 +41,7 @@ Offered:
   `analyzeTransfers` is untouched.
 - **Disclosed in words** (§4 rule 7): `BudgetVsActual.earlyChargesMoved` holds the rows moved in
   and out, and `earlyChargeSentences` is the one wording, e.g. "Includes a Housing charge of USD
-  1,180.63 dated 2026-08-31, counted in September." and "A Housing charge of USD 1,180.63 dated
+  <amount> dated 2026-08-31, counted in September." and "A Housing charge of USD <amount> dated
   2026-09-30 counts in October, not here." Only rows that really are spend are named.
 - **Reading rule only.** `txnDate` is never changed. No Room migration, no server change.
 

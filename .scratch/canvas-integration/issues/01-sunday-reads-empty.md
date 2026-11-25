@@ -8,7 +8,7 @@ status-detail: >
   Built 2026-09-11. Settled on the device, and the timezone theory was WRONG:
   the rows carry allDay=0 and a true instant, so the local-day bucketing was
   always correct. The bug was read_calendar querying EventKind.EVENT while
-  every assignment is EventKind.TASK - 145 of 314 rows on the A25, and no tool
+  every assignment is EventKind.TASK - most rows on the A25, and no tool
   in the toolbox returned one of them. Now reads both kinds and reports `kind`
   and `done` so the model can tell "happens" from "due". The description, which
   still claimed to read GOOGLE CALENDAR and explicitly not LEGION's own data,
@@ -146,7 +146,7 @@ kind=task  allDay=0  done=1  utc=2026-09-12 04:59:59  ->  local 2026-09-11 23:59
 import or the timezone was broken.
 
 **The bug was one word: `read_calendar` asked for `EventKind.EVENT`, and every assignment is
-`EventKind.TASK`.** 145 rows, structurally invisible. `read_list` is reminders, `manage_checklist` is
+`EventKind.TASK`.** Those rows are structurally invisible. `read_list` is reminders, `manage_checklist` is
 checklists, and `NotesController.openAppointments` is TASK-filtered but exists to match a spoken
 title for `manage_item`. **No tool returned a task**, which also made it an ADR 0035 gap: not a
 capability with a weak hands path, a capability with none.

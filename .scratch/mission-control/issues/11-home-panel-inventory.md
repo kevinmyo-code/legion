@@ -88,7 +88,7 @@ The delta is what tiling gets to spend.
 change on HOME that actually uses the grid, and it converts four cramped rows into four glanceable
 tiles with real 48dp-plus tap targets.
 
-All four half-tile figures clear ticket 05's **7-character hero limit**: `82.4`, `$2,418`, `3 DUE`,
+All four half-tile figures clear ticket 05's **7-character hero limit**: a weight, an amount, `3 DUE`,
 `4 NEW`. Checked, not assumed.
 
 ### 2. Silent domains: full-size tile, worded
