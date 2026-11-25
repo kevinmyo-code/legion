@@ -6,10 +6,12 @@ file. One computation, two readers: the brief's Car section
 Every read goes through `household.tenancy.scoped()` with the caller's
 request (or the brief job's `Viewer`), ADR 0045's choke point.
 
-**Where "last done" comes from.** Both axes come off ONE row, the newest
-service on file for that item (`_newest_first`), never the latest date from
-one row paired with the highest mileage from another - the rule the phone's
-`FleetRecordBridge.projectAnchorLegacy` holds. A service logged with no
+**Where "last done" comes from.** Both axes come off ONE row, the most
+recently STATED service on file for that item (`_newest_first`, which ranks on
+`_stated_at`), never the latest date from one row paired with the highest
+mileage from another - the rule the phone's
+`FleetRecordBridge.projectAnchorLegacy` holds, ordering on its own
+`ServiceRecord.updatedAt`, which `_stated_at` reproduces. A service logged with no
 mileage therefore supersedes an older row's mileage instead of letting it
 stand, and the item is reported as needing a reading rather than timed from a
 figure the phone has dropped.
