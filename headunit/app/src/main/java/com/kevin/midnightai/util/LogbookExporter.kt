@@ -9,8 +9,11 @@ import android.graphics.Typeface
 import androidx.core.content.FileProvider
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
+import com.google.zxing.WriterException
 import com.google.zxing.qrcode.QRCodeWriter
+import com.kevin.midnightai.MidnightEvents
 import java.io.File
+import java.io.IOException
 
 /**
  * One entry shown on the exported share card: title, human-readable date string,
@@ -46,16 +49,29 @@ object LogbookExporter {
     private const val QR_SIZE = 120
 
     /**
+     * Said when the card itself could not be made, which is a different claim from every
+     * [ExternalScreen] sentence: nothing was asked of Android yet, so nothing about this unit's
+     * screens is known. It names no cause, because the write and the encode fail for reasons only
+     * the drive log's non-fatal can tell apart.
+     */
+    internal const val CARD_NOT_BUILT_WORDS = "This head unit could not build the logbook card to share."
+
+    /**
      * Renders the share card on the calling thread (must be IO-dispatched by the
      * caller), writes it to [Context.getCacheDir], and fires [Intent.ACTION_SEND].
      *
      * Returns null when a share target took it, else the words for what did not happen. The whole
-     * body runs on a detached coroutine with no catch of its own, and a ROM with nothing to share
-     * to threw the chooser straight out of it, which on this app is the launcher process. The
-     * render and the file write are NOT guarded here: they throw `IOException`, which
-     * [ExternalDoor] deliberately does not catch, because a full cache or an unreadable
-     * FileProvider is a different bug from a ROM with no share sheet, and words naming the second
-     * would be a wrong diagnosis of the first.
+     * body runs on a detached coroutine with no catch of its own, so anything thrown here is an
+     * unhandled coroutine exception and the launcher process dies: a ROM with nothing to share to
+     * threw the chooser out of it, and a FileProvider that cannot name the card threw
+     * `IllegalArgumentException` out of it just the same.
+     *
+     * Two failures, two claims, and they are not interchangeable. Everything Android is asked for
+     * (naming the file and opening the chooser) goes through [ExternalDoor], which speaks about
+     * this unit's screens. Building the card first is OUR work, not Android's: it fails with
+     * `IOException` or `WriterException`, neither of which the door catches nor should claim, so it
+     * gets its own sentence ([CARD_NOT_BUILT_WORDS]) and its own non-fatal. Calling a full cache "a
+     * ROM with no share sheet" is the wrong diagnosis that shape of guard invites.
      *
      * @param context   An Activity or application context.
      * @param carLabel  Display label from [com.kevin.midnightai.vehicle.VehicleController],
@@ -63,28 +79,58 @@ object LogbookExporter {
      * @param entries   Up to 5 entries to show; caller supplies the most-recent ones.
      */
     fun share(context: Context, carLabel: String, entries: List<ShareEntry>): String? {
-        val bmp = render(carLabel, entries)
-        val file = File(context.cacheDir, "midnight_logbook_export.png")
-        file.outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 95, it) }
-        bmp.recycle()
-
-        val uri = FileProvider.getUriForFile(
-            context,
-            "${context.packageName}.provider",
-            file,
-        )
-        val intent = Intent(Intent.ACTION_SEND).apply {
-            type = "image/png"
-            putExtra(Intent.EXTRA_STREAM, uri)
-            putExtra(Intent.EXTRA_TEXT, "Logged with MIDNIGHT AI")
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        val file = try {
+            writeCard(context, carLabel, entries)
+        } catch (e: IOException) {
+            return cardNotBuilt(e)
+        } catch (e: WriterException) {
+            return cardNotBuilt(e)
         }
         return ExternalDoor.attempt(ExternalScreen.SHARE_SHEET) {
+            val uri = FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.provider",
+                file,
+            )
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = "image/png"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                putExtra(Intent.EXTRA_TEXT, "Logged with MIDNIGHT AI")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
             context.startActivity(
                 Intent.createChooser(intent, "Share logbook")
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
             )
         }
+    }
+
+    /**
+     * Draws the card and writes it to the cache, returning the file the chooser is given.
+     *
+     * Throws [IOException] for a cache it cannot write (including a PNG encoder that refuses the
+     * stream, which answers `false` rather than throwing) and `WriterException` for a QR it cannot
+     * encode. The bitmap is recycled whichever way the write ends.
+     */
+    private fun writeCard(context: Context, carLabel: String, entries: List<ShareEntry>): File {
+        val file = File(context.cacheDir, "midnight_logbook_export.png")
+        val bmp = render(carLabel, entries)
+        val wrote = try {
+            file.outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 95, it) }
+        } finally {
+            bmp.recycle()
+        }
+        if (!wrote) throw IOException("the PNG encoder refused ${file.name}")
+        return file
+    }
+
+    /**
+     * The unit has no ADB (`CLAUDE.md` section 14), so the non-fatal is the only way the real
+     * reason is ever read; the driver gets the one sentence that is true of all of them.
+     */
+    private fun cardNotBuilt(e: Exception): String {
+        MidnightEvents.recordError("logbook_card_${e.javaClass.simpleName}", e)
+        return CARD_NOT_BUILT_WORDS
     }
 
     // -------------------------------------------------------------------------
