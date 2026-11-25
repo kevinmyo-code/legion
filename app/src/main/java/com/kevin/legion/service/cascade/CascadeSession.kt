@@ -4002,6 +4002,9 @@ internal class CascadeSession(
      * One mic buffer: to the turn detector, or held ([backlog]) while a tap's setup is still behind it.
      * Under [turnLock]: a backend swap, or the backlog's drain, never lands inside a feed.
      */
+    // Three worded exits, one per reason a buffer goes no further, and each is asserted on its own
+    // line by a wiring test ([VoiceQuickwinsWiringTest], [CallScreenWiringTest]), so they stay apart.
+    @Suppress("ReturnCount")
     private fun onMicBuffer(buf: ByteArray, n: Int) {
         // The level first, before every other gate, so the screen's mic bar keeps moving through a
         // mute and a call pause exactly as it did when the mic loop published it ([readLevel] knows
