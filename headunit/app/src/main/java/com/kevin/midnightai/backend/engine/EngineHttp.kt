@@ -266,7 +266,11 @@ class EngineHttp(
             )
         }
         return try {
-            classify(executeAsync(buildRequest(baseUrl)), carLink)
+            classify(
+                executeAsync(buildRequest(baseUrl)),
+                carLink = carLink,
+                refusalEndsLink = carLink && CarLinkScope.aRefusalEndsTheHandover(method, path),
+            )
         } catch (e: IOException) {
             Result.failure(
                 EngineHttpException(
@@ -303,7 +307,11 @@ class EngineHttp(
         )
     }
 
-    private fun classify(response: Response, carLink: Boolean = false): Result<EngineOk> {
+    private fun classify(
+        response: Response,
+        carLink: Boolean = false,
+        refusalEndsLink: Boolean = carLink,
+    ): Result<EngineOk> {
         val code = response.code
         val headers = response.headers.associate { (name, value) -> name.lowercase() to value }
         val body = response.use { r -> runCatching { r.body?.string() }.getOrNull() }.orEmpty()
@@ -319,10 +327,24 @@ class EngineHttp(
                     ),
                 ),
             )
-            carLink && code == UNAUTHORIZED -> {
+            refusalEndsLink && code == UNAUTHORIZED -> {
                 config.markCarLinkRefused()
                 Result.failure(EngineHttpException(EngineFailure.Unauthorized(CarLinkScope.REFUSED)))
             }
+            // A 401 on a release read says the ENGINE will not take a unit token there - an engine
+            // older than this build does not - not that the hand-over is dead. Marking it refused
+            // would stop the car's own uploads until the phone paired again, and the updater asks
+            // every 6 hours, so the car would go quiet on its own. The sign-in stays; the update
+            // check is what failed, and `UpdateController` already renders that.
+            carLink && code == UNAUTHORIZED -> Result.failure(
+                EngineHttpException(
+                    EngineFailure.Refused(
+                        code,
+                        "This engine does not accept the car's own sign-in for app updates" +
+                            "${detailSuffix(body)} The car's own sign-in is still valid.",
+                    ),
+                ),
+            )
             code == UNAUTHORIZED || code == FORBIDDEN -> Result.failure(
                 EngineHttpException(
                     EngineFailure.Unauthorized(
