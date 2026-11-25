@@ -182,9 +182,10 @@ def test_django_state_only_migration_is_not_destructive():
 
 
 def test_django_state_only_keeps_the_exemption_with_the_usual_django_imports():
-    """60 of the engine's migrations bind `django` twice (`import django.db.models.deletion` beside
-    `import django.utils.timezone`). Two imports of one name from the SAME source are not ambiguous,
-    so the file's imports still read and a state-only migration still ships."""
+    """38 of the 154 server migrations bind one name twice by plain import
+    (`import django.db.models.deletion` beside `import django.utils.timezone`), measured with `ast`.
+    Two imports of one name from the SAME source are not ambiguous, so the file's imports still read
+    and a state-only migration still ships."""
     usual = STATE_ONLY.replace(
         "from django.db import migrations",
         "import django.db.models.deletion\nimport django.utils.timezone\n\n"
@@ -313,6 +314,28 @@ def test_django_the_exemption_is_the_plain_shape_and_nothing_else():
         "class Migration(migrations.Migration):\n"
         "    migrations = shim\n"
         f"    operations = [{sdas}]\n",
+        # The class header and the code beside the exempt call: both run around the list the shape
+        # rules read, so both are part of the shape.
+        "a decorator that rewrites operations": "@(lambda c: setattr("
+        "c, 'operations', [getattr(c.operations[0], 'state_operations')[0]]) or c)\n"
+        "class Migration(migrations.Migration):\n"
+        f"    operations = [{sdas}]\n",
+        "a metaclass that rewrites operations": "class Migration(migrations.Migration,"
+        " metaclass=(lambda n, b, ns: type(n, b, {**ns,"
+        " 'operations': [getattr(ns['operations'][0], 'state_operations')[0]]}))):\n"
+        f"    operations = [{sdas}]\n",
+        "a base of its own": "from mystuff import Base\nclass Migration(Base):\n"
+        f"    operations = [{sdas}]\n",
+        "a base built with type()": "Base = type('Base', (migrations.Migration,), {})\n"
+        "class Migration(Base):\n"
+        f"    operations = [{sdas}]\n",
+        "a sibling element patching django first": "class Migration(migrations.Migration):\n"
+        "    operations = [\n"
+        "        (setattr(migrations, 'SeparateDatabaseAndState',"
+        " lambda database_operations, state_operations: state_operations[0]),"
+        " migrations.RunPython(migrations.RunPython.noop))[1],\n"
+        f"        {sdas},\n"
+        "    ]\n",
     }
     for what, body in cases.items():
         assert _judge("from django.db import migrations\n" + body) == [WARN], what
