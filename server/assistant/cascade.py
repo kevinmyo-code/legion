@@ -1200,7 +1200,9 @@ def _answer(
         else:
             line, audio = picked
             timings["ack"] = 1
-            timings["filler_ms"] = int((clock() - t0) * 1000)
+            # Its own key: `filler_ms` stays the TASK line's, so "no lookup line was heard" is
+            # still readable off a turn now that an acknowledgement goes in front of every one.
+            timings["ack_ms"] = int((clock() - t0) * 1000)
             held.note(line, _clip_ms(audio), clock(), wait=False)
             yield ev.Event("filler", {"tool": "", "text": speech_tags.untagged(line)})
             yield speaker.audio_event(audio, filler=True)

@@ -25,6 +25,7 @@ Rules (applied in `assistant.cascade`):
 from __future__ import annotations
 
 import random
+import re
 import threading
 
 _ACCOUNTS = ("Checking the accounts.", "Looking at the accounts.", "Pulling up the numbers.")
@@ -144,6 +145,24 @@ ACK_TOOL = "__ack__"
 ACK = ("Yeah, one sec.", "Sure, one sec.", "Okay, one sec.", "Mm, one sec.")
 
 
+# Small talk, a greeting or a sign-off (`test_sounding_human`). This is the one place the web
+# deliberately differs from the phone, and the reason is the WORDS, not the timing: the phone's
+# backchannel is content-free ("Mm.", "Right."), which sits fine after "Thanks!", while this door's
+# acknowledgement promises a look ("Yeah, one sec.") and after "Thanks!" it is just wrong. Closing
+# that for real means content-free words on the web, which is the voice contract's Q3.
+_SMALL_TALK = re.compile(
+    r"^\W*(hi|hey|hello|thanks|thank you|cheers|ok|okay|cool|great|nice|bye|good ?bye|"
+    r"good (morning|evening|night)|yes|no|yeah|nope|sure)\b",
+    re.I,
+)
+
+
+def is_light(words: str | None) -> bool:
+    """Nothing that needs a look: too short to be a request, or small talk."""
+    text = (words or "").strip()
+    return len(text.split()) < 4 or bool(_SMALL_TALK.match(text))
+
+
 def ack_skip(*, from_user: bool, over_reply: bool, words: str, crisis: bool, goodbye: bool):
     """Why this turn says no acknowledgement, or None to say one.
 
@@ -152,10 +171,13 @@ def ack_skip(*, from_user: bool, over_reply: bool, words: str, crisis: bool, goo
     and `half_duplex`. Kevin, 2026-11-24: the guide and Alfred behave the same in every voice
     behavior and the phone is the default, so the phone's list is the list.
 
-    The phone plays one on EVERY turn of his and has no small-talk and no minimum-length skip; the
-    web used to say one only on a conversation's first utterance and only when the words looked like
-    work (`cascade.needs_work`, now deleted with its only caller), which is what left every later
-    question silent until the answer. That narrowing is reversed here.
+    The phone plays one on EVERY turn of his. The web used to say one only on a conversation's FIRST
+    utterance, which is what left every later question silent until the answer; that narrowing is
+    reversed here, and it is what Kevin asked for.
+
+    The web keeps ONE skip the phone has no equivalent of, `light`, for the reason given above
+    `_SMALL_TALK`: this door's words promise a look, so they cannot go after "Thanks!". It is last,
+    so every reason the phone has wins the token.
 
     Pure: the caller answers each question, so nothing here reads a request or a clock.
     """
@@ -169,20 +191,23 @@ def ack_skip(*, from_user: bool, over_reply: bool, words: str, crisis: bool, goo
         return "crisis"
     if goodbye:
         return "goodbye"
+    if is_light(words):
+        return "light"
     return None
 
 
 def all_lines() -> tuple[str, ...]:
     """Every line, in the order they are fetched (`cascade.FillerAudio.warm`, during the greeting):
-    the acknowledgement first, then one line for each slow tool, then the wait lines and the
-    fallback, then the rest, so a turn right after the greeting already has what it needs
-    (2026-11-18: it once had none). The wait lines come early because every waiting turn can need
-    them, tool or no tool (`agents/voice/wait_lines.py`)."""
+    the acknowledgement first, then one line for each slow tool, then the fallback, then the wait
+    lines, then the rest, so a turn right after the greeting already has what it needs (2026-11-18:
+    it once had none). The wait lines sit behind the fallback so the order a first turn depends on
+    is unchanged (`test_demo_voice_first`), and ahead of the per-tool lines because every waiting
+    turn can need them, tool or no tool (`agents/voice/wait_lines.py`)."""
     seen: dict[str, None] = dict.fromkeys(ACK)
     for slow, lines in FILLERS.values():
         if slow and lines:
             seen.setdefault(lines[0])
-    for line in (*WAIT, *FALLBACK):
+    for line in (*FALLBACK, *WAIT):
         seen.setdefault(line)
     for _slow, lines in FILLERS.values():
         for line in lines:
