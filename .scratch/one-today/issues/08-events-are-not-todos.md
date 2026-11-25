@@ -24,7 +24,7 @@ The 2026-09-01 calendar-home cutover made every row in the day view tickable. Th
 most of them. A class happens at 09:30 whether or not you engage with it; ticking it means nothing,
 and **not** ticking it makes the day read as incomplete when nothing was missed.
 
-All 261 imported rows arrived as `kind = appointment`, and that discriminator does not capture the
+Every imported row arrived as `kind = appointment`, and that discriminator does not capture the
 thing that actually matters: **does this row have a completion state at all.** Two different kinds
 of thing are sitting in one table:
 

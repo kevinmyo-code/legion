@@ -13,4 +13,4 @@ tags: [ticket]
 
 # Decision: LEGION-only extras (ETA to a household member, leave-by, fuel-aware stops)
 
-Share a live ETA with a household member (how: push to their PWA?), 'leave by' from calendar and Canvas (a proactive raise: must pass the §7 compulsion test), and a fuel stop on the route when OBD says fuel is low. Which, in what order.
+Share a live ETA with a household member (how: push to their PWA?), 'leave by' from the calendar and coursework sources (a proactive raise: must pass the §7 compulsion test), and a fuel stop on the route when OBD says fuel is low. Which, in what order.

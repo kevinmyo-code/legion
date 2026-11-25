@@ -34,8 +34,8 @@ Read from the parsers and Kevin's real file, `tested`:
 | `currentTransaction_1199.csv` | `PAYMENT FROM SAV 2277 CONF#bbb1kbyqeg ... 1300.00` |
 
 So the US side already holds at least three accounts that move money to each other: checking 3366,
-savings 2277, card 1199. Put them in one entity and sum credits and debits naively and the $1,300
-card payment lands as **$1,300 of income on the card and $1,300 of expense on the savings account**.
+savings 2277, card 1199. Put them in one entity and sum credits and debits naively and the
+card payment lands as **income on the card and expense on the savings account, at its full value on both**.
 Both sides inflate. If only one of the two statements has been imported, the NET is wrong too, not
 just the gross.
 

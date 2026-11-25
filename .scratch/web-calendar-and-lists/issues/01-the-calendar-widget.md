@@ -59,8 +59,8 @@ rows that need the UTC-recovery idiom.
 ## Verification
 
 - `npm run build` and `npx tsc --noEmit` clean in `server/frontend/`.
-- Vitest over the day-bucketing: an all-day row on the 1st lands on the 1st at UTC-5, and a
-  23:59-local task lands on its own day, not the next.
-- The month containing 2026-09-16 shows STAT 2300's Module 4 discussion on Wednesday the 16th -
-  that row is live on the device and is the one Kevin asked about.
+- Vitest over the day-bucketing: an all-day row on the 1st lands on the 1st in the device zone, and an
+  end-of-day local task lands on its own day, not the next.
+- A month with a midweek coursework deadline shows that row on its own weekday, not the next -
+  the case that prompted this ticket.
 - At 400px wide the grid still fits, gutters intact, no horizontal body scroll.

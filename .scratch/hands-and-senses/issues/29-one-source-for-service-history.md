@@ -70,4 +70,4 @@ independent stores of one fact, kept in step by hand. Every symptom falls out of
 - Suite green both ways, one run fresh. Migration test.
 - A test that screen and voice answer identically for the same service.
 - On the phone, with Kevin's real data: the Jeep's oil change reads correctly in both places, and
-  nothing else in his 54 maintenance items lost its history.
+  nothing else in the maintenance items lost its history.

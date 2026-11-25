@@ -114,7 +114,7 @@ crontab: `*/30 * * * * manage.py canvas_poll`.
     Canvas only when Canvas gives a due date. New rows: `origin_guid canvas:<id>`, title
     `<course label> · <assignment name>`.
   - **New rows use the short course label** (Kevin, 2026-09-27, after the live dry run titled
-    one `2026FA CSCI2100 21007 MAIN - Python Programming · Module 2: Assignment`). The label is
+    one `2026FA CSCI2100 10004 MAIN - Python Programming · Module 2: Assignment`). The label is
     the title prefix (text before " · ") of the oldest live row of the same household with the
     same `canvas_course_id`, else one whose `canvas_course` equals the derived code; with no
     sibling it is derived from Canvas's name: term code, section number and `MAIN -` dropped,

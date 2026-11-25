@@ -50,7 +50,7 @@ lied - the same shape of failure as CLAUDE.md section 4 rule 6.
 figure includes them and says so. This is ticket 02's rule and matches what `AccountBalanceRow`
 already does.
 
-**13. Missing coverage is stated in words, next to the number.** "$180 left - January's card
+**13. Missing coverage is stated in words, next to the number.** "<amount> left - January's card
 statement isn't imported." `coversMonthWithoutGaps` already computes this; it must reach the user's
 eye, not just the log.
 

@@ -74,7 +74,7 @@ believes it owns.
 ## RESTORED 2026-08-28, and the count that mattered proved the diagnosis
 
 `update public.events set deleted_at = null, kind = 'appointment' where deleted_at is not null and
-google_event_id is not null returning id` → **213 rows**. Verified from the table afterwards, not
+google_event_id is not null returning id` → **every matching row**. Verified from the table afterwards, not
 from the panel:
 
 | | before | after |
@@ -122,7 +122,7 @@ next mislabelled cohort would go the same way.
 
 Kevin: "do both tickets." Delegated, so these are my calls on his authority and open to reversal.
 
-### Q1 - what were the 88 soft-deleted rows? ANSWERED, and the retraction was RIGHT about them
+### Q1 - what were the soft-deleted rows? ANSWERED, and the retraction was RIGHT about them
 
 Grouped from the live table:
 
@@ -168,7 +168,7 @@ mechanism.
 
 ### Q2 - should the retraction run in its current form? NO, and this is the one that owes code
 
-It removed 213 rows in one pass and reported it as one line inside a success message. Nothing stated the
+It removed every matching row in one pass and reported it as one line inside a success message. Nothing stated the
 count before acting, nothing bounded it, and the only reason the damage was found is that the NEXT run
 failed loudly on an unrelated index.
 

@@ -14,7 +14,7 @@ tags: [ticket]
 
 # Build: HTML delivery
 
-Kevin, 2026-11-03: *"i ask alfred to make me an itinerary for a day trip into atlanta, alfred asks
+Kevin, 2026-11-03: *"i ask alfred to make me an itinerary for a day trip into a nearby city, alfred asks
 if he should call the claude session on my alienware, he calls it asks it to research and make the
 html, the claude session somehow delivers it to the phone... push the html file to legion"*.
 

@@ -15,13 +15,13 @@ tags: [ticket]
 # Google Calendar rows are a snapshot from 2026-09-01, not a feed
 
 Found 2026-09-05. "Labor Day" rendered on Sunday Sep 6; the row was stored `all_day = false` at UTC
-midnight, so every reader treated it as 7 PM the evening before. 18 Google rows had the same shape
+midnight, so every reader treated it as 7 PM the evening before. Other Google rows had the same shape
 and were corrected by SQL. The importer fix that was briefed alongside it turned out to have nothing
 to patch: **`calendar/CalendarImportController.kt` and `CalendarProvider.kt` were retired on
 2026-09-01** (`222e31e`, "Cut Google entirely; appointments become tickable"), and
 `NoCalendarContractTest` fails the build if `CalendarContract` reappears.
 
-So the 151 `source = google` rows on the server - 96 class meetings, birthdays, holidays, the
+So the `source = google` rows on the server - class meetings, birthdays, holidays, the
 appointments - are **frozen as of Sep 1**. Nothing added to Google Calendar since then reaches
 LEGION. Nothing changed there is reflected. The class meetings will still show on Thanksgiving week
 and on the Dec 10 no-class day because the recurrence was expanded once and never re-read.
