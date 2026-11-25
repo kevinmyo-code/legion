@@ -25,6 +25,8 @@ import org.json.JSONObject
  *   [SpeculativeAnswer], is the existing shape for this);
  * - [com.kevin.legion.vehicle.ClearCodesVoiceGate]: reads his words at the clear call: same hold;
  * - the read-through mark (ADR 0090) keys on tools, not words: unchanged;
+ * - the last conversation's carried turns ([RewakeCarry]) ride his turns' contents, so when this is
+ *   wired they must be prepended here too, exactly as `turnContentsFor` prepends them;
  * - the turn's merge carry and history: the transcript, once in, replaces [AUDIO_NOTE] in history,
  *   so later turns are text as today;
  * - the reply's speech may start before the transcript only if every guard above has passed; until
