@@ -586,6 +586,10 @@ class LiveSessionController(context: Context) {
     fun newConversation() {
         AssistantChatStore.clear()
         TypedTurnRecorder.newConversation()
+        // He asked to start fresh, so the last conversation is not carried into the next one
+        // ([RewakeCarry]). Unconditional, like the two clears above: the close below reaches no
+        // session when none is open, which is exactly when the holder has something in it.
+        rewakeCarry.wipe()
         sessionResumeHandle = null
         pendingThreadLossNotice = false
         // A fresh conversation gets a fresh socket on the next tap; none is opened here
@@ -1502,6 +1506,11 @@ class LiveSessionController(context: Context) {
                 // should start clean, not carry the interrupted turn's context forward.
                 sessionResumeHandle = null
                 pendingThreadLossNotice = false
+                // The same rule for the re-wake carry, and the one place that covers every crisis:
+                // a conversation he opened leaves nothing through its close ("crisis" is not an end
+                // he chose), and a ring window, a line Alfred opened and the typed panel never
+                // reach that close at all ([RewakeCarry.wipe]).
+                rewakeCarry.wipe()
                 // The panel keeps what was said (the person can still read it) and a voice
                 // conversation is marked ended; the crisis card is the response.
                 AssistantChatStore.update { it.sessionEnded() }

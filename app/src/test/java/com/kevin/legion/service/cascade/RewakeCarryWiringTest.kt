@@ -18,7 +18,7 @@ class RewakeCarryWiringTest {
 
     @Test
     fun `the holder outlives a conversation - the controller owns it and hands it to each one`() {
-        val controller = stripComments(File(sourceRoot(), "service/LiveSessionController.kt").readText())
+        val controller = controller()
         assertTrue("one holder for the device", controller.contains("private val rewakeCarry = RewakeCarry()"))
         assertEquals(
             "constructed once, never per conversation",
@@ -44,6 +44,48 @@ class RewakeCarryWiringTest {
         assertTrue(
             "and left in one place, under the same rule",
             bodyOf(s, "shutdown").contains("if (ownConversation) {"),
+        )
+    }
+
+    /**
+     * His "new chat" tap, in the case that matters. `cascade?.close("new conversation")` reaches no
+     * session once a conversation has ended (`onClosed` nulls `cascade`), which is exactly when the
+     * holder has something in it, so the wipe must not hang off that close or any other condition.
+     * It sits with the panel and recorder clears, which are unconditional for the same reason.
+     */
+    @Test
+    fun `his new chat tap wipes the holder even with no conversation open`() {
+        val body = bodyOf(controller(), "newConversation")
+        assertTrue("the tap reaches the holder itself", body.contains("rewakeCarry.wipe()"))
+        val wipeAt = body.indexOf("rewakeCarry.wipe()")
+        val closeAt = body.indexOf("cascade?.close(\"new conversation\")")
+        assertTrue("the close is still there for an open conversation", closeAt > 0)
+        assertTrue("and the wipe does not depend on it", wipeAt < closeAt)
+        // Nothing may put the wipe behind a condition: the statement before it is another
+        // unconditional clear, and no `if` opens between the body's start and the wipe.
+        assertFalse("the wipe is unconditional", body.substring(0, wipeAt).contains("if ("))
+        assertTrue(body.substring(0, wipeAt).contains("TypedTurnRecorder.newConversation()"))
+    }
+
+    /**
+     * A crisis teardown carries nothing forward (CLAUDE.md sec 9.1). The controller's one crisis
+     * handler is the place for it: "crisis" is not in [CloseCue.PLAYS], so a conversation he opened
+     * leaves nothing through its own close, but a ring window, a line Alfred opened and the typed
+     * panel never reach that close at all.
+     */
+    @Test
+    fun `a crisis teardown wipes the holder`() {
+        val controller = controller()
+        val crisis = controller.substring(controller.indexOf("is LiveEvent.CrisisDetected ->"))
+        assertTrue("before the next conversation can take anything", crisis.contains("rewakeCarry.wipe()"))
+        // With the rest of ticket 02's "the next chat starts clean", not behind any condition.
+        val wipeAt = crisis.indexOf("rewakeCarry.wipe()")
+        assertTrue(wipeAt > crisis.indexOf("sessionResumeHandle = null"))
+        assertTrue(wipeAt < crisis.indexOf("AssistantChatStore.update"))
+        assertEquals(
+            "wiped in the two places that mean forget, and nowhere else",
+            2,
+            Regex("rewakeCarry\\.wipe\\(\\)").findAll(controller).count(),
         )
     }
 
@@ -126,6 +168,8 @@ class RewakeCarryWiringTest {
     // --- source access ----------------------------------------------------------------------------
 
     private fun session() = stripComments(MainSource.read(MainSource.CASCADE_SESSION))
+
+    private fun controller() = stripComments(File(sourceRoot(), "service/LiveSessionController.kt").readText())
 
     private fun bodyOf(source: String, name: String): String {
         val signature = Regex("fun $name\\(").find(source)?.range?.first ?: fail("no fun $name(").let { -1 }
