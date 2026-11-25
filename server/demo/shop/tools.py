@@ -276,7 +276,10 @@ def _find(request, arguments: dict) -> ToolResult:
     # money check backs a figure only from the turn's tool text (`speech_rules.backed_cents`).
     text = "\n".join(lines) + (
         f"\nPolicies: {POLICY}\nSay prices exactly as written. Stock and the bundle above are the "
-        "only ones there are."
+        "only ones there are. Use a product's own words above to say why it suits what they told "
+        "you. With more than one product of the same kind here, name both prices and what "
+        "separates them before you recommend one. What a product 'goes with' is offered only "
+        "after they say they want that product."
     )
     data = {
         "items": items,
