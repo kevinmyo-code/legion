@@ -10,8 +10,11 @@ recruiter-demo tickets 07 and 10 (ADR 0068).
 - `GET /api/demo/media/<name>`: a media file the content names (a model, a still, a video,
   captions), byte ranges included.
 
-The last two are read by a recruiter's visit AND by a household owner, so
-Kevin can preview the page signed in as himself. A plain member is refused:
+The last two are read by a recruiter's visit AND by the owner of the household
+that runs this engine, so Kevin can preview the page signed in as himself. An
+owner of a second household on the engine is not that owner, and the page
+carries no household of its own, so the fence is
+`household.permissions.is_engine_owner`. A plain member is refused:
 the page is about one person, written for strangers, and nothing a member
 needs. Every route opts in with `allows_recruiter`, and
 `household.permissions.IsHouseholdMember` still refuses a recruiter whose
@@ -43,8 +46,12 @@ from demo.content import (
     public_content,
 )
 from demo.models import DemoVisit, RecruiterContent, RecruiterMediaFile
-from household.models import HouseholdMember, is_recruiter
-from household.permissions import RECRUITER_VISIT_OVER_CODE, IsHouseholdMember
+from household.models import is_recruiter
+from household.permissions import (
+    RECRUITER_VISIT_OVER_CODE,
+    IsHouseholdMember,
+    is_engine_owner,
+)
 from legion.client_ip import ClientIpThrottleMixin
 
 logger = logging.getLogger(__name__)
@@ -94,13 +101,25 @@ class RecruiterOnly(_SignedInMember):
 
 
 class RecruiterOrOwner(_SignedInMember):
+    """A recruiter's live visit, or the owner of the household that RUNS this
+    engine previewing the page as himself.
+
+    **The owner half is engine-wide, not this caller's household**
+    (`is_engine_owner`, the fence `releases.views` publishes behind). The page
+    and its files carry no `household_id` - they are one person's resume,
+    report and clips, loaded once per engine by `manage.py
+    load_recruiter_content` - so "an owner" had to mean a particular owner,
+    and an unqualified role check meant any owner of any household on the
+    engine (ADR 0045: there are several, and his parents' is coming). That
+    owner administers their own family's membership, not Kevin's demo page.
+    A plain member of either household is refused exactly as before.
+    """
+
     def has_permission(self, request, view) -> bool:
         super().has_permission(request, view)
         if is_recruiter(request.user):
             return True
-        if HouseholdMember.objects.filter(
-            user=request.user, role=HouseholdMember.OWNER
-        ).exists():
+        if is_engine_owner(request.user):
             return True
         raise exceptions.PermissionDenied(NOT_A_READER)
 
