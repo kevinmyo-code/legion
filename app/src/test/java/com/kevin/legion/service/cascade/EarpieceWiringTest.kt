@@ -114,6 +114,115 @@ class EarpieceWiringTest {
         assertTrue("and the old file is deleted", output.contains("deleteSharedPreferences(LEGACY_PREFS)"))
     }
 
+    /**
+     * Kevin, 2026-11-24, in the car: with the head unit's Bluetooth connected, Alfred did not hear him
+     * at all. Every buffer is measured, before every other gate, so the screen's bar keeps moving
+     * through a mute and a call pause as it did when the mic loop published it.
+     * [com.kevin.legion.service.turn.DeafMicFallbackTest] owns the decision itself.
+     */
+    @Test
+    fun `every mic buffer is measured first, and only the session reads a level`() {
+        val s = session()
+        val onBuffer = bodyOf(s, "onMicBuffer")
+        val measured = onBuffer.indexOf("if (readLevel(buf, n)) return")
+        assertTrue("the level is read on every buffer", measured >= 0)
+        for (gate in listOf("if (callPaused) return", "if (micMuted) return", "taker.feed(buf, n, playbackActive)")) {
+            assertTrue("measured before $gate", measured < onBuffer.indexOf(gate))
+        }
+        val level = bodyOf(s, "readLevel")
+        assertTrue("one peak per buffer", level.contains("MicSignal.peakAmplitude(buf, n)"))
+        assertTrue("the screen's bar reads it too", level.contains("MicLevel.publish(peak)"))
+        assertTrue("the window and the verdict are DeafMicFallback's", level.contains("deafMic.read("))
+        assertTrue("and once the switch runs, the capture feeds no turn",
+            level.contains("return deaf || deafMic.switching"))
+        assertTrue("only on the hands-free mic", level.contains("onHandsFreeMic = onHandsFreeMic"))
+        assertTrue("never on a live call", level.contains("inLiveCall = callLineUp.get()"))
+        // Playing, muted, call-paused, or an open with no voice yet: not a moment to judge a mic in.
+        assertTrue(
+            "judging names all four",
+            level.contains("!playbackActive && !micMuted && !callPaused && backend != null && player != null"),
+        )
+        val mic = stripComments(File(sourceRoot(), "service/cascade/CascadeMic.kt").readText())
+        assertFalse("the mic loop no longer publishes its own level", mic.contains("MicLevel.publish"))
+        assertFalse(mic.contains("MicSignal."))
+    }
+
+    /**
+     * The 2026-11-24 review's blocker: the switch suspends for seconds on the same single thread as
+     * the open path's "nothing is capturing, open one" check, so the claim has to cover it and the
+     * capture field must not read as free inside it.
+     */
+    @Test
+    fun `the deaf-mic switch holds the mic slot, and every reopen check honours it`() {
+        val s = session()
+        val back = bodyOf(s, "fallBackToPhoneMic")
+        assertTrue("the whole switch runs inside the claim", back.contains("deafMic.handOver {"))
+        assertFalse("and never lets go of the capture mid-switch", back.contains("micJob = null"))
+        val reopens = Regex("micJob == null[^)]*").findAll(s).map { it.value }.toList()
+        assertEquals("two places open the mic when none is capturing", 2, reopens.size)
+        for (check in reopens) {
+            assertTrue("a reopen check honours the hand-over: $check", check.contains("!deafMic.switching"))
+        }
+    }
+
+    @Test
+    fun `the fallback drops the hands-free route, then says out loud what did not happen`() {
+        val back = bodyOf(session(), "fallBackToPhoneMic")
+        val closed = back.indexOf("micJob?.cancelAndJoin()")
+        val left = back.indexOf("it.exit(\"hands-free mic deaf\")")
+        val rebuilt = back.indexOf("player?.rebuild()")
+        val settle = back.indexOf("delay(MicReopen.settleMs(")
+        val opened = back.indexOf("startMic(chime =")
+        val said = back.indexOf("sayMissedLine(DEAF_MIC_LINE)")
+        for ((what, at) in listOf("capture closed" to closed, "route left" to left, "player rebuilt" to rebuilt,
+            "settle" to settle, "mic opened" to opened, "said out loud" to said)) {
+            assertTrue("$what is in the fallback", at >= 0)
+        }
+        assertTrue("the capture closes before the route is let go", closed < left)
+        assertTrue("the player is rebuilt off the dead route, before the settle", left < rebuilt && rebuilt < settle)
+        assertTrue("the new route settles before the capture opens", settle < opened)
+        assertTrue("and the mode's own flag is cleared", back.contains("callAudio = null"))
+        // Seconds pass on a shared loop: a close, a call or a check-in's closer may have taken over.
+        val rechecked = back.indexOf("if (closing.get() || callPaused || checkInStep == CheckInStep.DONE)")
+        assertTrue("the state is checked again after the settle", rechecked in settle until opened)
+        // Spoken like any other reply, which is what arms his whole follow-up window again at drain.
+        assertTrue("he is told out loud, not only on screen", opened < said)
+        assertTrue("the chime stands in only when there is no voice to say it with",
+            back.contains("startMic(chime = backend == null || player == null)"))
+        // The window armed before he spoke must not close the conversation during the switch.
+        val stoodDown = back.indexOf("followUpEvent(FollowUpWindow.Event.TurnComplete)")
+        assertTrue("the old window stands down first", stoodDown in 0 until settle)
+        assertTrue("and something arms one again however it ends", back.contains("else backToListening()"))
+        val missed = bodyOf(session(), "sayMissedLine")
+        assertTrue("that path arms the window on a played line", missed.contains("afterReply()"))
+        assertTrue("and on one that could not be said", missed.contains("backToListening()"))
+    }
+
+    @Test
+    fun `the hands-free flag is cleared by every move off that route`() {
+        val s = session()
+        assertTrue("set only where the hands-free mic is entered",
+            bodyOf(s, "enterRoute").contains("onHandsFreeMic = callAudio != null"))
+        // The one door into call audio, a mid-conversation move to the earpiece included: from there
+        // the capture is the phone's own, and a quiet room must not be announced as a deaf car.
+        assertTrue(bodyOf(s, "enterCallAudio").contains("onHandsFreeMic = false"))
+        assertTrue(bodyOf(s, "fallBackToPhoneMic").contains("onHandsFreeMic = false"))
+        assertEquals("one place turns it on", 1, Regex("onHandsFreeMic = callAudio != null").findAll(s).count())
+    }
+
+    @Test
+    fun `a window that heard no turn says so, with its route and its loudest sample`() {
+        val s = session()
+        val line = bodyOf(s, "heardNothingLine")
+        assertTrue("silent once he has spoken", line.contains("if (heardSinceOpen)"))
+        assertTrue("the route it listened on", line.contains("heard_nothing=true mic_route="))
+        assertTrue("and the level, which is what tells a dead mic from a quiet man",
+            line.contains("mic_peak_open=\${deafMic.peakSinceOpen}"))
+        for (close in listOf("onFollowUpExpired", "closeCheckInUnanswered")) {
+            assertTrue("$close carries it", bodyOf(s, close).contains("heardNothingLine()"))
+        }
+    }
+
     @Test
     fun `only CallAudioMode enters the communication mode`() {
         val setters = sourceRoot().walkTopDown().filter { it.extension == "kt" }
