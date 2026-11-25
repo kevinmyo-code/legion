@@ -445,7 +445,12 @@ internal object LiveSurface {
             "reports the state read back from the player: say `playback` as it stands, and when " +
             "the result says the command could not be verified, say that instead of confirming.",
         "play_music" to "If the result says a playlist came from the public catalogue, say so and " +
-            "name what played. A history row with replayable false cannot be replayed: say so.",
+            "name what played. A history row with replayable false cannot be replayed: say so. " +
+            // 2026-11-24: three misses in a row, each retried with the artist still only inside
+            // `query`, where the gate cannot use it as its own evidence.
+            "After a miss, a retry puts the artist in `artist` and the title alone in `query`. " +
+            "closestHits rows are playable by their spotifyUri: on a yes, pass that, never a " +
+            "re-search by name.",
         // 2026-11-24: `count` was read aloud as a library size off a five-row page.
         "browse_my_music" to "`count` is this page, never how many he has. Say a library figure " +
             "only from `total`, and with truncated true say there are more. With no total, name " +
