@@ -17,7 +17,7 @@ import com.kevin.legion.service.TextChatEngine
  * Three rules keep it honest here, and a fourth lives in the session: only a conversation he opened
  * to talk (`ownConversation`) calls [take] or [ended] at all, so a proactive line, Brief me or a
  * ring window neither spends the context nor wipes it.
- * - **Only the end of his conversation.** [CloseCue.endsHisConversation] is the one definition of
+ * - **Only the end of his conversation.** [CloseCue.PLAYS] is the one definition of
  *   that, shared with the closing chime: a preemption, a controller teardown, a failed voice or a
  *   crisis leaves nothing behind.
  * - **Nothing from a conversation that read outside text (ADR 0090).** Such a conversation keeps
@@ -83,6 +83,6 @@ internal class RewakeCarry {
 
         /** Whether a conversation that ended for [reason] leaves its turns behind at all. */
         fun keeps(reason: String, test: Boolean, outsideTextRead: Boolean, turns: List<ChatTurn>): Boolean =
-            !test && !outsideTextRead && turns.isNotEmpty() && CloseCue.endsHisConversation(reason)
+            !test && !outsideTextRead && turns.isNotEmpty() && reason in CloseCue.PLAYS
     }
 }
