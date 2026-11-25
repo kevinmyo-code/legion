@@ -111,6 +111,88 @@ object MusicController {
         withPhoneController(context, requirePlaying = false) { it.transportControls.skipToPrevious() }
 
     /**
+     * One PHONE transport command with that session's own state read back
+     * (`music-suggestions-1124` P4, mirrored from the phone app so Moose and Alfred answer the
+     * same way). [dispatched] says the command left here; [before]/[after] are what the session
+     * reported either side of it, for [TransportReadback.verdict] to judge.
+     *
+     * [withPhoneController] returns true the instant a command is DISPATCHED without throwing,
+     * which is not the same as the player having done it. Head-unit Spotify does not need this:
+     * [SpotifyController.transport] already awaits App Remote's own CallResult.
+     */
+    internal data class MoveReport(
+        val dispatched: Boolean,
+        val before: TransportReadback.Observation?,
+        val after: TransportReadback.Observation?,
+    )
+
+    /**
+     * Dispatches [move] to the phone session and reads THE SAME controller back until the state
+     * settles or [TransportReadback.BUDGET_MS] runs out. The same controller deliberately: looking
+     * the session up again could land on another app's and read its state as the answer.
+     *
+     * Must be called on a thread with a Looper (see this object's own note).
+     */
+    @Suppress("ReturnCount", "TooGenericExceptionCaught") // guard clauses; a transport throw must no-op
+    internal suspend fun runMove(context: Context, move: TransportReadback.Move): MoveReport {
+        // The same pick [withPhoneController] makes with requirePlaying false: a playing
+        // non-Spotify session first, else the first one found. A different pick here would read
+        // one session's state back after commanding another.
+        val phone = activeSessions(context).filter { it.packageName != SPOTIFY_PACKAGE }
+        val c = phone.firstOrNull { it.playbackState?.state == PlaybackState.STATE_PLAYING }
+            ?: phone.firstOrNull()
+            ?: return MoveReport(dispatched = false, before = null, after = null)
+        val before = observe(c)
+        val sent = try {
+            when (move) {
+                TransportReadback.Move.PLAY -> c.transportControls.play()
+                TransportReadback.Move.PAUSE -> c.transportControls.pause()
+                TransportReadback.Move.NEXT -> c.transportControls.skipToNext()
+                TransportReadback.Move.PREVIOUS -> c.transportControls.skipToPrevious()
+            }
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "phone transport command failed: ${e.message}")
+            false
+        }
+        if (!sent) return MoveReport(dispatched = false, before = before, after = null)
+        var after = observe(c)
+        var waited = 0L
+        while (TransportReadback.verdict(move, before, after) != TransportReadback.Verdict.CONFIRMED &&
+            waited < TransportReadback.BUDGET_MS
+        ) {
+            kotlinx.coroutines.delay(TransportReadback.STEP_MS)
+            waited += TransportReadback.STEP_MS
+            after = observe(c)
+        }
+        return MoveReport(dispatched = true, before = before, after = after)
+    }
+
+    /**
+     * What this session reports now, or null when it publishes no playback state at all - a real
+     * answer ("cannot tell"), never to be read as paused. A Bluetooth bridge reporting STATE_NONE
+     * while it plays is exactly why a skip is judged on the item, not on this flag.
+     */
+    private fun observe(c: MediaController): TransportReadback.Observation? {
+        val state = c.playbackState ?: return null
+        val key = c.metadata?.let {
+            it.getString(android.media.MediaMetadata.METADATA_KEY_MEDIA_ID)
+                ?: it.getString(android.media.MediaMetadata.METADATA_KEY_TITLE)
+        }
+        return TransportReadback.Observation(
+            // Only an explicit pause or stop is "not playing". Buffering, connecting and every
+            // other state are UNKNOWN: a play that is still buffering has not failed.
+            playing = when (state.state) {
+                PlaybackState.STATE_PLAYING -> true
+                PlaybackState.STATE_PAUSED, PlaybackState.STATE_STOPPED -> false
+                else -> null
+            },
+            trackKey = key?.takeIf { it.isNotBlank() },
+            positionMs = state.position.takeIf { it >= 0 },
+        )
+    }
+
+    /**
      * Pauses the driver's PHONE stream specifically (not Spotify on the head
      * unit) - used when switching TO head-unit Spotify, so acct A goes quiet
      * before acct B starts. No-ops (returns false) if the phone isn't
