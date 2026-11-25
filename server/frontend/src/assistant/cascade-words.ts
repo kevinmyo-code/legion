@@ -28,18 +28,46 @@ export const TURN_STALLED: Notice = {
   text: 'The engine took too long to answer, so the page stopped waiting. Tap to start again.',
 }
 
-/** The phone's closing tone (spec 17): 150 ms, half gain. */
-const TONE_MS = 150
-const TONE_HZ = 880
 export const TONE_RATE = 24_000
 
-/** The phone's closing tone as 16-bit PCM. */
+/**
+ * The phone's closing chime, note for note (`app/.../service/ListenCue.kt` `closeChimePcm`, its
+ * `CLOSE_*` constants and `EARCON_GAIN`). Kevin, 2026-11-24: the demo's voice behavior is the
+ * phone's, so this is the phone's sound and not an approximation of it.
+ *
+ * A falling fifth, F#5 then B4, the second note longer and softer, about 290 ms in all, with
+ * raised-cosine edges so it never clicks. It was a single 150 ms 880 Hz tone at half gain here,
+ * which was neither the phone's pitch, length nor shape. `cascade-words.test.ts` reads the Kotlin
+ * for the five numbers, as the engine's wait lines do for theirs.
+ */
+const CLOSE_HIGH_HZ = 740
+const CLOSE_HIGH_SEC = 0.1
+const CLOSE_GAP_SEC = 0.04
+const CLOSE_LOW_HZ = 494
+const CLOSE_LOW_SEC = 0.15
+const CLOSE_EDGE_SEC = 0.02
+const EARCON_GAIN = 0.25
+
+/** The phone's closing chime as 16-bit PCM at `TONE_RATE`. */
 export function closingTone(): Int16Array {
-  const n = Math.round((TONE_RATE * TONE_MS) / 1000)
-  const out = new Int16Array(n)
-  for (let i = 0; i < n; i++) {
-    const fade = Math.min(1, i / 240, (n - i) / 240)
-    out[i] = Math.round(0.5 * fade * 0x7fff * Math.sin((2 * Math.PI * TONE_HZ * i) / TONE_RATE))
+  const notes: Array<[number, number]> = [
+    [CLOSE_HIGH_HZ, CLOSE_HIGH_SEC],
+    [0, CLOSE_GAP_SEC],
+    [CLOSE_LOW_HZ, CLOSE_LOW_SEC],
+  ]
+  const edge = Math.trunc(CLOSE_EDGE_SEC * TONE_RATE)
+  const out = new Int16Array(notes.reduce((n, [, secs]) => n + Math.trunc(secs * TONE_RATE), 0))
+  let at = 0
+  for (const [freq, secs] of notes) {
+    const n = Math.trunc(secs * TONE_RATE)
+    for (let i = 0; i < n; i++) {
+      // The phone's envelope: a raised cosine over `edge` samples at each end.
+      const ramp = Math.min(1, Math.min(i, n - 1 - i) / edge)
+      const env = 0.5 - 0.5 * Math.cos(Math.PI * ramp)
+      const v = freq === 0 ? 0 : Math.sin((2 * Math.PI * freq * i) / TONE_RATE) * env * EARCON_GAIN
+      out[at + i] = Math.trunc(v * 0x7fff)
+    }
+    at += n
   }
   return out
 }

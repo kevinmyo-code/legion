@@ -71,10 +71,26 @@ def test_a_request_gets_an_acknowledgement_before_the_model_answers(
     assert "<" not in ack["text"]
 
 
-@pytest.mark.parametrize("words", ["Thanks!", "Hi there.", "Okay cool.", "That's all, thanks."])
-def test_small_talk_and_sign_offs_get_no_acknowledgement(
+@pytest.mark.parametrize("words", ["Thanks!", "Hi there.", "Okay cool."])
+def test_small_talk_gets_one_too_now_that_it_claims_nothing(
     member, engine, monkeypatch, household_user, words
 ):
+    """Kevin, 2026-11-24: the demo's voice behavior is the phone's, and the phone backchannels on
+    every turn of his with no small-talk skip. It used to say nothing here, because the words were
+    "Yeah, one sec." and promising a look after "Thanks!" is wrong. The words are the phone's own
+    now (`fillers.ACK`), so "Mm." after "Thanks!" is exactly what the phone says."""
+    _warm(monkeypatch, engine, household_user)
+    engine.speech.heard = words
+    engine.model = FakeModel([say("Anytime.")])
+    said = _of(_events(_post(member, audio=PCM)), "filler")
+    assert [f["text"] for f in said] == [f["text"] for f in said if f["text"] in fillers.ACK]
+    assert len(said) == 1, said
+
+
+@pytest.mark.parametrize("words", ["That's all, thanks.", "Goodbye.", "bye"])
+def test_a_sign_off_still_gets_none(member, engine, monkeypatch, household_user, words):
+    # The phone's own GOODBYE skip (`Backchannel.kt` wordsSkip): the closing line and the chime are
+    # the last thing heard, with nothing light in front of them.
     _warm(monkeypatch, engine, household_user)
     engine.speech.heard = words
     engine.model = FakeModel([say("Anytime.")])

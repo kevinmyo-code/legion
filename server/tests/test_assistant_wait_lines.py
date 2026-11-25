@@ -22,6 +22,7 @@ CASCADE_KT = (
 )
 TIMING_KT = CASCADE_KT / "FillerTiming.kt"
 WAIT_KT = CASCADE_KT / "WaitFillers.kt"
+BACKCHANNEL_KT = CASCADE_KT / "Backchannel.kt"
 
 
 def _const(path: Path, name: str) -> int:
@@ -58,6 +59,52 @@ def test_the_wait_lines_are_the_phones_words():
     found = re.search(r"val LINES = listOf\(([^)]*)\)", WAIT_KT.read_text(encoding="utf-8"))
     assert found is not None, "WaitFillers.LINES moved: the phone's words are the source"
     assert tuple(re.findall(r'"([^"]+)"', found.group(1))) == w.LINES
+
+
+def test_the_acknowledgement_says_the_phones_backchannel_words():
+    # Kevin, 2026-11-24: the demo's voice behavior is the phone's, only the persona differs. The
+    # words were "Yeah, one sec." and three variants, which promised a look; the phone's claim
+    # nothing, which is why every turn of theirs can have one.
+    found = re.search(r"val LINES = listOf\(([^)]*)\)", BACKCHANNEL_KT.read_text(encoding="utf-8"))
+    assert found is not None, "Backchannel.LINES moved: the phone's words are the source"
+    assert tuple(re.findall(r'"([^"]+)"', found.group(1))) == fillers.ACK
+
+
+def test_the_goodbye_skip_knows_the_phones_farewell_words():
+    kt = (CASCADE_KT.parent / "Farewells.kt").read_text(encoding="utf-8")
+    found = re.search(r"val FAREWELLS: List<String> = listOf\((.*?)\n    \)", kt, re.S)
+    assert found is not None, "Farewells.FAREWELLS moved: the phone's words are the source"
+    assert tuple(re.findall(r'"([^"]+)"', found.group(1))) == fillers.FAREWELLS
+
+
+@pytest.mark.parametrize(
+    "words",
+    ["bye", "Goodbye.", "bye bye", "thanks, bye", "okay bye", "See you later!", "take care"],
+)
+def test_a_goodbye_is_one_however_it_is_said(words):
+    # The engine's `is_stop_utterance` closes a conversation but does not know a plain "bye", so
+    # the acknowledgement asks the phone's list instead (`fillers.is_farewell`).
+    assert fillers.is_farewell(words)
+
+
+@pytest.mark.parametrize(
+    "words", ["Thanks!", "Hi there.", "Okay cool.", "What did we spend last month?", ""]
+)
+def test_courtesy_alone_is_not_a_goodbye(words):
+    # "Thanks!" is courtesy at both ends and nothing else; it keeps its acknowledgement.
+    assert not fillers.is_farewell(words)
+
+
+def test_no_acknowledgement_promises_a_look():
+    # The whole reason the words changed: one that promises a look cannot be said after "Thanks!".
+    for line in fillers.ACK:
+        assert not re.search(r"\b(sec|second|moment|minute|checking|looking)\b", line, re.I), line
+
+
+def test_the_acknowledgement_and_the_holding_lines_share_no_words():
+    # A reader tells the two kinds of line apart by its text (`cascade._answer`), so they must not
+    # overlap.
+    assert not set(fillers.ACK) & set(w.LINES)
 
 
 def test_every_wait_line_is_warmed_so_it_can_be_said_from_memory():

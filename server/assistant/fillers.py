@@ -139,28 +139,69 @@ FALLBACK = ("Working on it.", "One moment.")
 # is already `FALLBACK`'s first line, so the set costs four new renders per voice, not five.
 WAIT = ("Still on it.", "Still checking.", "One moment more.", "Bear with me.", "Working on it.")
 
-# The acknowledgement said at once when a turn clearly needs a look (voice-persona section 8.2),
-# before any tool starts. It claims nothing: it says a look is coming, not that one ran.
+# The acknowledgement said at once on a turn of theirs, before any tool starts.
+#
+# These are the PHONE's backchannel words (`app/.../service/cascade/Backchannel.kt` LINES), pinned
+# by `test_assistant_wait_lines.py`. Kevin, 2026-11-24: the demo's voice behavior is the phone's and
+# only the persona differs, so the words are the phone's too.
+#
+# They were "Yeah, one sec." and three variants until then. Content-free matters for more than
+# faithfulness: "one sec" PROMISES a look, so it could only be said on a turn that was going to take
+# one, which is why the web skipped small talk and sign-offs and said nothing at all on them. "Mm."
+# claims nothing, so it needs no such skip and every turn of theirs can have one, as on the phone.
 ACK_TOOL = "__ack__"
-ACK = ("Yeah, one sec.", "Sure, one sec.", "Okay, one sec.", "Mm, one sec.")
+ACK = ("Mm.", "Right.", "Yeah.", "Hmm.", "Okay.", "Mhm.", "Uh-huh.", "Alright.")
 
 
-# Small talk, a greeting or a sign-off (`test_sounding_human`). This is the one place the web
-# deliberately differs from the phone, and the reason is the WORDS, not the timing: the phone's
-# backchannel is content-free ("Mm.", "Right."), which sits fine after "Thanks!", while this door's
-# acknowledgement promises a look ("Yeah, one sec.") and after "Thanks!" it is just wrong. Closing
-# that for real means content-free words on the web, which is the voice contract's Q3.
-_SMALL_TALK = re.compile(
-    r"^\W*(hi|hey|hello|thanks|thank you|cheers|ok|okay|cool|great|nice|bye|good ?bye|"
-    r"good (morning|evening|night)|yes|no|yeah|nope|sure)\b",
-    re.I,
-)
+# The phone's goodbye words (`app/.../service/Farewells.kt` FAREWELLS), pinned by
+# `test_assistant_wait_lines.py`. The engine's own stop rule (`is_stop_utterance`) is a narrower
+# list built for CLOSING a conversation and does not know a plain "bye", so the acknowledgement
+# needed the phone's list to skip where the phone skips. Used for that skip only: what closes a web
+# conversation is unchanged.
+FAREWELLS = (
+    "bye", "bye bye", "byebye", "buh bye", "bye now", "goodbye", "good bye", "bye for now",
+    "good night", "goodnight", "night", "night night", "nighty night", "nite", "nite nite",
+    "g night",
+    "see you", "see ya", "see you later", "see ya later", "see you tomorrow", "see you soon",
+    "talk to you later", "talk later", "talk soon", "catch you later", "later", "ciao", "cheerio",
+    "farewell", "peace out", "take care", "have a good night", "have a good one",
+)  # fmt: skip
+
+# Courtesy at either end, which the phone takes off before judging a goodbye
+# (`Farewells.withoutCourtesy`), so "thanks, bye" and "okay bye" are goodbyes.
+_COURTESY = frozenset({"thanks", "thank", "you", "please", "ok", "okay", "alright", "right"})
+
+_NOT_WORD = re.compile(r"[^a-z0-9]+")
 
 
-def is_light(words: str | None) -> bool:
-    """Nothing that needs a look: too short to be a request, or small talk."""
-    text = (words or "").strip()
-    return len(text.split()) < 4 or bool(_SMALL_TALK.match(text))
+def _normalised(words: str | None) -> list[str]:
+    """The phone's `Farewells.normalise`: lowercase, every run of non-letters one space."""
+    return _NOT_WORD.sub(" ", (words or "").lower()).split()
+
+
+def is_farewell(words: str | None) -> bool:
+    """The whole turn is a goodbye and nothing else (the phone's `Farewells.madeOf`): one or more
+    farewell phrases, with courtesy allowed at either end. Pure."""
+    said = _normalised(words)
+    while said and said[0] in _COURTESY:
+        said = said[1:]
+    while said and said[-1] in _COURTESY:
+        said = said[:-1]
+    if not said:
+        # Courtesy and nothing else ("Thanks!"), or silence: not a goodbye. Without this an empty
+        # list fell out of the loop below as True and every "Thanks!" turn lost its backchannel.
+        return False
+    # Longest phrase first, so "bye bye" is one phrase and not "bye" twice.
+    phrases = sorted(FAREWELLS, key=lambda p: -len(p.split()))
+    while said:
+        for phrase in phrases:
+            parts = phrase.split()
+            if said[: len(parts)] == parts:
+                said = said[len(parts) :]
+                break
+        else:
+            return False
+    return True
 
 
 def ack_skip(*, from_user: bool, over_reply: bool, words: str, crisis: bool, goodbye: bool):
@@ -171,13 +212,13 @@ def ack_skip(*, from_user: bool, over_reply: bool, words: str, crisis: bool, goo
     and `half_duplex`. Kevin, 2026-11-24: the guide and Alfred behave the same in every voice
     behavior and the phone is the default, so the phone's list is the list.
 
-    The phone plays one on EVERY turn of his. The web used to say one only on a conversation's FIRST
-    utterance, which is what left every later question silent until the answer; that narrowing is
-    reversed here, and it is what Kevin asked for.
+    The phone plays one on EVERY turn of his, with no small-talk and no minimum-length skip, and
+    this is now the same list. The web used to say one only on a conversation's FIRST utterance and
+    only when the words looked like work, which left every later question silent until the answer.
 
-    The web keeps ONE skip the phone has no equivalent of, `light`, for the reason given above
-    `_SMALL_TALK`: this door's words promise a look, so they cannot go after "Thanks!". It is last,
-    so every reason the phone has wins the token.
+    Small talk and sign-offs get one too, as on the phone. That only became right once the words
+    became content-free (see `ACK`): "Mm." after "Thanks!" is what the phone says, where
+    "Yeah, one sec." would have promised a look nobody asked for.
 
     Pure: the caller answers each question, so nothing here reads a request or a clock.
     """
@@ -189,10 +230,8 @@ def ack_skip(*, from_user: bool, over_reply: bool, words: str, crisis: bool, goo
         return "noise"
     if crisis:
         return "crisis"
-    if goodbye:
+    if goodbye or is_farewell(words):
         return "goodbye"
-    if is_light(words):
-        return "light"
     return None
 
 
