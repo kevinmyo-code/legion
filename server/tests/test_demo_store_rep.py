@@ -390,6 +390,126 @@ def test_a_quote_over_the_stock_is_refused(visitor, shop_visit, engine):
     assert not ShopOrder.objects.filter(visit=shop_visit).exists()
 
 
+# =============================================================================
+# Consult before selling (the live run of 2026-11-24)
+# =============================================================================
+
+
+@pytest.mark.parametrize(
+    "words,buying",
+    [
+        # Still asking. A shopper in this shape got a product and an add-on pushed at them on
+        # every turn of the live run, an outright request for advice included. Invented lines.
+        ("What sort of thing do you stock?", False),
+        ("Recommend me a pack", False),
+        ("Which one is lighter?", False),
+        ("Yeah, recommend me something warmer.", False),
+        ("Sure, tell me about the tent.", False),
+        ("Which one should I buy?", False),
+        ("Just looking, thanks", False),
+        ("What are my options?", False),
+        # Orders, including the shapes the rest of this file already relies on, and the three a
+        # consulting call ends in: the objection answer taken, and the recommendation accepted.
+        ("Okay, the cheaper one then", True),
+        ("I want the cheaper one", True),
+        ("Okay, the one you recommended.", True),
+        ("Let's go with what you suggested.", True),
+        ("One headlamp please", True),
+        ("I'll take the 40L and the rain cover.", True),
+        ("Add a water bladder", True),
+        ("Just place my order", True),
+        ("Yes, place it.", True),
+        ("Which one? I'll take the 40L.", True),
+    ],
+)
+def test_wants_to_buy_reads_the_shoppers_own_words(words, buying):
+    assert shop_tools.wants_to_buy(words) is buying
+
+
+def _packs_lookup():
+    from types import SimpleNamespace
+
+    data = {
+        "items": [
+            {"sku": "LP-PK40", "price_cents": 12_900, "in_stock": 14},
+            {"sku": "LP-PK28", "price_cents": 9_800, "in_stock": 6},
+            {"sku": "LP-RC40", "price_cents": 2_400, "in_stock": 40},
+        ],
+        "bundles": [{"skus": ["LP-PK40", "LP-RC40"], "saving_cents": 1_000}],
+    }
+    return SimpleNamespace(name="shop_find", ok=True, data=data)
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    [
+        # What the frame now asks the rep for: the reason, the comparison, the question first,
+        # the add-on after. The sentence check has to let all of it through, or the frame asks
+        # for answers that never reach the visitor.
+        "What will you be using it for?",
+        "For a day on the hill I'd take the Ridgeline 40L at $129.00: the padded hip belt "
+        "carries a day's water and food.",
+        "The Ridgeline 40L is $129.00 with a padded hip belt; the Ridgeline 28L is $98.00, "
+        "lighter, with no hip belt.",
+        "Since you want to keep it light, the 28L at $98.00 is the lighter one and there are 6 "
+        "in stock.",
+        "For a loaded day I'd take the 40L for the hip belt.",
+        "Would you like me to put the Ridgeline 40L down for you?",
+        "Now that you've got the 40L, the Pack Rain Cover at $24.00 fits packs from 28 to 40 "
+        "litres.",
+    ],
+)
+def test_a_consulting_answer_survives_the_sentence_check(sentence):
+    assert guards.claim_reason(sentence, [_packs_lookup()]) is None
+
+
+def test_a_quote_while_they_are_still_asking_is_refused_and_nothing_is_priced(
+    visitor, shop_visit, engine
+):
+    """A shopper asking for advice, which in the live run got a product pushed instead. A
+    read-back carries a total and asks for a yes, so it needs their own intent first."""
+    engine.model = FakeModel(
+        [
+            call("shop_find", {"query": "daypack"}),
+            call("shop_quote", PACK_AND_COVER),
+            say("I've put that together for you."),
+        ]
+    )
+    events, _ = _turn(visitor, "Recommend me something for day hikes")
+    quote = [t for t in _of(events, "tool") if t["name"] == "shop_quote"][0]
+    assert quote["ok"] is False and "do not say they want to buy" in quote["text"]
+    assert not ShopOrder.objects.filter(visit=shop_visit).exists()
+
+
+def test_a_quote_goes_through_once_they_say_they_want_it(visitor, shop_visit, engine):
+    engine.model = FakeModel([call("shop_quote", PACK_AND_COVER)])
+    events, _ = _turn(visitor, "I'll take the 40L and the rain cover.")
+    assert "That's $143.00 in all. Shall I place it?" in _said(events)
+    assert ShopOrder.objects.get(visit=shop_visit).status == ShopOrder.QUOTED
+
+
+def test_the_lookup_tells_the_rep_to_give_a_reason_compare_and_hold_the_add_on(
+    visitor, shop_visit, engine
+):
+    """Two packs come back from one lookup; the result text is what makes the rep use both and
+    keep the add-on until they have chosen (the live run named only the first, every turn)."""
+    engine.model = FakeModel([call("shop_find", {"query": "day pack"}), say("Right.")])
+    events, _ = _turn(visitor, "Something to carry a day's kit up a hill")
+    text = [t for t in _of(events, "tool") if t["name"] == "shop_find"][0]["text"]
+    assert "LP-PK40" in text and "LP-PK28" in text
+    assert "why it suits what they told you" in text
+    assert "name both prices and what separates them" in text
+    assert "offered only after they say they want that product" in text
+
+
+def test_the_frame_asks_for_a_reason_and_holds_the_add_on_until_they_choose():
+    assert "Consult before you sell" in SHOP_FRAME
+    assert "name no product that turn" in SHOP_FRAME
+    assert "say WHY it suits what THEY said" in SHOP_FRAME
+    assert "ONLY after they have said they want a product" in SHOP_FRAME
+    assert "never end a reply by offering to add something before they have chosen" in SHOP_FRAME
+
+
 def test_the_quote_is_code_arithmetic():
     q = catalogue.quote({"LP-SK": 2})
     assert (q.total_cents, q.shipping_cents) == (2 * 2_200 + 800, 800)
