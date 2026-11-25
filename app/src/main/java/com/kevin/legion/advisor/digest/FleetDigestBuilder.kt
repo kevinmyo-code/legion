@@ -216,7 +216,7 @@ object FleetDigestBuilder : DigestBuilder {
             else -> "nothing anchored on either axis"
         }
         // A miles-only item with no reading on its newest service row can be timed on no axis at
-        // all (VehicleController.needsMileageReading). It is named here, on the same line, because
+        // all (needsMileageReading). It is named here, on the same line, because
         // this feeds a model's own context and an omission reads as "fine".
         val needsMileage = if (next.needsMileage.isNotEmpty()) {
             " (no mileage reading against ${next.needsMileage.joinToString(", ")}, so nothing times those)"
@@ -275,31 +275,29 @@ object FleetDigestBuilder : DigestBuilder {
         // notLogged: this function's own doc promises there is no such thing as zero miles on an
         // odometer that has moved, and a `?: 0` would have broken that promise on the one line
         // tagged TrustTier.REPORTED, by inventing an average off a zero nobody recorded.
-        val withMileage = recentServices.filter { it.mileage != null }
+        // One list of readings, each with BOTH axes non-null, oldest first. Pairing the figures
+        // here rather than at each use is what keeps `?: 0` out of the arithmetic below - and it
+        // drops the trend's own guard to one comparison, which is the whole reason this is a typed
+        // list and not four nullable locals.
+        val readings = recentServices
+            .mapNotNull { r -> r.mileage?.let { Reading(r.id, it, r.date ?: 0L) } }
+            .sortedBy { it.on }
         val buckets = (0 until WINDOW_PERIODS).map { periodIndex ->
             val bucketEnd = now - periodIndex * MONTH_MS
             val bucketStart = bucketEnd - MONTH_MS
-            val inBucket = withMileage.filter { (it.date ?: 0L) in bucketStart..bucketEnd }
-            inBucket.mapNotNull { it.mileage }.maxOrNull()
+            readings.filter { it.on in bucketStart..bucketEnd }.maxOfOrNull { it.miles }
         }
         val bucketText = buckets.mapIndexed { i, mileage ->
             val label = if (i == 0) "current" else "-${i}mo"
             "$label ${mileage?.let { groupThousands(it) } ?: DigestText.notLogged()}"
         }.joinToString(", ")
 
-        // Oldest/newest among the rows that state a reading, so the delta is between two real
-        // anchors - two rows, both with a mileage, or there is no trend to state.
-        val oldest = withMileage.minByOrNull { it.date ?: 0L }
-        val newest = withMileage.maxByOrNull { it.date ?: 0L }
-        val oldestMiles = oldest?.mileage
-        val newestMiles = newest?.mileage
-        val olderTrend = if (oldestMiles != null && newestMiles != null && oldest!!.id != newest!!.id &&
-            (oldest.date ?: 0L) < now - WINDOW_PERIODS * MONTH_MS
-        ) {
-            // Both figures come from rows that state one - no `?: 0` anywhere in the arithmetic, or
-            // the average below is computed against a reading nobody recorded.
-            val milesDelta = newestMiles - oldestMiles
-            val monthsSpan = (((newest.date ?: 0L) - (oldest.date ?: 0L)).toDouble() / MONTH_MS).coerceAtLeast(1.0)
+        // Two DIFFERENT readings or there is no span to state at all.
+        val span = readings.first().takeIf { readings.size > 1 && it.id != readings.last().id }
+        val olderTrend = if (span != null && span.on < now - WINDOW_PERIODS * MONTH_MS) {
+            val newest = readings.last()
+            val milesDelta = newest.miles - span.miles
+            val monthsSpan = ((newest.on - span.on).toDouble() / MONTH_MS).coerceAtLeast(1.0)
             "%,d mi over %.1f mo (avg %.0f mi/mo)".format(milesDelta, monthsSpan, milesDelta / monthsSpan)
         } else {
             DigestText.notLogged()
@@ -311,6 +309,10 @@ object FleetDigestBuilder : DigestBuilder {
             TrustTier.REPORTED,
         )
     }
+
+    /** One service row that STATES a mileage: both axes non-null, so no figure below is a
+     * coalesced zero. See [odometerTrendLine]. */
+    private data class Reading(val id: Long, val miles: Int, val on: Long)
 
     /** Up to [MAX_LAST_SERVICE_LINES] most recent logged services, newest-first (the DAO's own
      * ordering) - [DigestText.notLogged] if the car has never had a service logged at all. */

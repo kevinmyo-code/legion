@@ -121,7 +121,7 @@ object CarCards {
             add("By time, ${time.serviceName} is soonest, about ${today.plusDays(time.remaining)}.")
         }
         // Named, not dropped: a miles-only item with no reading on its newest service is the one
-        // thing on the schedule that cannot be timed at all (VehicleController.needsMileageReading).
+        // thing on the schedule that cannot be timed at all (needsMileageReading).
         if (next != null && next.needsMileage.isNotEmpty()) {
             val names = next.needsMileage.joinToString(", ")
             add("No mileage reading against $names, so it can't be timed by miles yet.")

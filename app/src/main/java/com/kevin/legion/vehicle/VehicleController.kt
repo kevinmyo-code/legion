@@ -632,13 +632,8 @@ object VehicleController {
         val refusal = when {
             match is ServiceMatch.Ambiguous ->
                 WriteOutcome(false, ambiguousServiceQuestion(match.candidates))
-            statedMileage != null -> setOdometer(context, statedMileage, vehicleId).takeIf { !it.success }?.let {
-                WriteOutcome(
-                    false,
-                    "${it.message} I haven't logged the $canonical either - say it again with the reading " +
-                        "you meant, or just say it was done and I'll log it with no mileage.",
-                )
-            }
+            statedMileage != null -> setOdometer(context, statedMileage, vehicleId).takeIf { !it.success }
+                ?.let { WriteOutcome(false, serviceNotLoggedMessage(it.message, canonical)) }
             else -> null
         }
         if (refusal != null) return refusal
@@ -689,19 +684,9 @@ object VehicleController {
                     // and no months interval nothing times it, and "I'm timing that one by date"
                     // would be a sentence about a schedule it does not have. Both anchors are the
                     // row just inserted, so the intervals are the whole question.
-                    val matchedItem = existingItems.firstOrNull { it.serviceName == matchedName }
-                    WriteOutcome(
-                        true,
-                        noteThen(
-                            questionNote,
-                            loggedServiceMessage(
-                                matchedName,
-                                statedMileage,
-                                timedByDate = matchedItem?.intervalMonths != null,
-                                timedByMiles = matchedItem?.intervalMiles != null,
-                            ),
-                        ),
-                    )
+                    val matched = existingItems.firstOrNull { it.serviceName == matchedName }
+                    val said = loggedServiceMessage(matchedName, statedMileage, matched?.intervalMonths, matched?.intervalMiles)
+                    WriteOutcome(true, noteThen(questionNote, said))
                 }
             }
 
@@ -1011,25 +996,20 @@ object VehicleController {
      * "write, then re-read rather than trust the caller's own input" discipline - the returned
      * message states what is ACTUALLY on the row afterward, never an echo of what was asked for.
      *
-     * [mileageMiles] and [costCents] are both written unconditionally (the edit form shows both
+     * [miles] and [costCents] are both written unconditionally (the edit form shows both
      * fields pre-filled with the record's current values, so "unchanged" and "explicitly cleared"
      * are indistinguishable at this layer by design - same shape [MaintenanceItemDao.setIntervals]'s
      * form-driven callers already use). `Long` cents throughout (CLAUDE.md §4 rule 3) - the caller
      * converts a driver-typed dollar string to cents before this is ever invoked.
      *
-     * **[mileageMiles] is nullable, and null means the row keeps no reading** - the same value a
+     * **[miles] is nullable, and null means the row keeps no reading** - the same value a
      * voice log with no stated mileage writes (see [logServiceDirect]'s rule 2). The form's reason
      * for existing is adding a cost to an existing record retroactively, and with a non-null `Int`
      * here, the only way to do that on a record with none was to write a reading nobody gave.
      * A `0` is not a reading either: the caller refuses it rather than passing it on.
      */
-    suspend fun editServiceRecordDirect(
-        context: Context,
-        id: Long,
-        mileageMiles: Int?,
-        costCents: Long?,
-    ): WriteOutcome {
-        val written = FleetEngineStore.editMileageAndCost(context, id, mileageMiles, costCents)
+    suspend fun editServiceRecordDirect(context: Context, id: Long, miles: Int?, costCents: Long?): WriteOutcome {
+        val written = FleetEngineStore.editMileageAndCost(context, id, miles, costCents)
         if (written == 0) {
             return WriteOutcome(false, "Couldn't save that - the record may have just been deleted.")
         }
@@ -1038,8 +1018,8 @@ object VehicleController {
         val costPhrase = after.costCents?.let { " at $${formatCents(it)}" }.orEmpty()
         // The read-back says what the row holds, so a row with no reading says that rather than
         // naming a figure ("0 miles", or a bare "null miles").
-        val milesPhrase = after.mileage?.let { "$it miles" } ?: "no mileage logged"
-        return WriteOutcome(true, "Updated ${after.serviceName}: $milesPhrase$costPhrase.")
+        val miles = after.mileage?.let { "$it miles" } ?: "no mileage logged"
+        return WriteOutcome(true, "Updated ${after.serviceName}: $miles$costPhrase.")
     }
 
     /**
@@ -2061,34 +2041,6 @@ object VehicleController {
     internal fun isUnknown(item: MaintenanceItem): Boolean =
         !item.neverDone && item.lastDoneMileage == null && item.lastDoneDate == null
 
-    /**
-     * True when the only interval this item has is a MILEAGE one and its mileage anchor is
-     * unknown, so nothing can ever bring it due - the car plan's slice 0 shape, made visible
-     * instead of silent.
-     *
-     * The case: an item with `intervalMiles` and no `intervalMonths` (legal everywhere -
-     * [setMaintenanceInterval] requires only one of the two, and the factory-schedule prompt emits
-     * `intervalMonths` as null) whose newest service row carries no mileage, which is what a plain
-     * "I got my oil changed today" now writes. [isDue]'s mileage axis needs
-     * [MaintenanceItem.lastDoneMileage] and its time axis needs [MaintenanceItem.intervalMonths],
-     * so the item is never due; [isUnknown] is false because the DATE anchor is set. It would
-     * simply drop off the schedule, and - worse - [computeNextService] would count it on neither
-     * axis nor as unknown, which is exactly the condition [NextService.allDue] reads as "everything
-     * is already due".
-     *
-     * So it is reported, on the axis that is actually missing: the item is known to have been done,
-     * the reading is not known, and the honest move is to ask for the reading rather than to time
-     * it by a date nobody can time it by. An item that CAN be timed by date (both an
-     * `intervalMonths` and a `lastDoneDate`) is not this case - the date axis genuinely times it,
-     * and only its mileage axis is dark. [isUnknown]'s own case (no anchor at all) is not this one
-     * either; the two never overlap, so [NextService.unknownNames] and [NextService.needsMileage]
-     * never name the same item twice.
-     */
-    internal fun needsMileageReading(item: MaintenanceItem): Boolean {
-        if (item.neverDone || isUnknown(item)) return false
-        val timeable = item.intervalMonths != null && item.lastDoneDate != null
-        return item.intervalMiles != null && item.lastDoneMileage == null && !timeable
-    }
 
     /**
      * Resolves the mileage anchor for [logPastServiceDirect]'s "milesAgo" phrasing
