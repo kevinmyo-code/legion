@@ -100,7 +100,7 @@ export function answerSentence(entry: Purchase, today: number): string {
     : `${entry.item}, bought ${when} (who: not recorded)`
 }
 
-/** "last bought Sep 20 · Mia" for a Groceries line. */
+/** "last bought Sep 20 · Rae" for a Groceries line. */
 export function lastBoughtLine(entry: Purchase, today: number): string {
   return `last bought ${dayLabelOrToday(entry.bought_on, today)} · ${whoWords(entry)}`
 }

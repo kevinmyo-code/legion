@@ -6,7 +6,7 @@ import { ME, createEngine, makeEvent, todayAt } from '../src/test/engine'
 import { seedSpend } from '../src/test/ledger-seed'
 
 /**
- * Ticket 10: Mia's Home and the family Lists screen, at phone width only
+ * Ticket 10: the family Home and the family Lists screen, at phone width only
  * (`familyOnly`). The workbench Home is pictured by the existing `home` and
  * `home-money` rows, so the same label proves it did not move.
  *
@@ -17,7 +17,7 @@ import { seedSpend } from '../src/test/ledger-seed'
 const PINS_KEY = 'legion.pins.v1'
 
 /**
- * Mia's engine: the household, a fortnight of calendar, and what the two accounts
+ * The second member's engine: the household, a fortnight of calendar, and what the two accounts
  * spent. The engine serves a member only the rows they may see (ADR 0052), so
  * Kevin's Canvas deadlines and Google class schedule are not in HER response and
  * are left out here: her private rows are her own (Pottery class).

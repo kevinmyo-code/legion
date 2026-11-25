@@ -198,7 +198,7 @@ fun interface ContactsReader {
     suspend fun read(names: List<String>): ContactsRead
 }
 
-/** Address text on a contact ("Mia's mom"). No address on the contact is said in words. */
+/** Address text on a contact ("Rae's mom"). No address on the contact is said in words. */
 class ContactSource(private val reader: ContactsReader) : DestinationSource {
     override val kind = SourceKind.CONTACTS
 
@@ -232,7 +232,7 @@ class ContactSource(private val reader: ContactsReader) : DestinationSource {
 
         /**
          * The names to look for: the phrase without a trailing "house", that without a trailing
-         * possessive ("Mia's mom's" names the contact "Mia's mom"), and the part before the first one.
+         * possessive ("Rae's mom's" names the contact "Rae's mom"), and the part before the first one.
          */
         fun candidateNames(query: String): List<String> {
             val q = QueryText.normalize(query).replace(PLACE_TAIL, "").trim()

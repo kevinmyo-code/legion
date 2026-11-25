@@ -13,7 +13,7 @@ A copy rather than a generated file because the engine's Docker image carries
 and fails on any field below that has drifted from it, so the copy cannot rot
 quietly. The phone still owns these; the engine follows.
 
-Kevin, 2026-10-04: Mia's companion is Dorothy ("her own companion. we already
+Kevin, 2026-10-04: a second member's companion is Dorothy ("her own companion. we already
 have dorothy. give that to her."); Kevin's is his own. `assistant/companions.py`
 applies that.
 """

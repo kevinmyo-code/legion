@@ -286,7 +286,7 @@ const ROUTES: Shot[] = [
   // Tickets 07, 09, 13: the calendar. Rows live in `calendar-shots.ts`.
   ...briefingShots,
   ...calendarShots,
-  // Ticket 10: Mia's Home and the family Lists. Rows live in `family-shots.ts`.
+  // Ticket 10: the family Home and the family Lists. Rows live in `family-shots.ts`.
   ...familyShots,
   // PWA Tetris polish: themes, pause. Rows live in `tetris-shots.ts`.
   ...tetrisShots,

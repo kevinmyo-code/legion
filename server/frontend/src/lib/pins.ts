@@ -7,7 +7,7 @@ import { tickState } from '@/lib/checklist'
  * Which lists sit on this device's Home (spec D6, ticket 10).
  *
  * **Per device, in `localStorage`, on purpose.** A pin is a convenience of the
- * person holding this phone: Mia pinning Groceries must never change what
+ * person holding this phone: one member pinning Groceries must never change what
  * Kevin's Home shows, and the engine has no column for it (ADR 0045: no roles,
  * and nothing finer than the household is stored). So the key is the only
  * state, and it lives here.

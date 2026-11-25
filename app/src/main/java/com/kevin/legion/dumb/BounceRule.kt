@@ -85,7 +85,7 @@ class BounceAllowance(private val clock: () -> Long = System::currentTimeMillis)
          * **OPEN QUESTION for Kevin (ADR 0062 does not answer it).** When a chosen person messages on
          * a hidden app (WhatsApp, say), does tapping that notification OPEN the app, or bounce like
          * any other hidden app? The rulings say a notification tap bounces and also that chosen people
-         * get through on any app; read literally the first wins and he can read Mia's message in the
+         * get through on any app; read literally the first wins and he can read that message in the
          * shade but not open the chat. Flip this to true to open the app for [PACKAGE_ALLOWANCE_MS]
          * after each chosen-person message on it. Left false so the build does what the rulings say.
          */

@@ -24,7 +24,7 @@ data class NotificationPeople(
  *
  * Name matching is EXACT after [normalizeName] (case, emoji and punctuation dropped). First-name
  * guessing was left out on purpose: a wrong match lets a stranger through, which is the failure the
- * mode exists to prevent, while a miss only holds one of Mia's messages until the digest.
+ * mode exists to prevent, while a miss only holds one of a chosen person's messages until the digest.
  */
 class PersonMatcher(private val people: List<ChosenPerson>) {
 
@@ -76,7 +76,7 @@ class PersonMatcher(private val people: List<ChosenPerson>) {
         }
 
         /**
-         * Invite names (household names such as "Mia") vs contact names ("Mia Wong"): one's words
+         * Invite names (household names such as "Rae") vs contact names ("Rae Quinn"): one's words
          * contain the other's.
          */
         fun namesOverlap(a: String, b: String): Boolean {

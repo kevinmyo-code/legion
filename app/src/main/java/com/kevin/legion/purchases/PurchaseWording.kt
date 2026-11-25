@@ -27,7 +27,7 @@ object PurchaseWording {
         return day.format(if (day.year == now.year) SAME_YEAR else OTHER_YEAR)
     }
 
-    /** "Mia", or "not recorded" for an entry whose logger was never stored. */
+    /** "Rae", or "not recorded" for an entry whose logger was never stored. */
     fun who(entry: Purchase): String = entry.loggedBy ?: "not recorded"
 
     /** "$4.99" from whole cents. */

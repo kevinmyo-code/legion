@@ -86,5 +86,5 @@ def clock(hour: int, minute: int) -> str:
 
 
 def game_invite(who: str) -> str:
-    """ "Mia invited you to a Tetris race. It lasts 3 minutes; the invite is open for 2." """
+    """ "Rae invited you to a Tetris race. It lasts 3 minutes; the invite is open for 2." """
     return f"{who} invited you to a Tetris race. It lasts 3 minutes; the invite is open for 2."

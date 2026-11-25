@@ -8,7 +8,7 @@ import { ErrorSentence, PageHeader, Panel } from '@/components/workbench/page'
 
 /**
  * `/games` (retro-games ticket 05, ADR 0060): Tetris alone, or a three-minute
- * score race with someone in the household. Both surfaces: Mia's phone is the
+ * score race with someone in the household. Both surfaces: a member's phone is the
  * family surface, and this is where her races start.
  *
  * Invites addressed to you are listed first, because one open for two minutes

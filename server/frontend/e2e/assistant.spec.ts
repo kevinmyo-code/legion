@@ -15,7 +15,7 @@ import { createEngine, seedHousehold, type Engine } from '../src/test/engine'
  *     npx playwright test e2e/assistant.spec.ts
  *
  * What this cannot say: how an iPhone behaves (mic prompt, crackle, earpiece,
- * lock). That is owed on Mia's phone (ticket 10). Pictures go to `ASSISTANT_SHOTS`
+ * lock). That is owed on a real iPhone (ticket 10). Pictures go to `ASSISTANT_SHOTS`
  * (default: the OS temp dir), never into the repo.
  */
 

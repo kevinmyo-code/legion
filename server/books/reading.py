@@ -11,7 +11,7 @@
 
 **Always the caller's own rows.** Every query is `household.tenancy.scoped`,
 then `user=request.user`: tenancy by household at the ADR 0045 choke point,
-then the member, because Mia's place in a book is hers (ticket 07). Another
+then the member, because a member's place in a book is their own (ticket 07). Another
 member's bookmark id is a miss like an id that never existed, and creating
 one under that id is refused rather than written over.
 

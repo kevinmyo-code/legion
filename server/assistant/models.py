@@ -4,7 +4,7 @@
 
 Ticket 03 (Kevin, 2026-10-04): "companion definitions (name, persona, voice)
 must be available to the engine per member, not only in the phone's local
-profile store", and Mia's is Dorothy. One row per member: the name the
+profile store", and a second member's is Dorothy. One row per member: the name the
 companion answers to, which built-in register it wears (`persona_key`, one of
 `assistant/personas.py`), an optional custom register that replaces it
 (`persona_fragment`, for a profile the phone pushes up later), and the Gemini

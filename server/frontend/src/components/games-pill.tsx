@@ -3,8 +3,8 @@ import { Gamepad2 } from 'lucide-react'
 
 /**
  * Home's way into Games on the family surface (retro-games ticket 05). The
- * family tab bar stays at its four tabs (spec D1); this is how Mia reaches
- * Tetris and a race from her phone.
+ * family tab bar stays at its four tabs (spec D1); this is how a member reaches
+ * Tetris and a race from a phone.
  */
 export function GamesPill() {
   return (

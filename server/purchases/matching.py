@@ -17,7 +17,7 @@ Two layers, in this order:
 
 **A loose match is never answered as if exact.** Every result carries the
 entry's own text, and `say_last_bought` names it: "You logged Head & Shoulders
-shampoo on Sep 20, 2026 (Mia)", never "you bought shampoo on Sep 20". Several
+shampoo on Sep 20, 2026 (Rae)", never "you bought shampoo on Sep 20". Several
 different items match: all of them, newest first, never one picked silently.
 No match: "I have no record of buying shampoo", never "you have never bought
 it" (ADR 0049's absent-record rule).

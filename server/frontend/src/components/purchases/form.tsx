@@ -26,7 +26,7 @@ function newSyncId(): string {
 /**
  * The "Log it" form, for a new entry or an edit of one's own.
  *
- * What it promises, because Mia is typing into it on a phone:
+ * What it promises, because someone is typing into it on a phone:
  *  - **Saved only on a 2xx.** Nothing is optimistic: `onSaved` is called after the
  *    engine said yes and not before.
  *  - **A failure keeps what was typed** and says in words what did not happen

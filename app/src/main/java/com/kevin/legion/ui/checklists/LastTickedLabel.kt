@@ -46,7 +46,7 @@ fun rememberLastTickedLabel(itemText: String): String? {
 
 /**
  * The item editor's history line, chosen by list (purchase-log ticket 08, ADR 0055): the Groceries
- * list reads "Last bought Sep 20 (middle dot) Mia" from the bought log, the same read the
+ * list reads "Last bought Sep 20 (middle dot) Rae" from the bought log, the same read the
  * `bought_log` voice tool makes through [PurchasesController]; every other list keeps
  * [rememberLastTickedLabel]'s "Last ticked" (ADR 0049). A separate function rather than a changed
  * [rememberLastTickedLabel] so that signature stays what it was.

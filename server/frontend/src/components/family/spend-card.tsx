@@ -13,7 +13,7 @@ import { HOME_COPY } from '@/lib/home-copy'
 import { monthLabel } from '@/lib/ledger'
 
 /**
- * "Spent this month" on Mia's Home (spec D6, ticket 10): one row per card, and a
+ * "Spent this month" on the family Home (spec D6, ticket 10): one row per card, and a
  * tap opens the categories.
  *
  * **Nothing here is computed.** A figure is `spend_cents` exactly as the engine

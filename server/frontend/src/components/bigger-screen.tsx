@@ -9,7 +9,7 @@ import { useSurface } from '@/lib/surface'
  * What a workbench-only page says at family width: this was made for a bigger
  * screen, and here is the way home.
  *
- * Mia can reach a desktop-only URL by a link or a bookmark; the answer is one
+ * A family-width visitor can reach a desktop-only URL by a link or a bookmark; the answer is one
  * plain card and a button, never a dense table squeezed into 390 px (spec user
  * story 31). It says what happened in words rather than redirecting silently,
  * because a page that quietly takes you somewhere else reads as a bug.
