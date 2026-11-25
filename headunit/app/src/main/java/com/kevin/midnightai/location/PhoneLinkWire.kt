@@ -47,6 +47,14 @@ object PhoneLinkWire {
     const val TYPE_FIX: Byte = 'F'.code.toByte()
     const val TYPE_ZONE: Byte = 'Z'.code.toByte()
     const val TYPE_REVOKE: Byte = 'R'.code.toByte()
+
+    /**
+     * Rev 9: the unit's own engine sign-in handed over AFTER the pairing (phone to unit), and this
+     * unit's "I stored it" (unit to phone). An older unit build refuses an unknown type as
+     * WRONG_TYPE before it reads the body or moves any state, so one of these costs it nothing.
+     */
+    const val TYPE_TOKEN: Byte = 'T'.code.toByte()
+    const val TYPE_TOKEN_OK: Byte = 'C'.code.toByte()
     const val SESSION_BYTES = 16
     const val CHALLENGE_BYTES = 8
     const val HEADER_BYTES = 5 + 1 + 1 + SESSION_BYTES + 8
@@ -57,6 +65,9 @@ object PhoneLinkWire {
     private const val FIX_BODY = CHALLENGE_BYTES + 2 + 8 + 8 + 4 + 4 + 4 + 8 + 4 + 4 + 4
     private const val HELLO_BODY = 4 + CHALLENGE_BYTES
     private const val MAX_ZONE_BYTES = 64
+    const val MAX_TOKEN_BYTES = 160
+    const val MAX_VEHICLE_BYTES = 64
+    const val FINGERPRINT_BYTES = 8
 
     /** Field bounds (spec 4.4 rule 6). */
     const val MAX_SPEED_MPS = 100f
@@ -197,6 +208,39 @@ object PhoneLinkWire {
         return seal(phoneToUnitKey, P2U, TYPE_REVOKE, session, counter, challenge.copyOf())
     }
 
+    /**
+     * Phone end (rev 9): `challenge 8 | len u8 | token | len u8 | vehicle id`. The vehicle id rides
+     * along so the frame alone says everything this unit must store.
+     */
+    fun encodeToken(phoneToUnitKey: ByteArray, session: ByteArray, counter: Long, challenge: ByteArray, token: String, vehicleId: String?): ByteArray {
+        val t = token.toByteArray(Charsets.US_ASCII)
+        val v = vehicleId?.toByteArray(Charsets.US_ASCII) ?: ByteArray(0)
+        require(challenge.size == CHALLENGE_BYTES && t.size in 1..MAX_TOKEN_BYTES && v.size <= MAX_VEHICLE_BYTES)
+        val body = ByteBuffer.allocate(CHALLENGE_BYTES + 2 + t.size + v.size).order(ByteOrder.BIG_ENDIAN)
+            .put(challenge).put(t.size.toByte()).put(t).put(v.size.toByte()).put(v).array()
+        return seal(phoneToUnitKey, P2U, TYPE_TOKEN, session, counter, body)
+    }
+
+    /** This unit's answer: the fingerprint of the token it stored, so the phone knows WHICH one. */
+    fun encodeTokenOk(unitToPhoneKey: ByteArray, session: ByteArray, counter: Long, fingerprint: ByteArray): ByteArray {
+        require(fingerprint.size == FINGERPRINT_BYTES)
+        return seal(unitToPhoneKey, U2P, TYPE_TOKEN_OK, session, counter, fingerprint.copyOf())
+    }
+
+    /** Phone end (and the tests' fake phone): the fingerprint this unit confirmed, or null. */
+    fun decodeTokenOk(unitToPhoneKey: ByteArray, data: ByteArray, length: Int): ByteArray? {
+        val opened = open(unitToPhoneKey, U2P, data, length).first ?: return null
+        if (opened.type != TYPE_TOKEN_OK || opened.body.size != FINGERPRINT_BYTES) return null
+        return opened.body.copyOf()
+    }
+
+    /**
+     * The first 8 bytes of SHA-256 over the token: not a secret (8 bytes of a hash of 256 random
+     * bits cannot be walked back) and never the token itself.
+     */
+    fun fingerprint(token: String): ByteArray = java.security.MessageDigest.getInstance("SHA-256")
+        .digest(token.toByteArray(Charsets.US_ASCII)).copyOf(FINGERPRINT_BYTES)
+
     fun encodeZone(phoneToUnitKey: ByteArray, session: ByteArray, counter: Long, challenge: ByteArray, zoneId: String): ByteArray {
         val id = zoneId.toByteArray(Charsets.US_ASCII)
         require(challenge.size == CHALLENGE_BYTES && id.size in 1..MAX_ZONE_BYTES)
@@ -212,6 +256,14 @@ object PhoneLinkWire {
         class Fix(override val session: ByteArray, override val counter: Long, override val challenge: ByteArray, val fix: PhoneFix) : Decoded
         class Zone(override val session: ByteArray, override val counter: Long, override val challenge: ByteArray, val zoneId: String) : Decoded
         class Revoke(override val session: ByteArray, override val counter: Long, override val challenge: ByteArray) : Decoded
+        /** Rev 9: an engine sign-in for this unit, and the car it is bound to (null = none). */
+        class Credential(
+            override val session: ByteArray,
+            override val counter: Long,
+            override val challenge: ByteArray,
+            val token: String,
+            val vehicleId: String?,
+        ) : Decoded
     }
 
     enum class BodyRefusal { WRONG_TYPE, BAD_FIELDS }
@@ -238,8 +290,27 @@ object PhoneLinkWire {
                 if (body.size != CHALLENGE_BYTES) return null to BodyRefusal.BAD_FIELDS.name
                 Decoded.Revoke(opened.session, opened.counter, body.copyOf()) to null
             }
+            TYPE_TOKEN -> parseToken(opened, body)
             else -> null to BodyRefusal.WRONG_TYPE.name
         }
+    }
+
+    /** Authenticated is not sane: every length is checked against what arrived, and ASCII only. */
+    private fun parseToken(opened: Opened, body: ByteArray): Pair<Decoded?, String?> {
+        val bad = null to BodyRefusal.BAD_FIELDS.name
+        if (body.size < CHALLENGE_BYTES + 2) return bad
+        val tokenLen = body[CHALLENGE_BYTES].toInt() and 0xFF
+        val vehicleAt = CHALLENGE_BYTES + 1 + tokenLen
+        if (tokenLen !in 1..MAX_TOKEN_BYTES || vehicleAt >= body.size) return bad
+        val vehicleLen = body[vehicleAt].toInt() and 0xFF
+        if (vehicleLen > MAX_VEHICLE_BYTES || vehicleAt + 1 + vehicleLen != body.size) return bad
+        val token = String(body, CHALLENGE_BYTES + 1, tokenLen, Charsets.US_ASCII)
+        if (!token.all { it.code in 0x21..0x7E }) return bad
+        val vehicle = String(body, vehicleAt + 1, vehicleLen, Charsets.US_ASCII).takeIf { it.isNotEmpty() }
+        if (vehicle != null && !vehicle.all { it.code in 0x21..0x7E }) return bad
+        return Decoded.Credential(
+            opened.session, opened.counter, body.copyOfRange(0, CHALLENGE_BYTES), token, vehicle,
+        ) to null
     }
 
     private fun parseFix(opened: Opened, body: ByteArray): Pair<Decoded?, String?> {

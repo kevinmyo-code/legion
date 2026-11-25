@@ -378,7 +378,15 @@ object BeaconClient {
                 continue
             }
             // One bad datagram must never end the loop (review L10).
-            runCatching { handle(context, packet) }.onFailure { Log.w(TAG, "Beacon datagram dropped", it) }
+            val reply = runCatching { handle(context, packet) }
+                .onFailure { Log.w(TAG, "Beacon datagram dropped", it) }.getOrNull()
+            // Rev 9: the only datagram this unit sends in reply to one. Sent from here, not from
+            // inside handle(), so the send path stays in one place beside the HELLO loop's.
+            if (reply != null) {
+                runCatching {
+                    sock.send(DatagramPacket(reply, reply.size, packet.address, packet.port))
+                }.onFailure { Log.v(TAG, "TOKEN_OK send failed: ${it.message}") }
+            }
         }
     }
 
@@ -389,10 +397,12 @@ object BeaconClient {
     @Volatile internal var rereadBaseMs = 5_000L
     private const val MAX_REREADS = 6
 
-    internal fun handleForTest(context: Context, data: ByteArray) =
+    internal fun handleForTest(context: Context, data: ByteArray): ByteArray? =
         handle(context, DatagramPacket(data, data.size, java.net.InetAddress.getLoopbackAddress(), BeaconProtocol.PORT))
 
-    private fun handle(context: Context, packet: DatagramPacket) {
+    /** What to send straight back, if anything (rev 9's TOKEN_OK and nothing else). */
+    private fun handle(context: Context, packet: DatagramPacket): ByteArray? {
+        var reply: ByteArray? = null
         run {
             val set = feeds
             if (set != null) {
@@ -411,6 +421,14 @@ object BeaconClient {
                     PhoneFeed.Outcome.Revoke -> scope.launch {
                         com.kevin.midnightai.link.CarLink.store.forget()
                         com.kevin.midnightai.link.CarLink.changed(context)
+                    }
+                    is PhoneFeed.Outcome.Credential -> {
+                        notePeer(packet.address)
+                        // A credential that arrived under the PENDING key is not acted on: the
+                        // commit below would overwrite the very token an answer would be about.
+                        if (!result.underPending) {
+                            reply = keepHandedToken(context, set, out)
+                        }
                     }
                     is PhoneFeed.Outcome.Rejected -> Unit
                 }
@@ -434,21 +452,21 @@ object BeaconClient {
                     com.kevin.midnightai.link.CarLink.store.dropPending()
                     com.kevin.midnightai.link.CarLink.changed(context)
                 }
-                return
+                return reply
             }
-            if (mode != com.kevin.midnightai.link.FeedMode.MNAI1) return
+            if (mode != com.kevin.midnightai.link.FeedMode.MNAI1) return null
             // The phone's zone (trusted clock, 2026-10-13): same pinning rule as a fix, and
             // only from the beacon this unit already follows.
             BeaconProtocol.decodeZone(packet.data, packet.length)?.let { zoneId ->
                 val pinnedPeer = manualPeerAddress(context)
                 val fromBeacon = if (pinnedPeer != null) packet.address == pinnedPeer else packet.address == resolvedPeer
                 if (fromBeacon) com.kevin.midnightai.time.TrustedClock.acceptPhoneZone(zoneId)
-                return
+                return null
             }
 
             // A hostile or malformed datagram from anyone else on the hotspot decodes
             // to null and is dropped here, before it can reach location state.
-            val fix = BeaconProtocol.decodeFix(packet.data, packet.length) ?: return
+            val fix = BeaconProtocol.decodeFix(packet.data, packet.length) ?: return null
 
             // A typed address PINS the beacon: anything else on the hotspot is
             // ignored outright. Without this, any device running PHONE role - a
@@ -458,7 +476,7 @@ object BeaconClient {
             // settings screen. When no address is typed we accept the first
             // answerer, which is the whole point of auto-discovery.
             val pinned = manualPeerAddress(context)
-            if (pinned != null && packet.address != pinned) return
+            if (pinned != null && packet.address != pinned) return null
 
             // Learn where the beacon actually is from its first valid reply, and
             // stop broadcasting at the whole subnet from here on.
@@ -470,6 +488,20 @@ object BeaconClient {
             _linkUp.value = true
             LocationController.acceptExternal(fix)
         }
+        return reply
+    }
+
+    /**
+     * Stores a handed-over engine sign-in (rev 9) and answers with the fingerprint of what was
+     * stored. Null (no answer) when the write did not happen, so the phone keeps the credential the
+     * car is using and hands this one over again at the next contact. On the IO thread the receive
+     * loop runs on: the write decrypts and commits.
+     */
+    private fun keepHandedToken(context: Context, set: LinkFeedSet, out: PhoneFeed.Outcome.Credential): ByteArray? {
+        val stored = com.kevin.midnightai.link.CarLink.store.acceptHandedToken(out.token, out.vehicleId)
+        if (!stored) return null
+        com.kevin.midnightai.link.CarLink.changed(context)
+        return synchronized(set) { set.tokenOk(PhoneLinkWire.fingerprint(out.token)) }
     }
 
     /**
