@@ -42,6 +42,65 @@ class BluetoothMicTest {
         assertNull(BluetoothMic.pick(listOf(phoneMic), setOf("AA:BB:CC:DD:EE:FF")))
     }
 
+    /**
+     * Kevin, 2026-11-24, in the car: with the head unit's Bluetooth connected, Alfred did not hear him
+     * at all, while the phone's own log read `bluetooth mic routed=true` on every turn. A routed link
+     * whose microphone sends digital silence is given up on and the phone's own mic takes over.
+     */
+    @Test
+    fun `a routed hands-free mic that sends digital silence loses the conversation`() {
+        assertTrue(
+            BluetoothMic.fallBack(
+                onBluetoothMic = true,
+                alreadyFellBack = false,
+                elapsedMs = BluetoothMic.DEAF_MS,
+                peakSinceOpen = 0,
+            ),
+        )
+    }
+
+    @Test
+    fun `a hands-free mic that hears the room keeps the conversation`() {
+        // Room noise alone clears the silence floor: a man saying nothing is not a dead microphone.
+        assertFalse(
+            BluetoothMic.fallBack(
+                onBluetoothMic = true,
+                alreadyFellBack = false,
+                elapsedMs = BluetoothMic.DEAF_MS * 4,
+                peakSinceOpen = 240,
+            ),
+        )
+    }
+
+    @Test
+    fun `nothing falls back before the window, on the phone's own mic, or twice`() {
+        // Short of the window, a silent capture is a link still finding its feet.
+        assertFalse(BluetoothMic.fallBack(true, alreadyFellBack = false, elapsedMs = 400L, peakSinceOpen = 0))
+        // On the phone's own mic there is nowhere to fall: a silent window is a quiet room.
+        assertFalse(
+            BluetoothMic.fallBack(
+                onBluetoothMic = false,
+                alreadyFellBack = false,
+                elapsedMs = BluetoothMic.DEAF_MS * 4,
+                peakSinceOpen = 0,
+            ),
+        )
+        // Once per conversation, so a deaf phone mic after the switch cannot bounce the route.
+        assertFalse(
+            BluetoothMic.fallBack(
+                onBluetoothMic = true,
+                alreadyFellBack = true,
+                elapsedMs = BluetoothMic.DEAF_MS * 4,
+                peakSinceOpen = 0,
+            ),
+        )
+    }
+
+    @Test
+    fun `the fallback waits longer than the link's own settle`() {
+        assertTrue("a link still coming up is never called deaf", BluetoothMic.DEAF_MS > BluetoothMic.SCO_SETTLE_MS)
+    }
+
     @Test
     fun `the switch defaults on and the link gets time to come up`() {
         assertTrue(VoiceTurnSettings.BLUETOOTH_MIC_DEFAULT)

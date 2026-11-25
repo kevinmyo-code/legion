@@ -92,6 +92,51 @@ class EarpieceWiringTest {
         assertTrue("and it reaches the session", bodyOf(controller, "openCascade").contains("inHand = inHand,"))
     }
 
+    /**
+     * Kevin, 2026-11-24, in the car: with the head unit's Bluetooth connected, Alfred did not hear him
+     * at all. Every buffer is measured, and a hands-free mic that sends nothing audible is given up on
+     * for the phone's own, inside the conversation.
+     */
+    @Test
+    fun `every mic buffer is measured and a deaf hands-free mic hands over to the phone's`() {
+        val s = session()
+        val onBuffer = bodyOf(s, "onMicBuffer")
+        val measured = onBuffer.indexOf("if (readLevel(buf, n)) return")
+        assertTrue("the level is read on every buffer", measured >= 0)
+        assertTrue("before anything reaches a turn", measured < onBuffer.indexOf("taker.feed(buf, n, playbackActive)"))
+        val level = bodyOf(s, "readLevel")
+        assertTrue("one peak per buffer", level.contains("MicSignal.peakAmplitude(buf, n)"))
+        assertTrue("the screen's bar reads it too", level.contains("MicLevel.publish(peak)"))
+        assertTrue("the whole window's loudest sample, not one buffer's", level.contains("if (peak > capturePeak)"))
+        assertTrue("the decision is BluetoothMic's", level.contains("BluetoothMic.fallBack("))
+        assertTrue("only on the hands-free mic", level.contains("onBluetoothMic = callAudio?.onBluetoothMic == true"))
+    }
+
+    @Test
+    fun `the fallback drops the hands-free route before it opens the phone's mic`() {
+        val back = bodyOf(session(), "fallBackToPhoneMic")
+        val closed = back.indexOf("micJob = null")
+        val left = back.indexOf("it.exit(\"hands-free mic deaf\")")
+        val settle = back.indexOf("delay(MicReopen.settleMs(")
+        val told = back.indexOf("host.notice(")
+        val opened = back.indexOf("startMic()")
+        for ((what, at) in listOf("capture closed" to closed, "route left" to left, "settle" to settle,
+            "said in words" to told, "mic opened" to opened)) {
+            assertTrue("$what is in the fallback", at >= 0)
+        }
+        assertTrue("the capture closes before the route is let go", closed < left)
+        assertTrue("the new route settles before the capture opens", left < settle && settle < opened)
+        assertTrue("he is told before it listens again, so he knows to say it again", told < opened)
+        assertTrue("and the mode's own flag is cleared", back.contains("callAudio = null"))
+    }
+
+    @Test
+    fun `nothing else reads the mic level, so there is one level path`() {
+        val mic = stripComments(File(sourceRoot(), "service/cascade/CascadeMic.kt").readText())
+        assertFalse("the mic loop no longer publishes its own level", mic.contains("MicLevel.publish"))
+        assertFalse(mic.contains("MicSignal."))
+    }
+
     @Test
     fun `only CallAudioMode enters the communication mode`() {
         val setters = sourceRoot().walkTopDown().filter { it.extension == "kt" }
