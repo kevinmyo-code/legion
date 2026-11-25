@@ -74,8 +74,9 @@ sealed interface LiveEvent {
      * [dismissed] means the driver said goodbye this turn ([DriverDismissal]) and the session is
      * parking, so the owner must not push anything else into it: a held proactive line sent here
      * would land in a parked socket with no suppress flag, and its own turnComplete would reopen
-     * the mic after a goodbye. Nor is it spoken later: the [Idle] that follows carries the same
-     * fact and drops what was held (ruled 2026-11-24, `HeldLines.onPark`).
+     * the mic after a goodbye. The [Idle] that follows carries the same fact and drops the ROUTINE
+     * lines that were held; an urgent or asked-for one is spoken on the warm socket (ruled
+     * 2026-11-24, `HeldLines.onPark`).
      */
     data class TurnComplete(val dismissed: Boolean = false) : LiveEvent
     /** Gemini wants a local tool run; reply via [GeminiLiveSession.sendToolResponse]. */
