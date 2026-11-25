@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { DEMO_FULL, STILL_BUSY } from './cascade-words'
+import { DEMO_FULL, STILL_BUSY, closingTone } from './cascade-words'
 import { CONVERSATION_CLOSED, CascadeClient, ECHO_TAIL_MS, type CascadeDeps, type TurnRequest, type TurnStart } from './cascade-client'
 import type { AssistantClient } from './client'
 import type { RecordEvent, RecordTransport } from './conversation-record'
@@ -175,7 +175,7 @@ describe('CascadeClient', () => {
     feed(audio, QUIET, WINDOW_MS + 40)
     expect(client.getState().mic).toBe('off')
     expect(audio.played.length).toBe(before + 1)
-    expect(audio.played.at(-1)!.pcm.length).toBe(3600)
+    expect(audio.played.at(-1)!.pcm.length).toBe(closingTone().length)
     expect(client.getState().lines.at(-1)).toMatchObject({ kind: 'sys', text: CONVERSATION_CLOSED })
   })
 
@@ -422,7 +422,7 @@ describe('CascadeClient', () => {
     await settle()
     expect(audio.micOpen).toBe(false)
     expect(client.getState().mic).toBe('off')
-    expect(audio.played.at(-1)!.pcm.length).toBe(3600)
+    expect(audio.played.at(-1)!.pcm.length).toBe(closingTone().length)
     // Once the closing tone has played, nothing is going on.
     drained(audio)
     expect(client.getState().activity).toBe('idle')
@@ -464,7 +464,7 @@ describe('CascadeClient', () => {
       await vi.advanceTimersByTimeAsync(200)
       expect(signals[1].aborted).toBe(true)
       expect(audio.micOpen).toBe(false)
-      expect(audio.played.at(-1)!.pcm.length).toBe(3600)
+      expect(audio.played.at(-1)!.pcm.length).toBe(closingTone().length)
       drained(audio)
       expect(client.getState().activity).toBe('idle')
       expect(client.getState().notice?.kind).toBe('engine-unreachable')
