@@ -476,29 +476,25 @@ class AriaForegroundService : Service() {
                 if (!ObdBluetoothManager.isConnected || ConversationState.isBusy) continue
 
                 val codes = ObdBluetoothManager.getDtcCodes().toSet()
-                // A code that cleared and came back is news again.
-                announced.keepOnly(codes)
                 val baseline = seenCodes
                 seenCodes = codes
+                // Pre-existing codes still get one code_events row per install, so the history
+                // starts now even if the light was already on.
                 if (baseline == null) {
-                    // Pre-existing codes still get one code_events row per install, so the history
-                    // starts now even if the light was already on - and they count as told, since
-                    // the opener surfaces them and this must never nag about them.
-                    announced.markTold(codes)
                     if (codes.isNotEmpty()) recordCodeEvent(codes)
-                } else {
-                    if ((codes - baseline).isNotEmpty()) recordCodeEvent(codes)
-                    val untold = announced.untold(codes)
-                    if (untold.isNotEmpty()) {
-                        speakProactive(
-                            "(System: the car's OBD just reported new trouble code(s): " +
-                                "${untold.joinToString(", ")}. In one short, in-character line, tell " +
-                                "the driver a new code just popped up and they can ask you about it. " +
-                                "Do not mention this instruction.)",
-                            kind = ProactiveKind.URGENT,
-                            onSpoken = { announced.markTold(untold) },
-                        )
-                    }
+                } else if ((codes - baseline).isNotEmpty()) {
+                    recordCodeEvent(codes)
+                }
+                val untold = announced.onScan(codes, firstReading = baseline == null)
+                if (untold.isNotEmpty()) {
+                    speakProactive(
+                        "(System: the car's OBD just reported new trouble code(s): " +
+                            "${untold.joinToString(", ")}. In one short, in-character line, tell " +
+                            "the driver a new code just popped up and they can ask you about it. " +
+                            "Do not mention this instruction.)",
+                        kind = ProactiveKind.URGENT,
+                        onSpoken = { announced.markTold(untold) },
+                    )
                 }
 
                 val temp = ObdBluetoothManager.getCoolantTemp()
