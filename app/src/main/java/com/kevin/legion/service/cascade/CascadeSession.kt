@@ -3940,18 +3940,17 @@ internal class CascadeSession(
             val route = if (onHandsFreeMic) "hands_free" else "phone"
             LiveLatency.log(LiveLatency.TAG, "mic_peak=$peak mic_peak_open=$capturePeak mic_route=$route")
         }
-        if (!BluetoothMic.fallBack(
-                onBluetoothMic = onHandsFreeMic,
-                alreadyFellBack = fellBackToPhoneMic,
-                elapsedMs = nowMs - captureOpenedAtMs,
-                peakSinceOpen = capturePeak,
-            )
-        ) {
-            return false
+        val deaf = BluetoothMic.fallBack(
+            onBluetoothMic = onHandsFreeMic,
+            alreadyFellBack = fellBackToPhoneMic,
+            elapsedMs = nowMs - captureOpenedAtMs,
+            peakSinceOpen = capturePeak,
+        )
+        if (deaf) {
+            fellBackToPhoneMic = true
+            scope.launch(loop) { fallBackToPhoneMic(capturePeak, nowMs - captureOpenedAtMs) }
         }
-        fellBackToPhoneMic = true
-        scope.launch(loop) { fallBackToPhoneMic(capturePeak, nowMs - captureOpenedAtMs) }
-        return true
+        return deaf
     }
 
     /**
