@@ -79,11 +79,19 @@ def _fillers(events) -> list[str]:
 
 
 def _acks(events) -> list[str]:
-    return [f["text"] for f in _of(events, "filler") if not f["tool"] and not f.get("wait")]
+    """The acknowledgements. A filler with no tool is either one of these or a holding line, and
+    the two word lists share nothing, so the text says which."""
+    return [f["text"] for f in _of(events, "filler") if f["text"] in fillers.ACK]
 
 
 def _waits(events) -> list[str]:
-    return [f["text"] for f in _of(events, "filler") if f.get("wait")]
+    """The holding lines. `tool` is empty for both kinds of line with no tool, and "Working on it."
+    is in `fillers.FALLBACK` as well, so a line needs BOTH no tool and holding-line words."""
+    return [
+        f["text"]
+        for f in _of(events, "filler")
+        if not f["tool"] and f["text"] in wait_lines.LINES
+    ]
 
 
 def _slow_answer():
@@ -449,7 +457,12 @@ def test_the_chain_stops_once_the_answer_is_ready(
     conversation = _later(member, engine, monkeypatch, household_user)
     events = _turn(member, engine, conversation, SlowModel([say("You spent a little.")], [0.5]))
     kinds = [k for k, _ in events]
-    waits = (i for i, f in enumerate(events) if f[0] == "filler" and f[1].get("wait"))
+    held = wait_lines.LINES
+    waits = (
+        i
+        for i, f in enumerate(events)
+        if f[0] == "filler" and not f[1]["tool"] and f[1]["text"] in held
+    )
     last_wait = max(waits, default=-1)
     assert last_wait < kinds.index("sentence"), kinds
 
