@@ -144,8 +144,8 @@ class FleetAnchorParityTest {
         // remembered figure as an ASSERTED anchor, and an OBSERVED event with no mileage (an
         // OBSERVED row may not carry a figure derived from the live estimate). `explainedBy` is
         // false between them - the anchor states a mileage the event does not - so the ASSERTED
-        // row survives, and the phone picks it by `updatedAt`. The engine's `_newest_first` picks
-        // it too, which is what its ASSERTED tie-break step exists for.
+        // row survives, and the phone picks it by `updatedAt`. The engine picks it too: `_stated_at`
+        // ranks an assertion by when it was written and a backdated observation by its event day.
         val rows = listOf(
             asserted(id = 5, name = "oil change", mileage = 42_000, date = apr20, statedAt = today),
             observed(id = 6, name = "oil change", mileage = null, date = apr20),
@@ -162,5 +162,41 @@ class FleetAnchorParityTest {
                 itemFrom("oil change", rows, intervalMiles = 5_000, intervalMonths = null),
             ),
         )
+    }
+
+    @Test
+    fun `an undated ASSERTED anchor stated today outranks an older dated log, both sides`() {
+        // Round 2 blocker A. The mileage-only backfill ("I did the oil change at 232,000") writes
+        // an UNDATED ASSERTED row, because `mergeBackfillAnchors`' anti-pairing rule refuses to
+        // attach a date nobody stated. `setAnchor` stamps the wall clock, so that row is the newest
+        // here. The engine sorted an undated row LAST and kept the 2025 row's 71,200, which made it
+        // call the service overdue by name for a history the phone times as fine.
+        // Engine: `test_an_undated_asserted_anchor_outranks_an_older_dated_log`.
+        val rows = listOf(
+            observed(id = 7, name = "oil change", mileage = 71_200, date = jan10),
+            asserted(id = 8, name = "oil change", mileage = 232_000, date = null, statedAt = today),
+        )
+
+        assertEquals(232_000 to null, FleetRecordBridge.projectAnchorLegacy(rows))
+        val item = itemFrom("oil change", rows, intervalMiles = 5_000, intervalMonths = null)
+        assertFalse("a stated anchor times it", needsMileageReading(item))
+        assertFalse(
+            "76,200 is an anchor this history no longer holds",
+            VehicleController.isDue(item, currentMileage = 235_000, odometerUnset = false, now = today + 1),
+        )
+    }
+
+    @Test
+    fun `a log carrying a reading outranks an anchor asserted earlier the same day, both sides`() {
+        // The other direction, so the rule is an ORDER and not a preference for assertions: a hands
+        // "mark done" (ASSERTED, no mileage) and then a voice log that carries one, the same day.
+        // Engine: `test_a_dated_log_today_outranks_an_asserted_anchor_stated_earlier_today`.
+        val anHourAgo = today - 3_600_000L
+        val rows = listOf(
+            asserted(id = 9, name = "oil change", mileage = null, date = today, statedAt = anHourAgo),
+            observed(id = 10, name = "oil change", mileage = 240_000, date = today),
+        )
+
+        assertEquals(240_000 to today, FleetRecordBridge.projectAnchorLegacy(rows))
     }
 }

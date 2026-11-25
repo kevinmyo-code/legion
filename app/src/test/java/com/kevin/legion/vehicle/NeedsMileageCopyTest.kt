@@ -102,7 +102,10 @@ class NeedsMileageCopyTest {
             now = now,
         )
 
-        assertTrue("the NEXT line may not read as 'fine': $text", text.contains("no mileage reading against Oil Change"))
+        assertTrue(
+            "the NEXT line may not read as 'fine': $text",
+            text.contains("no mileage reading against Oil Change"),
+        )
         assertTrue("and says a reading clears it: $text", text.contains("until a reading is stated"))
     }
 
@@ -113,7 +116,7 @@ class NeedsMileageCopyTest {
         val car = LiveSurface.ACTION_TOOLS.single { it.name == "car" }
 
         val note = car.paramNotes["mileage"]
-        assertTrue("the folded car tool drops every description but a paramNote, so this is the only copy", note != null)
+        assertTrue("the folded car tool keeps only a paramNote, so this is the only copy", note != null)
         assertTrue("it must still say to omit an unstated reading: $note", note!!.lowercase().contains("omit"))
     }
 

@@ -77,15 +77,19 @@ internal suspend fun pinStatedReadingToWaitingItems(
 }
 
 /**
- * " I didn't have a mileage against the oil change, so 235000 is its anchor now." - or null when
- * nothing was waiting.
+ * " I didn't have a mileage against the oil change, so I'm timing it from 235000 now." - or null
+ * when nothing was waiting.
  *
- * It names the items and the figure the row now holds, because the whole point of the write is
- * that the question the due surfaces asked has been answered; silence here would leave the driver
- * unable to tell a reading that landed from one that did nothing, which is what round 2 found.
+ * It names the items and the figure they are now timed from, because the whole point of the write
+ * is that the question the due surfaces asked has been answered; silence here would leave the
+ * driver unable to tell a reading that landed from one that did nothing, which is what round 2
+ * found. "Timing it FROM" rather than "that's what it was at": for a service logged weeks ago the
+ * reading is later than the work, so the item comes due by that much late, and the sentence says
+ * what the schedule will do rather than asserting a mileage for the service itself.
  */
 internal fun pinnedReadingNote(names: List<String>, miles: Int): String? {
     if (names.isEmpty()) return null
-    val them = if (names.size == 1) "its anchor" else "their anchor"
-    return " I didn't have a mileage against ${names.joinToString(", ")}, so $miles is $them now."
+    val them = if (names.size == 1) "it" else "them"
+    return " I didn't have a mileage against ${names.joinToString(", ")}, so I'm timing $them " +
+        "from $miles now."
 }

@@ -29,6 +29,8 @@ import calendar
 import datetime as dt
 from dataclasses import dataclass
 
+from django.utils import timezone
+
 from household.tenancy import scoped
 
 
@@ -173,7 +175,8 @@ def _stated_at(row) -> dt.datetime:
     - `FleetEngineStore.insertObserved` stamps it with the EVENT date. For a service logged on the
       day it happened that date IS the moment of writing; for a backdated log it is the past day.
     - `FleetEngineStore.setAnchor` stamps the WALL CLOCK, because an assertion has no event behind
-      it to date. An undated assertion is still a statement made at a moment.
+      it to date, and re-stamps it every time the driver re-states the anchor. An undated
+      assertion is still a statement made at a moment.
 
     So: an ASSERTED row, and an OBSERVED row whose service date is the day it was written, rank by
     when the row was written; a BACKDATED observation ranks by the day the work happened. No row
@@ -195,9 +198,25 @@ def _stated_at(row) -> dt.datetime:
     item exists to lose to, and the edited row is normally the newest one; closing it needs the
     phone's stamp on the wire."""
     written = row.created_at
-    if row.kind != "ASSERTED" and row.service_date is not None and row.service_date != written.date():
-        return dt.datetime.combine(row.service_date, dt.time.min, tzinfo=written.tzinfo)
-    return written
+    # An assertion is re-stated in place: `writeAssertedAnchorLegacy` keeps ONE ASSERTED row per
+    # item and rewrites it, so the sync's PUT updates that row rather than inserting another and
+    # `created_at` still names the FIRST statement. The later of the two timestamps is the last
+    # statement, which is what `setAnchor` stamps on the phone. `max` rather than `updated_at`
+    # alone because the trigger stamps transaction start while an INSERT stamps the statement
+    # timestamp, so on a freshly inserted row `updated_at` can sit just behind `created_at`.
+    if row.kind == "ASSERTED":
+        return max(written, row.updated_at)
+    if row.service_date is None:
+        return written
+    # Written on the day it records (within a day): the row was stated at the event, so when it
+    # was written IS the moment the phone stamps. The day of slack is deliberate - this side keeps
+    # UTC timestamps while `service_date` is the household's own calendar day, so an evening log
+    # is written after midnight UTC and would otherwise read as backdated and rank below an
+    # assertion made before it. Measured: that is the case that failed when this compared dates
+    # exactly. Anything older than that is a real backdate and ranks by the day the work happened.
+    if row.service_date >= timezone.localtime(written).date() - dt.timedelta(days=1):
+        return written
+    return timezone.make_aware(dt.datetime.combine(row.service_date, dt.time.min))
 
 
 def _newest_first(row):
