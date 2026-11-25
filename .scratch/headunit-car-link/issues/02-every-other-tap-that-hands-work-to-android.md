@@ -17,8 +17,10 @@ tags: [ticket]
 
 Ticket 01 fixed three taps on one screen. The blind review of that fix
 (`.legion/reports/hu-pairnew-crash-1124-review.md`, "Base problems, not this change") found the same
-bug class at eleven other doors, already on `dev`. Two were read by the reviewer directly, the rest
-traced:
+bug class at other doors, already on `dev`. Two of those it read directly, the rest traced. The
+GRANT ACCESS chip on Cruise is not from that list: it turned up grepping the app for the same shape,
+which is the argument for a grep check rather than a list someone keeps by hand (see the follow-up
+below). The whole set:
 
 | Door | Where | Why it throws |
 |---|---|---|
