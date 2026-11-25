@@ -31,6 +31,14 @@ internal object CloseCue {
     )
     private const val VOICE_FAILED = "voice_failed_"
 
+    /**
+     * Whether [reason] is the end of a conversation he was in, which is what [PLAYS] lists. The one
+     * definition of that, so the chime and the next conversation's carried context
+     * ([RewakeCarry.keeps]) can never disagree about which closes are the end of a conversation.
+     * A failed voice is not one: it is a close he did not ask for.
+     */
+    fun endsHisConversation(reason: String): Boolean = reason in PLAYS
+
     /** Waiting for the chime to drain never holds the close longer than this. */
     const val HARD_CAP_MS = 1_200L
 
@@ -49,7 +57,7 @@ internal object CloseCue {
         rateMatches: Boolean,
     ): Skip? {
         if (alreadyPlayed) return Skip.PLAYED
-        if (reason !in PLAYS && !reason.startsWith(VOICE_FAILED)) return Skip.NOT_A_CLOSE
+        if (!endsHisConversation(reason) && !reason.startsWith(VOICE_FAILED)) return Skip.NOT_A_CLOSE
         if (!audioOpened) return Skip.NO_AUDIO
         if (!rateMatches) return Skip.RATE
         if (onCall) return Skip.ON_CALL

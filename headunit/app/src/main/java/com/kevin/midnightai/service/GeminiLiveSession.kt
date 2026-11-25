@@ -144,6 +144,12 @@ sealed class ConnectionMode {
 class GeminiLiveSession(
     context: Context,
     private val onEvent: (LiveEvent) -> Unit,
+    /**
+     * What this conversation leaves for the next one ([RewakeCarry], Kevin 2026-11-24). The
+     * controller owns it, so it outlives this socket. Null for a socket that leaves nothing behind
+     * (onboarding, which is a wizard rather than a conversation).
+     */
+    private val rewake: RewakeCarry? = null,
 ) {
     private val appContext = context.applicationContext
     private val apiKey get() = GeminiKeyProvider.key()
@@ -996,6 +1002,10 @@ class GeminiLiveSession(
             }
             val spoken = companionTurnText.toString().trim()
             captureEpisodicTurn(heard, spoken)
+            // The same pair, held in memory for the minute after this conversation ends, so a
+            // re-wake inside the window still has it ([RewakeCarry]). A conversation socket only:
+            // a speak-only proactive session is not a conversation to carry.
+            if (vadMode && keepWarm) rewake?.turn(heard, spoken)
             // The driver's goodbye, read once off the COMPLETE turn (never a partial delta - see
             // DriverDismissal's doc). Sticky: once armed it survives a tool round trip to the turn
             // that parks. By now Moose's sign-off has been spoken and is draining from the
@@ -1622,6 +1632,10 @@ class GeminiLiveSession(
         dismissAfterTurn = false
         restoreAudio()
         ConversationState.setBusy(false)
+        // The end of a conversation he was in, whether it went quiet or he said goodbye. The socket
+        // stays warm for three minutes and a tap resumes it with Gemini's own context, so this only
+        // matters when the socket dies inside the window ([RewakeCarry]).
+        rewake?.ended(System.currentTimeMillis())
         warm.set(true)
         emit(LiveEvent.Idle(afterDismissal = onDismissal))
         warmHoldJob?.cancel()
@@ -1860,6 +1874,13 @@ class GeminiLiveSession(
 
     private fun closeSession(reason: String) {
         if (!closed.compareAndSet(false, true)) return
+        // His tap ends the conversation here; every other close either ends a conversation that
+        // already left its turns behind at the park, or ends one that never finished ([RewakeCarry]).
+        if (RewakeCarry.endsHisConversation(reason)) {
+            rewake?.ended(System.currentTimeMillis())
+        } else {
+            rewake?.abandoned()
+        }
         running.set(false)
         warm.set(false)
         conversationActive = false
@@ -1898,6 +1919,9 @@ class GeminiLiveSession(
      */
     fun silentDestroy() {
         val wasOpen = !closed.getAndSet(true)
+        // A socket the controller is replacing: not an end the driver made, so a conversation still
+        // running on it leaves nothing, and one that already parked keeps what it left ([RewakeCarry]).
+        rewake?.abandoned()
         running.set(false)
         warm.set(false)
         conversationActive = false

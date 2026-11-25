@@ -151,6 +151,11 @@ internal class CascadeSession(
     private val cloudCanStart: () -> Boolean = GeminiKeyProvider::hasKey,
     /** A test conversation from a computer ([TestSession]): test mic, logcat audit, no records kept. */
     private val test: TestSession? = null,
+    /**
+     * The last conversation's context, if he woke Alfred again inside the window ([RewakeCarry]).
+     * The controller owns it, so it outlives each conversation; taken once, at construction.
+     */
+    private val rewake: RewakeCarry,
     /** Opened by a tap in the app (phone in hand): only then may the earpiece apply ([EarpieceRoute]). */
     private val inHand: Boolean = false,
     /**
@@ -309,6 +314,22 @@ internal class CascadeSession(
     private var speaker: ReplySpeaker? = null
     @Volatile private var speaking = false
     private val history = mutableListOf<ChatTurn>()
+
+    /**
+     * The last conversation's turns, when he woke Alfred again inside [RewakeCarry.WINDOW_MS]
+     * (Kevin, 2026-11-24). Deliberately NOT part of [history]: it rides his turns' prompt
+     * (`turnContentsFor`) and nothing else, so every rule that reads [history] still sees this
+     * conversation alone. Taken once, here, so it cannot change mid-conversation.
+     */
+    private val carried: List<ChatTurn> =
+        if (test == null) rewake.take(System.currentTimeMillis()) else emptyList()
+
+    /**
+     * This conversation ever read outside text (ADR 0090): a read-through opener's prompt, a
+     * read-through tool, or a turn that started marked by the one-turn carry. It leaves nothing to
+     * the next conversation ([RewakeCarry]), so neither that text nor its write taint outlives it.
+     */
+    private var outsideTextRead = false
     private var carry = ""
     private val readThroughCarry = ReadThroughCarry()
     private var turn: TurnRecord? = null
@@ -1813,6 +1834,9 @@ internal class CascadeSession(
             record.readThrough = true
             audit.readThrough(GeminiLiveSession.READ_THROUGH_CARRY)
         }
+        // A read-through opener's own prompt is outside text, and it goes into history in clear:
+        // this conversation leaves nothing behind (ADR 0090, [RewakeCarry]).
+        if (record.startMarked) outsideTextRead = true
         val seq = turnSeq.getAndIncrement()
         val brain = engineBrain
         val engineStart = brain?.route(
@@ -2503,8 +2527,12 @@ internal class CascadeSession(
     // The date, the place and this conversation's context ride in the first user turn.
     private fun contentsFor(heard: String) = CascadePrompt.contents(history, heard, preamble)
 
-    // His turns (and their drafts) also carry today's agenda; the greeting does not.
-    private fun turnContentsFor(heard: String) = CascadePrompt.contents(history, heard, turnPreamble())
+    /**
+     * His turns (and their drafts) also carry today's agenda; the greeting does not. A re-wake
+     * inside the window prepends the last conversation's turns here, and only here ([carried]).
+     */
+    private fun turnContentsFor(heard: String) =
+        CascadePrompt.contents(carried + history, heard, turnPreamble())
 
     /**
      * His one word is the answer to the which-car question code spoke on connect ([SpokenWhichCarAsk]):
@@ -3195,6 +3223,9 @@ internal class CascadeSession(
     ) {
         // A turn the phone answered goes to the engine's next turn as context ([EnginePhoneContext]).
         engineBrain?.context?.recorded(heard, said, readThrough, fromUser)
+        // The one door history grows through, so the one place a read-through turn is written down
+        // for the rule that this conversation leaves nothing behind ([RewakeCarry]).
+        if (readThrough) outsideTextRead = true
         if (heard.isNotBlank()) history.add(ChatTurn(fromUser = true, text = heard))
         if (fromUser && said.isNotBlank()) readThroughCarry.answered()
         // A read-through reply (mail, web) is never kept as history or in the record in clear.
@@ -3822,6 +3853,15 @@ internal class CascadeSession(
     /** Idempotent full release. */
     private suspend fun shutdown(reason: String) {
         if (!closing.compareAndSet(false, true)) return
+        // The one funnel every close goes through, so the one place the next conversation's context
+        // is left behind (Kevin, 2026-11-24). Its own rules decide whether this close leaves any.
+        rewake.ended(
+            reason = reason,
+            turns = history.toList(),
+            test = test != null,
+            outsideTextRead = outsideTextRead,
+            nowMs = System.currentTimeMillis(),
+        )
         // A close that said nothing more (a tap, preemption, destroy): written down, never dropped.
         writeDownOwed()
         release(reason)
