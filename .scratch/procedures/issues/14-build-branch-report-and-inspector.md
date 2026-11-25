@@ -60,7 +60,9 @@ tags: [ticket]
 - vitest per screen state: runs, empty, unreadable, recruiter, plus one run, model choice,
   refused run, the report and an unknown report (`src/routes/-runs.test.tsx`): **done**.
 - Screenshots at 1440 light and dark (and 390): `SHOTS_LABEL=procedures-14 npm run shots`,
-  in `.scratch/web-revamp/research/shots/procedures-14/`: **done** against the fake engine.
+  in `.scratch/web-revamp/research/shots/procedures-14/`: **done** against the fake engine. Two of
+  those screens were removed in the 2026-11-24 privacy pass (they rendered a household member's
+  real first name); screenshot removed, the run states they covered are the ones listed here.
 - Tenancy and recruiter isolation over the routes (`tests/test_procedures_inspector.py`,
   `test_tenancy.py`, `test_recruiter_isolation.py`): **done**.
 - **"Run this procedure" button** (ADR 0035 hands path, ask steps as buttons): **deferred to
