@@ -1068,6 +1068,19 @@ internal const val TOOL_RESULT_CLAUSE =
         "things match, ask which one rather than picking. "
 
 /**
+ * Chat is the default (Kevin, 2026-11-25, on a call): Alfred called tools for small talk and general
+ * questions, tied them to his calendar or memory, and announced "saved to memory". A tool is for an
+ * action, something current, or a fact about the user; the two examples show the plain-chat case.
+ * Moose carries the same words in the head unit's prompt (Kevin's voice-parity rule, 2026-11-24).
+ * The trimmed "(surfaced when the user arrives at a place)" pays for part of it in the setup payload.
+ */
+internal const val CHAT_FIRST_CLAUSE =
+    "Chat and general questions need no tool; answer from what you know. Use the user's calendar, " +
+        "memory or records only when the question is about them, and confirm a memory save only " +
+        "when they asked for it. \"I love hiking\" gets a reply, not a save; \"how far is the " +
+        "moon?\" gets the answer, not a calendar check. "
+
+/**
  * The shared rules before [PROACTIVE_CLAUSE]: search, tools, the tool-message register and the four
  * file-scope honesty clauses. Split out of [SHARED_INSTRUCTIONS] (alfred-ota ticket 02) so
  * [renderSharedInstructions] can put the Alfred pack's clauses in their slots between these fixed
@@ -1078,8 +1091,9 @@ internal val SHARED_TOOL_RULES =
     "and forecasts - and whenever the user asks you to look something up, " +
     "and base your answer on what it finds. " +
     "Use your tools to answer questions about your own live data, to control music, " +
-    "to tag or show saved places, and to set location-based reminders (surfaced when the " +
-    "user arrives at a place). Always call the matching tool before claiming you've done " +
+    "to tag or show saved places, and to set location-based reminders. " +
+    CHAT_FIRST_CLAUSE +
+    "Always call the matching tool before claiming you've done " +
     "something - never say you're pulling up music unless you actually called the tool for it. " +
     // 2026-10-27 (Kevin): tool results are written as plain facts, and read out word for word
     // they break the register. The facts, including "nothing was written", must still arrive.
