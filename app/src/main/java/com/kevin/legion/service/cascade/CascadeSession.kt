@@ -272,6 +272,13 @@ internal class CascadeSession(
     @Volatile private var fellBackToPhoneMic = false
     @Volatile private var peakLoggedAtMs = 0L
 
+    /**
+     * This conversation listens through a Bluetooth hands-free device. A plain flag, not
+     * [CallAudioMode.onBluetoothMic]: that one takes the mode's lock, and the mic thread reads this
+     * on every buffer, which is the one thread [CallAudioMode] documents as reading without it.
+     */
+    @Volatile private var onHandsFreeMic = false
+
     /** The mic claim, released as the claimant it was asked as (a ring's too). */
     private val micHold = MicArbiter.Hold(micClaimant)
     private var focus: AudioFocusRequest? = null
@@ -2014,7 +2021,7 @@ internal class CascadeSession(
     private suspend fun closeCheckInUnanswered() {
         checkInStep = CheckInStep.DONE
         reportCheckIn(CheckInOutcome.NO_REPLY)
-        LiveLatency.log("LIVE_FOLLOWUP", "check_in no_reply")
+        LiveLatency.log("LIVE_FOLLOWUP", "check_in no_reply" + heardNothingLine())
         // Closed before the closer plays: nothing said from here on is taken as his turn.
         runCatching { micJob?.cancelAndJoin() }
         micJob = null
@@ -3202,6 +3209,17 @@ internal class CascadeSession(
         }
     }
 
+    /**
+     * A window that closed having heard no turn at all, with the route it listened on and the loudest
+     * sample it ever read. The one measurement that tells a dead hands-free mic from a man who said
+     * nothing, and the gap this session could not close on 2026-11-24: three conversations in the car
+     * opened on the hands-free link, captured, heard nothing, and closed here, with no level logged
+     * anywhere. Empty once he has spoken, so an ordinary close stays one line. Numbers only.
+     */
+    private fun heardNothingLine(): String =
+        if (heardSinceOpen) "" else " heard_nothing=true mic_route=${if (onHandsFreeMic) "hands_free" else "phone"}" +
+            " mic_peak_open=$capturePeak"
+
     private fun onFollowUpExpired() {
         if (closing.get()) return
         if (checkInStep == CheckInStep.LISTENING) {
@@ -3209,7 +3227,7 @@ internal class CascadeSession(
             return
         }
         scope.launch(loop) {
-            LiveLatency.log("LIVE_FOLLOWUP", "expired engine=${engineToken()}")
+            LiveLatency.log("LIVE_FOLLOWUP", "expired engine=${engineToken()}" + heardNothingLine())
             sayOwed()
             shutdown("follow_up")
             host.notice("Conversation closed")
@@ -3919,11 +3937,11 @@ internal class CascadeSession(
         if (captureOpenedAtMs == 0L) captureOpenedAtMs = nowMs
         if (nowMs - peakLoggedAtMs >= PEAK_LOG_INTERVAL_MS) {
             peakLoggedAtMs = nowMs
-            val route = if (callAudio?.onBluetoothMic == true) "hands_free" else "phone"
+            val route = if (onHandsFreeMic) "hands_free" else "phone"
             LiveLatency.log(LiveLatency.TAG, "mic_peak=$peak mic_peak_open=$capturePeak mic_route=$route")
         }
         if (!BluetoothMic.fallBack(
-                onBluetoothMic = callAudio?.onBluetoothMic == true,
+                onBluetoothMic = onHandsFreeMic,
                 alreadyFellBack = fellBackToPhoneMic,
                 elapsedMs = nowMs - captureOpenedAtMs,
                 peakSinceOpen = capturePeak,
@@ -3953,12 +3971,18 @@ internal class CascadeSession(
         )
         runCatching { micJob?.cancelAndJoin() }
         micJob = null
+        onHandsFreeMic = false
         callAudio?.let { if (it.isActive) it.exit("hands-free mic deaf") }
         callAudio = null
+        // The player was built on the voice-communication usage for a route that has just gone, so it
+        // is rebuilt here exactly as every other exit from call audio does ([onBluetoothConnected]).
+        // Without it his next reply plays on a route nothing listens to.
+        player?.rebuild()
         delay(MicReopen.settleMs(CallAudioMode.route(audioManager)))
         if (closing.get()) return
-        host.notice("The car's microphone isn't picking anything up. Listening on the phone's mic now.")
-        startMic()
+        host.notice("That microphone isn't picking anything up. Listening on the phone's mic now.")
+        // He is driving and will not read a notice: the open chime is how he hears it listening again.
+        startMic(chime = true)
     }
 
     /**
@@ -3989,6 +4013,7 @@ internal class CascadeSession(
         } else {
             // In the car: the car's own hands-free mic, as Live did (Kevin, 2026-11-10).
             callAudio = audioRoute.enterBluetoothMic(token)
+            onHandsFreeMic = callAudio != null
         }
         earpiece.follow(scope, loop, { callAudio }) { enterEarpieceMidway() }
     }

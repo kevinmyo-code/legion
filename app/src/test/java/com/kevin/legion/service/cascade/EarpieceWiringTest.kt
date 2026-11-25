@@ -112,7 +112,7 @@ class EarpieceWiringTest {
         // A car's own echo canceller holds its mic down while Alfred plays: that is not a deaf mic.
         val held = level.indexOf("if (playbackActive)")
         assertTrue("playback restarts the window", held in 0 until level.indexOf("BluetoothMic.fallBack("))
-        assertTrue("only on the hands-free mic", level.contains("onBluetoothMic = callAudio?.onBluetoothMic == true"))
+        assertTrue("only on the hands-free mic", level.contains("onBluetoothMic = onHandsFreeMic"))
     }
 
     @Test
@@ -122,7 +122,7 @@ class EarpieceWiringTest {
         val left = back.indexOf("it.exit(\"hands-free mic deaf\")")
         val settle = back.indexOf("delay(MicReopen.settleMs(")
         val told = back.indexOf("host.notice(")
-        val opened = back.indexOf("startMic()")
+        val opened = back.indexOf("startMic(chime = true)")
         for ((what, at) in listOf("capture closed" to closed, "route left" to left, "settle" to settle,
             "said in words" to told, "mic opened" to opened)) {
             assertTrue("$what is in the fallback", at >= 0)
@@ -131,6 +131,31 @@ class EarpieceWiringTest {
         assertTrue("the new route settles before the capture opens", left < settle && settle < opened)
         assertTrue("he is told before it listens again, so he knows to say it again", told < opened)
         assertTrue("and the mode's own flag is cleared", back.contains("callAudio = null"))
+        // The player was built for a route that has just gone, exactly as onBluetoothConnected's exit.
+        val rebuilt = back.indexOf("player?.rebuild()")
+        assertTrue("the player is rebuilt off the dead route", rebuilt in 0 until settle)
+    }
+
+    @Test
+    fun `a window that heard no turn says so, with its route and its loudest sample`() {
+        // An expression body, so it is read from the whole module rather than through bodyOf.
+        val s = session()
+        assertTrue("silent once he has spoken", s.contains("if (heardSinceOpen) \"\""))
+        assertTrue(s.contains("heard_nothing=true"))
+        assertTrue("the route it listened on", s.contains("heard_nothing=true mic_route="))
+        assertTrue("and the level, which is what tells a dead mic from a quiet man",
+            s.contains("mic_peak_open=\$capturePeak"))
+        for (close in listOf("onFollowUpExpired", "closeCheckInUnanswered")) {
+            assertTrue("$close carries it", bodyOf(s, close).contains("heardNothingLine()"))
+        }
+    }
+
+    @Test
+    fun `the mic thread never takes the call mode's lock per buffer`() {
+        val level = bodyOf(session(), "readLevel")
+        assertFalse("onBluetoothMic is synchronized; a volatile flag stands in",
+            level.contains("callAudio?.onBluetoothMic"))
+        assertTrue(level.contains("onHandsFreeMic"))
     }
 
     @Test
