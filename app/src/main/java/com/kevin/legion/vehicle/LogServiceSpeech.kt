@@ -44,7 +44,10 @@ internal fun ambiguousServiceQuestion(candidates: List<String>): String =
  *
  * No set ASKS for the number: a reading he offers next is a reading (`set_odometer`), and a reply
  * that invites one here invites a second log of the same work, so the asking lives on the surfaces
- * that report what is due rather than on this confirmation.
+ * that report what is due rather than on this confirmation. Those surfaces ask for an odometer
+ * reading, and `set_odometer` is where such a reading lands on the item that is waiting for it
+ * ([pinStatedReadingToWaitingItems]) - the ask and the write are the same route, which is what
+ * round 2 of the review on PR #5 found they were not.
  */
 internal fun loggedServiceMessage(
     serviceName: String,
@@ -85,14 +88,26 @@ internal fun loggedServiceMessage(
 }
 
 /**
- * What a stated reading outside the odometer's range answers: [odometerMessage] is `setOdometer`'s
- * own refusal, and this adds the half it cannot know - the whole call was refused, so the SERVICE is
- * not on file either. Without the second sentence the driver is left believing work he really had
- * done was logged.
+ * What a refused stated reading answers: [odometerMessage] is `setOdometer`'s own refusal, and this
+ * adds the half it cannot know - the whole call was refused, so the SERVICE is not on file either.
+ * Without the second sentence the driver is left believing work he really had done was logged.
+ *
+ * Two refusals reach here and they need different second halves ([odometerReadingPlausible] tells
+ * them apart). A reading outside the odometer's range is the driver's own figure to correct, and
+ * the car is on file, so saying it again lands both; a car with no row at all is not about the
+ * reading, and "say it again with the reading you meant" is not the remedy for it - registering
+ * the car is, which `setOdometer`'s own message already states.
  */
-internal fun serviceNotLoggedMessage(odometerMessage: String, serviceName: String): String =
+internal fun serviceNotLoggedMessage(
+    odometerMessage: String,
+    serviceName: String,
+    readingPlausible: Boolean,
+): String = if (readingPlausible) {
+    "$odometerMessage I haven't logged the $serviceName either, so tell me again once that's done."
+} else {
     "$odometerMessage I haven't logged the $serviceName either - say it again with the reading you " +
         "meant, or just say it was done and I'll log it with no mileage."
+}
 
 /**
  * [note] in front of [message], or [message] alone. The note is `setOdometer`'s own low-reading

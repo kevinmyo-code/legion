@@ -263,13 +263,23 @@ object VehicleController {
      * and logged (`Log.i`, never returned in [WriteOutcome.message], never a figure competing with
      * the reading itself) right here, off the pre-write [vehicle] this function already read.
      *
+     * **It also answers the due surfaces' question** - a reading is what an item waiting for one
+     * needs, so it is pinned onto those items here and the reply says so
+     * ([pinStatedReadingToWaitingItems] holds the reasoning, the alternatives, and why
+     * [pinWaitingItems] is false for [logServiceDirect] alone).
+     *
      * **Below-estimate readings are questioned, never refused (ticket 10 §7).** An odometer only
      * goes up, but the driver's own dash always wins even against a lower estimate - the estimator
      * running low is real, not evidence of a typo, so this still writes the reading; only the reply
      * differs, via [odometerQuestionNote].
      */
-    suspend fun setOdometer(context: Context, miles: Int, vehicleId: String? = null): WriteOutcome {
-        if (miles < 100 || miles > 999_999)
+    suspend fun setOdometer(
+        context: Context,
+        miles: Int,
+        vehicleId: String? = null,
+        pinWaitingItems: Boolean = true,
+    ): WriteOutcome {
+        if (!odometerReadingPlausible(miles))
             return WriteOutcome(false, "That reading doesn't look right — odometer should be between 100 and 999,999 miles.")
         val vehicle = vehicleFor(context, vehicleId)
         val now = System.currentTimeMillis()
@@ -312,19 +322,11 @@ object VehicleController {
             )
         }
 
+        // The reading also ANSWERS the question every due surface asks - see `MileageAnchorPin.kt`.
+        val pinned =
+            if (pinWaitingItems) pinStatedReadingToWaitingItems(context, vehicle.obdMac, miles, now) else emptyList()
         val questionNote = odometerQuestionNote(miles, priorEstimate, baselineSet)
-        return WriteOutcome(
-            true,
-            if (questionNote != null) {
-                "$questionNote Filed: $miles on the clock."
-            } else {
-                listOf(
-                    "Got it, $miles on the clock. I'll keep track from here.",
-                    "Noted, $miles miles. Let's see how long till the next thing breaks.",
-                    "$miles it is. Filed away.",
-                ).random()
-            },
-        )
+        return WriteOutcome(true, odometerFiledMessage(miles, questionNote, pinned))
     }
 
     /**
@@ -632,8 +634,12 @@ object VehicleController {
         val refusal = when {
             match is ServiceMatch.Ambiguous ->
                 WriteOutcome(false, ambiguousServiceQuestion(match.candidates))
-            statedMileage != null -> setOdometer(context, statedMileage, vehicleId).takeIf { !it.success }
-                ?.let { WriteOutcome(false, serviceNotLoggedMessage(it.message, canonical)) }
+            statedMileage != null -> setOdometer(context, statedMileage, vehicleId, pinWaitingItems = false)
+                .takeIf { !it.success }
+                ?.let {
+                    val plausible = odometerReadingPlausible(statedMileage)
+                    WriteOutcome(false, serviceNotLoggedMessage(it.message, canonical, plausible))
+                }
             else -> null
         }
         if (refusal != null) return refusal
@@ -668,8 +674,10 @@ object VehicleController {
             // overdue.
             //
             // The anchor itself is now DERIVED from ServiceHistory (FleetRecordBridge.projectAnchor) -
-            // the OBSERVED row just inserted above already IS the new anchor on both axes (it is the
-            // highest mileage/latest date on file for this service the instant it lands), so this
+            // the OBSERVED row just inserted above already IS the new anchor, being the most
+            // recently STATED row for this service the instant it lands - NOT "the highest mileage
+            // and latest date", which was written when every OBSERVED row carried both axes and is
+            // false since slice 0 (it may carry no mileage, and the anchor then says so). So this
             // call's only remaining job is clearing MaintenanceSchedule.neverDone back to false. Kept
             // as its own call (rather than folded into insertObserved) because a never-matched new
             // item (the branch below) has no MaintenanceSchedule row yet to clear it on.
@@ -1030,8 +1038,8 @@ object VehicleController {
         val costPhrase = after.costCents?.let { " at $${formatCents(it)}" }.orEmpty()
         // The read-back says what the row holds, so a row with no reading says that rather than
         // naming a figure ("0 miles", or a bare "null miles").
-        val miles = after.mileage?.let { "$it miles" } ?: "no mileage logged"
-        return WriteOutcome(true, "Updated ${after.serviceName}: $miles$costPhrase.")
+        val milesPhrase = after.mileage?.let { "$it miles" } ?: "no mileage logged"
+        return WriteOutcome(true, "Updated ${after.serviceName}: $milesPhrase$costPhrase.")
     }
 
     /**

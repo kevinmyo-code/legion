@@ -219,7 +219,8 @@ object FleetDigestBuilder : DigestBuilder {
         // all (needsMileageReading). It is named here, on the same line, because
         // this feeds a model's own context and an omission reads as "fine".
         val needsMileage = if (next.needsMileage.isNotEmpty()) {
-            " (no mileage reading against ${next.needsMileage.joinToString(", ")}, so nothing times those)"
+            " (no mileage reading against ${next.needsMileage.joinToString(", ")}, so nothing times " +
+                "those until a reading is stated)"
         } else {
             ""
         }

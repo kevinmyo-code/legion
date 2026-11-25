@@ -124,7 +124,10 @@ object CarCards {
         // thing on the schedule that cannot be timed at all (needsMileageReading).
         if (next != null && next.needsMileage.isNotEmpty()) {
             val names = next.needsMileage.joinToString(", ")
-            add("No mileage reading against $names, so it can't be timed by miles yet.")
+            add(
+                "No mileage reading against $names, so it can't be timed by miles yet - " +
+                    "a stated odometer reading becomes its anchor.",
+            )
         }
         if (next != null && next.unknownCount > 0) add("${next.unknownCount} more have no last-done on file.")
     }
