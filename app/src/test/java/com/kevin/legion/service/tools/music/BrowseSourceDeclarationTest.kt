@@ -66,14 +66,33 @@ class BrowseSourceDeclarationTest {
     }
 
     @Test
-    fun `a named playlist lookup has a parameter to arrive in`() {
+    fun `a named playlist lookup has a parameter the model is told about`() {
         // browse_my_music is only reachable through control_music, so the name rides on the
-        // merged tool's own playlistName, which must therefore not be scoped to add_to_playlist.
+        // merged tool's own playlistName. The previous version of this test only asserted the
+        // description does NOT mention add_to_playlist, which an EMPTY string passes - and empty
+        // is exactly the failure to catch, since the merge drops a folded target's descriptions
+        // and nothing else would tell the model the browse use exists.
         val props = mergedControlMusic().getJSONObject("parameters").getJSONObject("properties")
         assertTrue(props.has("playlistName"))
+        val described = props.getJSONObject("playlistName").optString("description")
+        assertTrue("playlistName reaches the model with no description at all", described.isNotBlank())
         assertTrue(
-            "playlistName's description must not read as add_to_playlist's alone",
-            !props.getJSONObject("playlistName").optString("description").contains("add_to_playlist"),
+            "the description must name the browse use, not add_to_playlist's alone: \"$described\"",
+            described.contains("playlists"),
         )
+    }
+
+    @Test
+    fun `a playlistName on a browse call reaches the browse dispatch`() {
+        // A description is only worth having if the argument survives the action tool's own
+        // resolve: control_music strips the discriminator and passes every other arg through.
+        val resolved = LiveSurface.resolve(
+            "control_music",
+            JSONObject().put("action", "browse_my_music").put("source", "playlists")
+                .put("playlistName", "Kitchen Radio"),
+        )
+        assertEquals("browse_my_music", resolved.name)
+        assertEquals("Kitchen Radio", resolved.args.optString("playlistName"))
+        assertEquals("playlists", resolved.args.optString("source"))
     }
 }

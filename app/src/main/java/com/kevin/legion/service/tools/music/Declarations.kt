@@ -41,7 +41,13 @@ internal object Declarations {
                     )),
                 "query" to schema("string", "queue: what to add, in his words."),
                 "seconds" to schema("integer", "seek: seconds to jump."),
-                "playlistName" to schema("string", "which playlist, in his words."),
+                // The merge keeps a BASE tool's own param descriptions and drops every folded
+                // target's, and browse_my_music declares no playlistName of its own, so this one
+                // string is the only place the model is ever told the browse use exists.
+                "playlistName" to schema(
+                    "string",
+                    "which playlist, in his words: to add to, or with source playlists to match a name.",
+                ),
             ),
             required = listOf("action"),
         ))
