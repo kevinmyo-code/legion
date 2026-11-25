@@ -441,7 +441,9 @@ internal object LiveSurface {
             "asked. Already liked is a real answer, not a failure. A seek past the end moved to the " +
             "next song: say so. Nothing playing or not Spotify: say you cannot tell who is playing, " +
             "never guess. A playlist he does not own or collaborate on fails: never say it was added " +
-            "or that the playlist does not exist.",
+            "or that the playlist does not exist. On play, pause, next and previous the result " +
+            "reports the state read back from the player: say `playback` as it stands, and when " +
+            "the result says the command could not be verified, say that instead of confirming.",
         "play_music" to "If the result says a playlist came from the public catalogue, say so and " +
             "name what played. A history row with replayable false cannot be replayed: say so.",
         // 2026-11-24: `count` was read aloud as a library size off a five-row page.

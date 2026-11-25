@@ -5,12 +5,14 @@ import com.kevin.legion.media.MusicController
 import com.kevin.legion.media.NowPlayingController
 import com.kevin.legion.media.SpotifyController
 import com.kevin.legion.media.SpotifyWebApi
+import com.kevin.legion.media.TransportReadback
 import com.kevin.legion.service.LiveToolbox.result
 import com.kevin.legion.service.MusicToolbox.controlMusicQueue
 import com.kevin.legion.service.MusicToolbox.spotifyNeedsAuthorizationResult
 import com.kevin.legion.service.MusicToolbox.spotifyUnauthorizedResult
 import com.kevin.legion.service.MusicToolbox.spotifyUnreachableResult
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
@@ -331,36 +333,107 @@ object MusicControlToolbox {
      * out of step between the voice tool and the hands path again.
      */
     internal suspend fun controlMusicTransport(context: Context, action: MusicAction): JSONObject {
+        val move = when (action) {
+            MusicAction.PLAY     -> TransportReadback.Move.PLAY
+            MusicAction.PAUSE    -> TransportReadback.Move.PAUSE
+            MusicAction.NEXT     -> TransportReadback.Move.NEXT
+            MusicAction.PREVIOUS -> TransportReadback.Move.PREVIOUS
+            else -> error("controlMusicTransport called with non-transport action: $action")
+        }
         if (NowPlayingController.hasAccess(context)) {
-            val ok = withContext(Dispatchers.Main) {
-                when (action) {
-                    MusicAction.PLAY     -> MusicController.play(context)
-                    MusicAction.PAUSE    -> MusicController.pause(context)
-                    MusicAction.NEXT     -> MusicController.next(context)
-                    MusicAction.PREVIOUS -> MusicController.previous(context)
-                    else -> error("controlMusicTransport called with non-transport action: $action")
-                }
+            val report = withContext(Dispatchers.Main) { MusicController.runMove(context, move) }
+            // Dispatched and unconfirmed does NOT fall through to App Remote: a second `next`
+            // would skip twice. The command left; what is in doubt is the outcome, not the send.
+            if (report.dispatched) {
+                return readbackResult(move, TransportReadback.verdict(move, report.before, report.after), report.after)
             }
-            if (ok) return result(success = true, message = null)
         }
 
-        // Only attempt this against a live remote. [SpotifyController.withPlayer]
-        // reports success the instant the call is DISPATCHED rather than when it
-        // lands (unlike playUri, which awaits the real CallResult), so gating on
-        // isConnected is what keeps a `true` here from becoming a claim the app
-        // cannot support.
+        // Only attempt this against a live remote. [SpotifyController.withPlayer] reports success
+        // the instant the call is DISPATCHED rather than when it lands (unlike playUri, which
+        // awaits the real CallResult), so the pushed player state is read back here too.
         if (SpotifyController.isConnected) {
-            val ok = when (action) {
-                MusicAction.PLAY     -> SpotifyController.play()
-                MusicAction.PAUSE    -> SpotifyController.pause()
-                MusicAction.NEXT     -> SpotifyController.next()
-                MusicAction.PREVIOUS -> SpotifyController.previous()
-                else -> error("controlMusicTransport called with non-transport action: $action")
+            val before = spotifyObservation()
+            val sent = when (move) {
+                TransportReadback.Move.PLAY     -> SpotifyController.play()
+                TransportReadback.Move.PAUSE    -> SpotifyController.pause()
+                TransportReadback.Move.NEXT     -> SpotifyController.next()
+                TransportReadback.Move.PREVIOUS -> SpotifyController.previous()
             }
-            if (ok) return result(success = true, message = null)
+            if (sent) {
+                val after = awaitSpotifyState(move, before)
+                return readbackResult(move, TransportReadback.verdict(move, before, after), after)
+            }
         }
 
         return result(success = false, message = musicFailureMessage(context))
+            .put("dispatched", false)
+    }
+
+    /** App Remote's own pushed player state as an observation, or null when it has none. */
+    private fun spotifyObservation(): TransportReadback.Observation? {
+        val state = SpotifyController.playerState.value ?: return null
+        return TransportReadback.Observation(
+            playing = !state.isPaused,
+            trackKey = state.track?.uri,
+            positionMs = state.playbackPosition.takeIf { it >= 0 },
+        )
+    }
+
+    /** Reads App Remote's pushed state until it confirms the move or the budget runs out. */
+    private suspend fun awaitSpotifyState(
+        move: TransportReadback.Move,
+        before: TransportReadback.Observation?,
+    ): TransportReadback.Observation? {
+        var after = spotifyObservation()
+        var waited = 0L
+        while (TransportReadback.verdict(move, before, after) != TransportReadback.Verdict.CONFIRMED &&
+            waited < TransportReadback.BUDGET_MS
+        ) {
+            delay(TransportReadback.STEP_MS)
+            waited += TransportReadback.STEP_MS
+            after = spotifyObservation()
+        }
+        return after
+    }
+
+    /**
+     * The tool result for a transport command whose outcome was read back
+     * (`music-suggestions-1124` P4). `success` is CONFIRMED only, because `success` is what an
+     * outcome verb stands on (CLAUDE.md section 7, ADR 0031). A dispatch nobody could verify is
+     * reported as exactly that, in words, and `dispatched` is carried separately so the hands path
+     * can tell "I could not reach the player" from "I sent it and cannot vouch for it".
+     *
+     * `internal` and pure so the three wordings are a plain JVM test.
+     */
+    internal fun readbackResult(
+        move: TransportReadback.Move,
+        verdict: TransportReadback.Verdict,
+        after: TransportReadback.Observation?,
+    ): JSONObject {
+        val verb = when (move) {
+            TransportReadback.Move.PLAY -> "play"
+            TransportReadback.Move.PAUSE -> "pause"
+            TransportReadback.Move.NEXT -> "skip"
+            TransportReadback.Move.PREVIOUS -> "go back"
+        }
+        val out = when (verdict) {
+            TransportReadback.Verdict.CONFIRMED -> result(success = true, message = null)
+            TransportReadback.Verdict.CONTRADICTED -> result(
+                success = false,
+                message = "I sent the $verb and the player still reports " +
+                    (if (after?.playing == true) "playing" else "not playing") +
+                    ", so I can't tell you it took.",
+            )
+            TransportReadback.Verdict.CANNOT_TELL -> result(
+                success = false,
+                message = "I sent the $verb, and the player reported nothing back, so I can't say " +
+                    "whether it took.",
+            )
+        }
+        out.put("dispatched", true)
+        after?.let { out.put("playback", if (it.playing) "playing" else "not playing") }
+        return out
     }
 
     /**

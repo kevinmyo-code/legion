@@ -56,6 +56,74 @@ object MusicController {
     fun previous(context: Context): Boolean = withController(context) { it.transportControls.skipToPrevious() }
 
     /**
+     * One transport command with the session's own state read back
+     * (`music-suggestions-1124` P4). [dispatched] says the command left here; [before]/[after] are
+     * what the session reported either side of it, for [TransportReadback.verdict] to judge.
+     *
+     * [withController] returns true the instant a command is DISPATCHED without throwing, which is
+     * not the same as the player having done it - a play that reached a dead session came back
+     * true, with no state, and was spoken as an outcome. So a caller that must not claim an
+     * outcome uses this instead.
+     */
+    internal data class MoveReport(
+        val dispatched: Boolean,
+        val before: TransportReadback.Observation?,
+        val after: TransportReadback.Observation?,
+    )
+
+    /**
+     * Dispatches [move] and then reads THE SAME controller back until the state settles or
+     * [TransportReadback.BUDGET_MS] runs out. The same controller deliberately: looking the active
+     * session up again could land on a different app's session and read its state as the answer.
+     *
+     * Must be called on a thread with a Looper (see this object's own note).
+     */
+    internal suspend fun runMove(context: Context, move: TransportReadback.Move): MoveReport {
+        val c = activeController(context) ?: return MoveReport(dispatched = false, before = null, after = null)
+        val before = observe(c)
+        val sent = try {
+            when (move) {
+                TransportReadback.Move.PLAY -> c.transportControls.play()
+                TransportReadback.Move.PAUSE -> c.transportControls.pause()
+                TransportReadback.Move.NEXT -> c.transportControls.skipToNext()
+                TransportReadback.Move.PREVIOUS -> c.transportControls.skipToPrevious()
+            }
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "transport command failed: ${e.message}")
+            false
+        }
+        if (!sent) return MoveReport(dispatched = false, before = before, after = null)
+        var after = observe(c)
+        var waited = 0L
+        while (TransportReadback.verdict(move, before, after) != TransportReadback.Verdict.CONFIRMED &&
+            waited < TransportReadback.BUDGET_MS
+        ) {
+            kotlinx.coroutines.delay(TransportReadback.STEP_MS)
+            waited += TransportReadback.STEP_MS
+            after = observe(c)
+        }
+        return MoveReport(dispatched = true, before = before, after = after)
+    }
+
+    /**
+     * What this session reports now, or null when it publishes no playback state at all - which is
+     * a real answer ("cannot tell"), never to be read as paused.
+     */
+    private fun observe(c: MediaController): TransportReadback.Observation? {
+        val state = c.playbackState ?: return null
+        val key = c.metadata?.let {
+            it.getString(android.media.MediaMetadata.METADATA_KEY_MEDIA_ID)
+                ?: it.getString(android.media.MediaMetadata.METADATA_KEY_TITLE)
+        }
+        return TransportReadback.Observation(
+            playing = state.state == PlaybackState.STATE_PLAYING,
+            trackKey = key?.takeIf { it.isNotBlank() },
+            positionMs = state.position.takeIf { it >= 0 },
+        )
+    }
+
+    /**
      * Pauses the driver's PHONE stream specifically (not Spotify on the head
      * unit) - used when switching TO head-unit Spotify, so acct A goes quiet
      * before acct B starts. No-ops (returns false) if the phone isn't
