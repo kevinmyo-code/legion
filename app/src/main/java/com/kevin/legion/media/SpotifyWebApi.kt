@@ -1168,6 +1168,7 @@ object SpotifyWebApi {
      * count as the library size, which is the claim P7/P8 exist to stop, and is wrong exactly when
      * [MAX_PLAYLIST_PAGES] cut the fetch short.
      */
+    @Suppress("ReturnCount") // guard clauses, one worded exit each
     private fun freshCachedPlaylists(context: Context): LibraryOutcome.Found<SpotifyPlaylist>? {
         val at = authPrefs(context).getLong(KEY_PLAYLIST_CACHE_AT, 0L)
         if (System.currentTimeMillis() - at > PLAYLIST_CACHE_TTL_MS) return null
