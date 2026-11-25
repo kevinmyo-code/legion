@@ -137,11 +137,14 @@ class EarpieceWiringTest {
             level.contains("return deaf || deafMic.switching"))
         assertTrue("only on the hands-free mic", level.contains("onHandsFreeMic = onHandsFreeMic"))
         assertTrue("never on a live call", level.contains("inLiveCall = callLineUp.get()"))
-        // Playing, muted, call-paused, or an open with no voice yet: not a moment to judge a mic in.
-        assertTrue(
-            "judging names all four",
-            level.contains("!playbackActive && !micMuted && !callPaused && backend != null && player != null"),
-        )
+        // Alfred mid-utterance, muted, call-paused, or an open with no voice yet: not a moment to
+        // judge a mic in. A line still being FETCHED counts, because playbackActive only goes true at
+        // its first audio and the switch would rebuild the player out from under it.
+        assertTrue("a line of ours in flight counts as the floor being his",
+            level.contains("playbackActive || turnJob?.isActive == true"))
+        assertTrue("judging names all four",
+            level.contains("!alfredHasTheFloor && !micMuted && !callPaused && voiceReady"))
+        assertTrue(level.contains("backend != null && player != null"))
         val mic = stripComments(File(sourceRoot(), "service/cascade/CascadeMic.kt").readText())
         assertFalse("the mic loop no longer publishes its own level", mic.contains("MicLevel.publish"))
         assertFalse(mic.contains("MicSignal."))
@@ -185,6 +188,8 @@ class EarpieceWiringTest {
         // Seconds pass on a shared loop: a close, a call or a check-in's closer may have taken over.
         val rechecked = back.indexOf("if (closing.get() || callPaused || checkInStep == CheckInStep.DONE)")
         assertTrue("the state is checked again after the settle", rechecked in settle until opened)
+        // Call may have been pressed between the verdict and the switch: a call's route is not ours.
+        assertTrue("and a call is refused at the top", back.contains("if (closing.get() || callLineUp.get()) return"))
         // Spoken like any other reply, which is what arms his whole follow-up window again at drain.
         assertTrue("he is told out loud, not only on screen", opened < said)
         assertTrue("the chime stands in only when there is no voice to say it with",
