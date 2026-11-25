@@ -14,9 +14,13 @@
 # exemption arrives in a diff under adversarial review. A reviewer accepting one owes, in writing:
 #   - the blob sha resolves to the file the entry names (`git rev-parse <sha>:<path>`, or
 #     `git cat-file -p <blob>` read in full);
-#   - its operations are a SeparateDatabaseAndState whose database_operations is empty, or are
-#     otherwise provably no DDL at all;
+#   - its operations are a SeparateDatabaseAndState whose database_operations list is empty and
+#     literal, so the migration runs no DDL;
 #   - the SQL check still runs on a listed file, so this line excuses no DROP, TRUNCATE or DELETE.
+#
+# STATE-ONLY IS THE WHOLE SCOPE. This file is not a general hatch for a destructive migration, and
+# in particular not for an AlterField that really reaches the database: a reviewer asked to list one
+# refuses. Widening what may go here is Kevin's call, not a reviewer's.
 #
 # Get a blob sha with:  git rev-parse <commit-ish>:<repo path>
 #
