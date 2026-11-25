@@ -54,6 +54,59 @@ class UpdateAndroidTest {
         return DjangoUpdateBackend(EngineHttp(config, OkHttpClient()))
     }
 
+    /** The same unit, signed in with the car's own sign-in handed over the car link. */
+    private fun carLinkedBackend(): DjangoUpdateBackend {
+        val config = EngineConfig(
+            context = app,
+            encrypt = { plain -> "ENC($plain)" },
+            decrypt = { blob -> blob.removePrefix("ENC(").removeSuffix(")") },
+        )
+        val base = server.url("/").newBuilder().host("127.0.0.1").build().toString().trimEnd('/')
+        assertTrue(
+            config.saveSessionStrict(
+                baseUrl = base,
+                token = "hu1_made-up",
+                userId = "11111111-1111-1111-1111-111111111111",
+                carLink = true,
+                vehicleId = "22222222-2222-2222-2222-222222222222",
+            ),
+        )
+        return DjangoUpdateBackend(EngineHttp(config, OkHttpClient()))
+    }
+
+    /**
+     * 2026-11-24: the regression that left a paired unit unable to update itself. Both paths this
+     * backend builds must pass `CarLinkScope.allows`, and this goes through the backend rather
+     * than `EngineHttp` directly so a change to either path string is caught here.
+     */
+    @Test
+    fun `the car's own sign-in reaches both release reads this backend makes`() = runBlocking {
+        val sha = "c".repeat(64)
+        val id = "0c2f5b4a-1111-4222-8333-444455556666"
+        server.enqueue(
+            MockResponse().setBody(
+                """{"id":"$id","app":"headunit","version_code":263282217,"version_name":"1.0+6daba9e0",
+                "sha256":"$sha","size_bytes":40080467,"notes":"","signer_sha256":"${"a".repeat(64)}"}""",
+            ),
+        )
+        server.enqueue(
+            MockResponse().setBody(
+                """{"url":"https://storage.example/signed","expires_at":"2026-11-25T00:00:00Z",
+                "sha256":"$sha","size_bytes":40080467,"version_code":263282217}""",
+            ),
+        )
+        val backend = carLinkedBackend()
+
+        val release = backend.latest().getOrThrow()!!
+        assertEquals("/api/releases/latest?app=headunit", server.takeRequest().path)
+        assertEquals(263282217L, release.versionCode)
+
+        val link = backend.downloadLink(release).getOrThrow()
+        assertEquals("/api/releases/$id/download", server.takeRequest().path)
+        assertEquals("https://storage.example/signed", link.url)
+        assertEquals(2, server.requestCount)
+    }
+
     @Test
     fun `one session for this app, written and committed`() {
         val apk = tmp.newFile("headunit.apk").apply { writeBytes(ByteArray(4096) { it.toByte() }) }
