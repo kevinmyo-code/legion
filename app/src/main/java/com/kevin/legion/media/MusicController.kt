@@ -78,6 +78,7 @@ object MusicController {
      *
      * Must be called on a thread with a Looper (see this object's own note).
      */
+    @Suppress("ReturnCount", "TooGenericExceptionCaught") // guard clauses; a transport throw must no-op
     internal suspend fun runMove(context: Context, move: TransportReadback.Move): MoveReport {
         val c = activeController(context) ?: return MoveReport(dispatched = false, before = null, after = null)
         val before = observe(c)
@@ -117,7 +118,13 @@ object MusicController {
                 ?: it.getString(android.media.MediaMetadata.METADATA_KEY_TITLE)
         }
         return TransportReadback.Observation(
-            playing = state.state == PlaybackState.STATE_PLAYING,
+            // Only an explicit pause or stop is "not playing". Buffering, connecting and every
+            // other state are UNKNOWN: a play that is still buffering has not failed.
+            playing = when (state.state) {
+                PlaybackState.STATE_PLAYING -> true
+                PlaybackState.STATE_PAUSED, PlaybackState.STATE_STOPPED -> false
+                else -> null
+            },
             trackKey = key?.takeIf { it.isNotBlank() },
             positionMs = state.position.takeIf { it >= 0 },
         )

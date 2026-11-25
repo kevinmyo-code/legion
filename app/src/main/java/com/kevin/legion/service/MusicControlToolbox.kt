@@ -332,6 +332,7 @@ object MusicControlToolbox {
      * within the same module"). It now calls this SAME function, so the ordering can never drift
      * out of step between the voice tool and the hands path again.
      */
+    @Suppress("ReturnCount") // one worded exit per backend, plus the failure
     internal suspend fun controlMusicTransport(context: Context, action: MusicAction): JSONObject {
         val move = when (action) {
             MusicAction.PLAY     -> TransportReadback.Move.PLAY
@@ -419,11 +420,19 @@ object MusicControlToolbox {
         }
         val out = when (verdict) {
             TransportReadback.Verdict.CONFIRMED -> result(success = true, message = null)
+            // A skip's contradiction is not about the playing flag, which a skip never changes:
+            // the player is still on the same track. Saying "still reports playing" there would
+            // name the wrong reason.
             TransportReadback.Verdict.CONTRADICTED -> result(
                 success = false,
-                message = "I sent the $verb and the player still reports " +
-                    (if (after?.playing == true) "playing" else "not playing") +
-                    ", so I can't tell you it took.",
+                message = when (move) {
+                    TransportReadback.Move.NEXT, TransportReadback.Move.PREVIOUS ->
+                        "I sent the $verb and the player is still on the same track, so I can't " +
+                            "tell you it took."
+                    else -> "I sent the $verb and the player still reports " +
+                        (if (after?.playing == true) "playing" else "not playing") +
+                        ", so I can't tell you it took."
+                },
             )
             TransportReadback.Verdict.CANNOT_TELL -> result(
                 success = false,
@@ -432,7 +441,9 @@ object MusicControlToolbox {
             )
         }
         out.put("dispatched", true)
-        after?.let { out.put("playback", if (it.playing) "playing" else "not playing") }
+        // Only a state the player actually stated: an unknown one is reported as no state at all,
+        // never as paused.
+        after?.playing?.let { out.put("playback", if (it) "playing" else "not playing") }
         return out
     }
 

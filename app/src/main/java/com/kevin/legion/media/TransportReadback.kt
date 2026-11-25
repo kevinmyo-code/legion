@@ -19,11 +19,16 @@ internal object TransportReadback {
 
     /**
      * What a player reported at one moment. [trackKey] is whatever identifies the current item to
-     * that player (a media id, a URI); [positionMs] is where it is inside that item. Either may be
-     * null, because a player is allowed to publish neither - and when it does, the honest verdict
-     * is [Verdict.CANNOT_TELL] rather than a guess.
+     * that player (a media id, a URI); [positionMs] is where it is inside that item. Any of the
+     * three may be null, because a player is allowed to publish none of them - and when it does,
+     * the honest verdict is [Verdict.CANNOT_TELL] rather than a guess.
+     *
+     * [playing] is three-valued on purpose. Only an explicitly paused or stopped state is false;
+     * buffering, connecting or a session that reports nothing are UNKNOWN, not paused. A play that
+     * worked and is still buffering, or a Bluetooth bridge that reports no state while it plays,
+     * would otherwise be answered with "it still reports not playing".
      */
-    data class Observation(val playing: Boolean, val trackKey: String? = null, val positionMs: Long? = null)
+    data class Observation(val playing: Boolean?, val trackKey: String? = null, val positionMs: Long? = null)
 
     enum class Verdict {
         /** The player's own state moved the way the command asked. */
@@ -45,12 +50,20 @@ internal object TransportReadback {
      * track already past its first seconds). With neither identity nor position published, a skip
      * cannot be confirmed at all, and saying so is the point of this function.
      */
-    @Suppress("ReturnCount") // one worded exit per case
+    @Suppress("ReturnCount", "CyclomaticComplexMethod") // one worded exit per case, six cases
     fun verdict(move: Move, before: Observation?, after: Observation?): Verdict {
         if (after == null) return Verdict.CANNOT_TELL
         when (move) {
-            Move.PLAY -> return if (after.playing) Verdict.CONFIRMED else Verdict.CONTRADICTED
-            Move.PAUSE -> return if (!after.playing) Verdict.CONFIRMED else Verdict.CONTRADICTED
+            Move.PLAY -> return when (after.playing) {
+                true -> Verdict.CONFIRMED
+                false -> Verdict.CONTRADICTED
+                null -> Verdict.CANNOT_TELL
+            }
+            Move.PAUSE -> return when (after.playing) {
+                false -> Verdict.CONFIRMED
+                true -> Verdict.CONTRADICTED
+                null -> Verdict.CANNOT_TELL
+            }
             Move.NEXT, Move.PREVIOUS -> Unit
         }
         if (before == null) return Verdict.CANNOT_TELL
