@@ -190,7 +190,7 @@ class VehicleControllerServiceWritesTest {
     }
 
     @Test
-    fun `a mileage-less log on an item with a months interval is still timed by date, and says so`() = runBlocking {
+    fun `a mileage-less log on an item with a months interval never says nothing times it`() = runBlocking {
         FleetEngineStore.upsertNewItem(
             context,
             MaintenanceItem(vehicleId = "V1", serviceName = "Oil Change", intervalMiles = 5_000, intervalMonths = 6),
@@ -198,8 +198,13 @@ class VehicleControllerServiceWritesTest {
 
         val outcome = VehicleController.logServiceDirect(context, "oil change", vehicleId = "V1")
 
+        // The reply is one sentence of three, picked at random, so this is about what the set may
+        // never say: the date axis DOES time this item, so neither the miles-only nor the
+        // no-interval wording may be reachable here.
         assertTrue("Was: ${outcome.message}", outcome.success)
-        assertTrue("Was: ${outcome.message}", outcome.message.contains("date"))
+        assertFalse("Was: ${outcome.message}", outcome.message.contains("can't say when it's next due"))
+        assertFalse("Was: ${outcome.message}", outcome.message.contains("mileage interval"))
+        assertFalse("Was: ${outcome.message}", outcome.message.contains("no interval"))
     }
 
     @Test
