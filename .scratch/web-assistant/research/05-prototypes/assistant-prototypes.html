@@ -260,7 +260,7 @@ function esc(s){ return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt
 function cap(s){ return s.charAt(0).toUpperCase()+s.slice(1); }
 
 /* ===== members: the companion name is data, read from here and nowhere else ===== */
-const MEMBERS = { Member B:{companion:'Dorothy'}, Kevin:{companion:'Alfred'} };
+const MEMBERS = { 'Member B':{companion:'Dorothy'}, Kevin:{companion:'Alfred'} };
 
 /* ===== scripted engine: a tool line exists only when the "engine" returned ===== */
 const ITEMS = ['paper towels','laundry detergent','dish soap','shampoo','toothpaste','conditioner','eggs','bananas'];
