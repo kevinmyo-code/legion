@@ -416,7 +416,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/procedures/map\|procedures]] | [[21-build-evaluation-replay\|21]] | build | Build: replay recorded asks against procedures vs free routing  waiting on [[10-baseline-round-trips\|10]], [[15-build-first-procedures\|15]] |
 | [[.scratch/purchase-log/map\|purchase-log]] | [[07-web\|07]] | build | Web: the log screen, log-it form, last-bought on list items  waiting on [[06-server\|06]] |
 | [[.scratch/purchase-log/map\|purchase-log]] | [[08-phone\|08]] | build | Phone: voice tools, the log screen, last-bought label  waiting on [[06-server\|06]] |
-| [[.scratch/purchase-log/map\|purchase-log]] | [[09-mia-on-her-iphone\|09]] | test | Mia logs and asks, on her iPhone  waiting on [[07-web\|07]] |
+| [[.scratch/purchase-log/map\|purchase-log]] | [[09-second-member-logs-and-asks-on-the-web\|09]] | test | A second household member logs and asks, from the web app  waiting on [[07-web\|07]] |
 | [[.scratch/recruiter-demo/map\|recruiter-demo]] | [[02-invite-code-to-visitor-token\|02]] | build | Invite code to per-visitor read token, ref tag, per-IP limit, rotation  waiting on [[01-recruiter-role-and-allowlist\|01]] |
 | [[.scratch/recruiter-demo/map\|recruiter-demo]] | [[04-global-daily-budget\|04]] | build | Global daily demo budget ($5), reserve before mint, budget-used message  waiting on [[02-invite-code-to-visitor-token\|02]] |
 | [[.scratch/recruiter-demo/map\|recruiter-demo]] | [[05-guide-persona-and-greeting\|05]] | build | Guide persona: greet on connect, say what it can do, offer things to try  waiting on [[01-recruiter-role-and-allowlist\|01]] |

@@ -81,9 +81,9 @@
       "color": "1"
     },
     {
-      "id": "d3d1b88e8b4d0001",
+      "id": "2ae36070f11ad8fe",
       "type": "file",
-      "file": ".scratch/purchase-log/issues/09-mia-on-her-iphone.md",
+      "file": ".scratch/purchase-log/issues/09-second-member-logs-and-asks-on-the-web.md",
       "x": 2080,
       "y": 0,
       "width": 320,
@@ -170,10 +170,10 @@
       "toSide": "left"
     },
     {
-      "id": "281999091ad05d66",
+      "id": "dc916e7a6d5a955e",
       "fromNode": "be96f55a8f7aeb91",
       "fromSide": "right",
-      "toNode": "d3d1b88e8b4d0001",
+      "toNode": "2ae36070f11ad8fe",
       "toSide": "left"
     }
   ]
