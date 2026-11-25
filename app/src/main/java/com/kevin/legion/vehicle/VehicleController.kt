@@ -279,8 +279,10 @@ object VehicleController {
         vehicleId: String? = null,
         pinWaitingItems: Boolean = true,
     ): WriteOutcome {
-        if (!odometerReadingPlausible(miles))
-            return WriteOutcome(false, "That reading doesn't look right - odometer should be between 100 and 999,999 miles.")
+        if (!odometerReadingPlausible(miles)) return WriteOutcome(
+            false,
+            "That reading doesn't look right - odometer should be between 100 and 999,999 miles.",
+        )
         val vehicle = vehicleFor(context, vehicleId)
         val now = System.currentTimeMillis()
 
@@ -313,20 +315,26 @@ object VehicleController {
         // moved one layer down. So an unregistered car is TOLD it is
         // unregistered, and given the next step, rather than silently swallowing
         // the number.
+        // One exit for the write's own outcome, rather than an early return for the zero-row case:
+        // the pin below may only run on a write that landed, and detekt holds this function at two
+        // returns.
         val written = FleetEngineStore.setOdometerBaseline(context, vehicle.obdMac, miles, now, now)
-        if (written == 0) {
-            return WriteOutcome(
+        return if (written == 0) {
+            WriteOutcome(
                 false,
                 "I don't have this car on file yet, so I can't attach that reading to it. " +
                     "Tell me the year, make and model first and I'll record $miles miles straight after.",
             )
+        } else {
+            // The reading also ANSWERS the question every due surface asks - see `MileageAnchorPin.kt`.
+            val pinned = if (pinWaitingItems) {
+                pinStatedReadingToWaitingItems(context, vehicle.obdMac, miles, now)
+            } else {
+                emptyList()
+            }
+            val questionNote = odometerQuestionNote(miles, priorEstimate, baselineSet)
+            WriteOutcome(true, odometerFiledMessage(miles, questionNote, pinned))
         }
-
-        // The reading also ANSWERS the question every due surface asks - see `MileageAnchorPin.kt`.
-        val pinned =
-            if (pinWaitingItems) pinStatedReadingToWaitingItems(context, vehicle.obdMac, miles, now) else emptyList()
-        val questionNote = odometerQuestionNote(miles, priorEstimate, baselineSet)
-        return WriteOutcome(true, odometerFiledMessage(miles, questionNote, pinned))
     }
 
     /**
