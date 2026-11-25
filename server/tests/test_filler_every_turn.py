@@ -392,10 +392,15 @@ def test_a_due_line_with_no_clip_asks_about_a_cancel_at_the_doors_rate(
 
 @pytest.fixture
 def quick_chain(monkeypatch):
-    """The phone's chain with its gaps shortened: the rule under test is the chaining, not the
-    numbers (those are pinned against `FillerTiming.kt` in `test_assistant_wait_lines.py`)."""
+    """The phone's chain with its gaps shortened, and its clip floor dropped: the rule under test is
+    the chaining, not the numbers. Both the gaps and the 200 to 1,300 ms clip window are pinned
+    against the phone's own files in `test_assistant_wait_lines.py`.
+
+    The floor has to go because `FakeSpeech` yields a 20 ms clip, which no real line would be.
+    """
     monkeypatch.setattr(wait_lines, "FIRST_GAP_MS", 100)
     monkeypatch.setattr(wait_lines, "NEXT_GAP_MS", 100)
+    monkeypatch.setattr(wait_lines, "MIN_CLIP_MS", 0)
 
 
 def test_a_no_tool_turn_is_no_longer_silent_while_the_model_thinks(
@@ -450,9 +455,23 @@ def test_the_chain_stops_once_the_answer_is_ready(
 
 
 def test_a_fast_round_hears_no_wait_line(member, engine, monkeypatch, household_user):
-    # The phone's own gap: 1.5 s. A round that answers at once never reaches it.
+    # The phone's own gap, 1.5 s, with the clip floor out of the way so this tests the GAP and not
+    # the fake's 20 ms clip. A round that answers at once never reaches it.
+    monkeypatch.setattr(wait_lines, "MIN_CLIP_MS", 0)
     conversation = _later(member, engine, monkeypatch, household_user)
     events = _turn(member, engine, conversation, FakeModel([say("You spent a little.")]))
+    assert _waits(events) == []
+
+
+def test_a_clip_outside_the_phones_window_is_never_played(
+    member, engine, monkeypatch, household_user
+):
+    # The real floor (200 ms) against the fake's 20 ms clip: due, in hand, and still not played,
+    # because a clip that short is not a line (`wait_lines.clip_fits`).
+    monkeypatch.setattr(wait_lines, "FIRST_GAP_MS", 100)
+    monkeypatch.setattr(wait_lines, "NEXT_GAP_MS", 100)
+    conversation = _later(member, engine, monkeypatch, household_user)
+    events = _turn(member, engine, conversation, SlowModel([say("Done.")], [1.0]))
     assert _waits(events) == []
 
 
