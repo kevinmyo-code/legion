@@ -107,7 +107,11 @@ def schedule_status(viewer, vehicle) -> list[ItemStatus]:
     )
     if not schedules:
         return []
-    history = list(scoped(ServiceHistory, viewer).filter(vehicle=vehicle, deleted_at__isnull=True))
+    history = list(
+        scoped(ServiceHistory, viewer)
+        .filter(vehicle=vehicle, deleted_at__isnull=True)
+        .order_by("created_at", "id")
+    )
     out = []
     for schedule in schedules:
         key = schedule.service_name.strip().lower()
@@ -122,7 +126,10 @@ def schedule_status(viewer, vehicle) -> list[ItemStatus]:
         newest = max(done, key=_newest_first) if done else None
         last_on = newest.service_date if newest else None
         last_miles = newest.mileage if newest else None
-        timeable = bool(last_on and schedule.interval_months)
+        # `is not None`, never truthiness: the phone tests `!= null`, so an interval stored as 0
+        # (meaningless, but storable) must not read as "no interval" on one side and as one on the
+        # other. Round 2 finding, non-blocking and one line.
+        timeable = last_on is not None and schedule.interval_months is not None
         out.append(
             ItemStatus(
                 service_name=schedule.service_name,
@@ -141,47 +148,64 @@ def schedule_status(viewer, vehicle) -> list[ItemStatus]:
                     if last_miles is not None and schedule.interval_miles
                     else None
                 ),
-                needs_mileage=bool(
-                    done and schedule.interval_miles and last_miles is None and not timeable
+                # The phone's [needsMileageReading] exactly: a miles interval on file, no mileage
+                # anchor, and no date timing. `last_on is not None` is the half that keeps the two
+                # lists disjoint the way the phone's `isUnknown` check does - a row carrying
+                # NEITHER a date nor a mileage leaves the item unknown, not waiting for a reading.
+                needs_mileage=(
+                    bool(done)
+                    and schedule.interval_miles is not None
+                    and last_miles is None
+                    and last_on is not None
+                    and not timeable
                 ),
             )
         )
     return out
 
 
-def _newest_first(row):
-    """Which service history row the anchor comes from: the NEWEST EVENT, then a driver's own
-    ASSERTED anchor over an OBSERVED row of the same date, then when the row was written. A row
-    with no date at all sorts last - a dated service is a stronger anchor than an undated assertion
-    about one.
+def _stated_at(row) -> dt.datetime:
+    """WHEN this row was last stated, in the phone's own terms - its
+    `ServiceRecord.updatedAt`, restated against this schema. That field is what
+    `FleetRecordBridge.projectAnchorLegacy` orders on, so reproducing it is what makes the two
+    sides name the same anchor, and the phone stamps it from TWO different clocks:
 
-    The ASSERTED step is what the phone does for one real pair, so it is not a preference invented
-    here: a dated `log_past_service` with the "miles ago" phrasing writes an ASSERTED anchor
-    carrying the remembered mileage AND an OBSERVED row of the same date carrying none (the
-    OBSERVED row may not hold a figure derived from the live estimate), and the phone's
-    `projectAnchorLegacy` picks the ASSERTED one because `insertObserved` stamps its `updatedAt`
-    with the EVENT date while `setAnchor` stamps the wall clock. Without this step the two sides
-    disagree about that history in words.
+    - `FleetEngineStore.insertObserved` stamps it with the EVENT date. For a service logged on the
+      day it happened that date IS the moment of writing; for a backdated log it is the past day.
+    - `FleetEngineStore.setAnchor` stamps the WALL CLOCK, because an assertion has no event behind
+      it to date. An undated assertion is still a statement made at a moment.
 
-    Write time is the tie-break and not the primary key, deliberately. The phone orders on its own
-    `ServiceRecord.updatedAt`, but the server's `updated_at` cannot carry that order: an INSERT
-    stamps `STATEMENT_TIMESTAMP()` (advancing) while the `touch_updated_at` trigger stamps `now()`
+    So: an ASSERTED row, and an OBSERVED row whose service date is the day it was written, rank by
+    when the row was written; a BACKDATED observation ranks by the day the work happened. No row
+    is pushed to the bottom for lacking a date, which is what round 2's blocker A was - an undated
+    ASSERTED anchor written today (the mileage-only backfill, `log_past_service` with a mileage and
+    no date) lost to a dated OBSERVED row from last year here while winning on the phone, so this
+    side called a just-anchored service overdue by name in the spoken brief.
+
+    The server's own `updated_at` cannot stand in for the phone's. An INSERT stamps
+    `STATEMENT_TIMESTAMP()` (advancing) while the `touch_updated_at` trigger stamps `now()`
     (transaction start), so EDITING a row moves its `updated_at` backward past rows inserted after
-    it - which picked a two-services-old row as the anchor the first time this was written that way.
+    it - measured, and it picked a two-services-old row as the anchor the first time this was
+    written that way. `created_at` is only ever stamped once, so it is the honest write time.
 
-    What matters either way, and what fixes the disagreement with the phone, is that the whole key
-    belongs to ONE row: the anchor is never a mileage from one row paired with a date from another,
-    and a newer service logged with no reading supersedes an older one's mileage rather than letting
-    it stand.
+    Narrow gap left open, and it is the edit path, not the voice one: the phone re-stamps
+    `updatedAt` with the wall clock when the history screen EDITS a row's mileage, which this
+    cannot see (the edit lands on `mileage` alone over the wire). A backdated row edited today
+    therefore still ranks by its event date here. It only matters when a NEWER row for the same
+    item exists to lose to, and the edited row is normally the newest one; closing it needs the
+    phone's stamp on the wire."""
+    written = row.created_at
+    if row.kind != "ASSERTED" and row.service_date is not None and row.service_date != written.date():
+        return dt.datetime.combine(row.service_date, dt.time.min, tzinfo=written.tzinfo)
+    return written
 
-    Known gap, not closed here: an UNDATED ASSERTED anchor stated AFTER a dated OBSERVED log ("I
-    did it around 50,000 miles", said the day after logging it) wins on the phone, by write time,
-    and loses here, because it has no date to rank with. Closing it needs a write-time order the
-    server's own `updated_at` cannot carry (see above), so it is written down rather than guessed
-    at."""
-    return (
-        row.service_date or dt.date.min,
-        row.kind == "ASSERTED",
-        row.updated_at,
-        row.created_at,
-    )
+
+def _newest_first(row):
+    """Which service history row the anchor comes from: the most recently STATED one
+    ([_stated_at]), then when it was written for an exact tie.
+
+    What matters beyond the order, and what fixed the first disagreement with the phone, is that
+    the whole key belongs to ONE row: the anchor is never a mileage from one row paired with a date
+    from another, and a newer service logged with no reading supersedes an older one's mileage
+    rather than letting it stand."""
+    return (_stated_at(row), row.created_at)
