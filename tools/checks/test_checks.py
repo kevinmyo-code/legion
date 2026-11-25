@@ -341,6 +341,112 @@ def test_django_the_exemption_is_the_plain_shape_and_nothing_else():
         assert _judge("from django.db import migrations\n" + body) == [WARN], what
 
 
+def test_django_an_operation_name_the_ast_walk_cannot_read_is_still_refused():
+    """The smig-red2 RED review's second family (2026-11-24): the operation NAME is spelled
+    contiguously in the source, which is what the old text match caught, but it sits where the AST
+    walk never looks - a `bytes` constant, a docstring, a `match` statement's `kwd_attrs`, the
+    dropped `reverse_sql` subtree. Each file puts a real `DeleteModel` into `operations`, so each
+    one really runs. None of them is the plain shape, so the old text match still judges them."""
+    sdas = (
+        "migrations.SeparateDatabaseAndState(database_operations=[],"
+        " state_operations=[migrations.DeleteModel('X')])"
+    )
+    head = "from django.db import migrations\n"
+    cases = {
+        # The name is in a node `_tokens` declines to read, or one `ast` never yields.
+        "a bytes constant through getattr": head + "class Migration(migrations.Migration):\n"
+        "    operations = [getattr(migrations, b'DeleteModel'.decode())('X')]\n",
+        "the same through an imported builtins": "import builtins\n" + head
+        + "class Migration(migrations.Migration):\n"
+        "    operations = [builtins.getattr(migrations, b'DeleteModel'.decode())('X')]\n",
+        "an op class parked in a dropped reverse_sql": head
+        + "S = migrations.RunSQL('select 1', reverse_sql=migrations.DeleteModel)\n"
+        "class Migration(migrations.Migration):\n"
+        "    operations = [S.reverse_sql('X')]\n",
+        "the module docstring read back through __doc__": '"""DeleteModel"""\n' + head
+        + "OP = getattr(migrations, __doc__)\n"
+        "class Migration(migrations.Migration):\n"
+        "    operations = [OP('X')]\n",
+        "the class docstring read back through __doc__": head
+        + "class Migration(migrations.Migration):\n"
+        '    """DeleteModel"""\n'
+        "    operations = [getattr(migrations, __doc__)('X')]\n",
+        "a match statement's kwd_attrs": head
+        + "match migrations:\n    case object(DeleteModel=op):\n        pass\n"
+        "class Migration(migrations.Migration):\n"
+        "    operations = [op('X')]\n",
+        # An import makes a builtin import-rooted, so rule 5 is an allow-list on calls.
+        "builtins imported and called through operator": "import builtins\nimport operator\n"
+        + head + "class Migration(migrations.Migration):\n"
+        "    operations = [operator.call(builtins.setattr,"
+        " migrations.SeparateDatabaseAndState, 'database_operations',"
+        " operator.call(builtins.property, operator.attrgetter('state_operations'))),\n"
+        f"        {sdas}]\n",
+        "the same through a django.db-pathed re-export of builtins":
+        "from django.db.migrations.serializer import builtins\nimport operator\n" + head
+        + "class Migration(migrations.Migration):\n"
+        "    operations = [operator.call(builtins.setattr,"
+        " migrations.SeparateDatabaseAndState, 'database_operations',"
+        " operator.call(builtins.property, operator.attrgetter('state_operations'))),\n"
+        f"        {sdas}]\n",
+        "a bare setattr beside the exempt call": head
+        + "class Migration(migrations.Migration):\n"
+        "    operations = [setattr(migrations, 'SeparateDatabaseAndState', dict),\n"
+        f"        {sdas}]\n",
+        # Anything but an operation constructor beside the exempt call.
+        "an imported helper as a sibling element": head + "from server.common import boot\n"
+        "class Migration(migrations.Migration):\n"
+        f"    operations = [boot.patch(), {sdas}]\n",
+        "an imported helper splatted beside it": head + "from server.common import boot\n"
+        "class Migration(migrations.Migration):\n"
+        f"    operations = [{sdas}, *boot.ops()]\n",
+        "a mutation through a django name's __dict__": head
+        + "class Migration(migrations.Migration):\n"
+        "    operations = [migrations.__dict__.update("
+        "{'SeparateDatabaseAndState': dict}),\n"
+        f"        {sdas}]\n",
+    }
+    for what, source in cases.items():
+        assert _judge(source) == [WARN], what
+
+
+def test_django_a_project_helper_inside_an_operations_argument_keeps_the_exemption():
+    """`checklists/0002_household.py` passes its constraint name through its own
+    `household_unique_name(...)`, nested inside an operation's argument. That is the one call shape
+    beside Django's own that the allow-list permits, and it is why the rule is not "no non-Django
+    calls"."""
+    source = (
+        "from django.db import migrations, models\n"
+        "from household.tenancy_sql import household_unique_name\n\n\n"
+        "class Migration(migrations.Migration):\n\n"
+        "    operations = [\n"
+        "        migrations.SeparateDatabaseAndState(\n"
+        "            database_operations=[],\n"
+        "            state_operations=[\n"
+        "                migrations.AlterField(\n"
+        '                    model_name="widget",\n'
+        '                    name="sync_id",\n'
+        "                    field=models.CharField(max_length=64, null=True),\n"
+        "                ),\n"
+        "                migrations.AddConstraint(\n"
+        '                    model_name="widget",\n'
+        "                    constraint=models.UniqueConstraint(\n"
+        '                        fields=("household", "sync_id"),\n'
+        '                        name=household_unique_name("widgets", ["sync_id"]),\n'
+        "                    ),\n"
+        "                ),\n"
+        "            ],\n"
+        "        ),\n"
+        "    ]\n"
+    )
+    assert _judge(source) == []
+    # Move the same helper call out to be an operation in its own right and the exemption goes.
+    moved = source.replace(
+        "    operations = [\n", "    operations = [\n        household_unique_name('w', ['s']),\n"
+    )
+    assert _judge(moved) == [WARN]
+
+
 def test_django_migration_that_does_not_parse_warns():
     assert _judge("operations = [  # truncated\n") == [WARN]
 
