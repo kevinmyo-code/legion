@@ -185,8 +185,12 @@ def _bindings(tree: ast.AST) -> dict[str, str]:
     """Each name an import binds, mapped to the dotted module it came from.
 
     Empty when the file's imports cannot be read name for name - a `import *`, a relative import, a
-    name bound twice, or a name an assignment, a `def`, a `class` or an argument also binds - so
-    every exemption that asks where a name came from is withdrawn.
+    name bound to two different sources, or a name an assignment, a `def`, a `class` or an argument
+    also binds - so every exemption that asks where a name came from is withdrawn.
+
+    Two imports that bind one name to the SAME source are not ambiguous, and they are the norm:
+    `import django.db.models.deletion` beside `import django.utils.timezone` binds `django` twice,
+    in 60 of the engine's own migrations.
     """
     bindings: dict[str, str] = {}
     rebound: set[str] = set()
@@ -203,7 +207,7 @@ def _bindings(tree: ast.AST) -> dict[str, str]:
                     name, source = alias.asname, alias.name
                 else:
                     name = source = alias.name.split(".")[0]
-                if name in bindings:
+                if bindings.get(name, source) != source:
                     return {}
                 bindings[name] = source
         elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
