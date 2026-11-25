@@ -444,6 +444,10 @@ internal object LiveSurface {
             "or that the playlist does not exist.",
         "play_music" to "If the result says a playlist came from the public catalogue, say so and " +
             "name what played. A history row with replayable false cannot be replayed: say so.",
+        // 2026-11-24: `count` was read aloud as a library size off a five-row page.
+        "browse_my_music" to "`count` is this page, never how many he has. Say a library figure " +
+            "only from `total`, and with truncated true say there are more. With no total, name " +
+            "what came back and say you have not seen the whole list.",
     )
 
     private val byName: Map<String, ActionTool> = ACTION_TOOLS.associateBy { it.name }

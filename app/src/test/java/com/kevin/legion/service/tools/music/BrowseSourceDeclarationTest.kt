@@ -57,6 +57,15 @@ class BrowseSourceDeclarationTest {
     }
 
     @Test
+    fun `the browse result carries the page-versus-library rule`() {
+        // Billed on the result, not in the declaration: the rule only matters once a count exists.
+        val rule = LiveSurface.RESULT_RULES.getValue("browse_my_music")
+        assertTrue("the rule must name `total` as the only library figure", rule.contains("total"))
+        assertTrue("and `count` as the page", rule.contains("count"))
+        assertEquals(rule, LiveSurface.withRule("browse_my_music", JSONObject().put("success", true)).getString("rule"))
+    }
+
+    @Test
     fun `a named playlist lookup has a parameter to arrive in`() {
         // browse_my_music is only reachable through control_music, so the name rides on the
         // merged tool's own playlistName, which must therefore not be scoped to add_to_playlist.
