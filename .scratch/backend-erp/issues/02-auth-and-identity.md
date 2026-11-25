@@ -64,7 +64,7 @@ removes the main argument that was in favour of it.
    clock (`data/local/CompanionProfileEntity.kt:41-52`), there is **no human-user entity anywhere
    in the app**, and which profile is active is a device-local pref deliberately kept out of sync
    (`ai/ActiveCompanionProfile.kt:27-46`). That changes: a profile gains a user, Alfred is Kevin's
-   and Dorothy is his wife's, and the persona follows each of them to the laptop instead of being
+   and Dorothy is a second member's, and the persona follows each of them to the laptop instead of being
    whatever that device last picked. **Memories gain a user tag** so the assistant knows who it is
    speaking to and who said what - required by the cross-interface-memory item already on the map,
    and required by CLAUDE.md §7: recalling one person's statement as the other's is exactly the

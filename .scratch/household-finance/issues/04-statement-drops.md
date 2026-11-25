@@ -14,10 +14,10 @@ tags: [ticket]
 # Statement drops for the other accounts
 
 ## What
-- Narrow ADR 0057's BofA skip: skip a BofA file only when its account last4 is Plaid-linked. Other BofA accounts go through the normal gate (deterministic BofA parser if it recognises the file, else quarantine; never Gemini for a CSV).
-- SGD bank and card statements: the existing Gemini path with 3 anchors. Add a card-statement shape (statement balance, previous balance, payments, new charges) and its anchor maths.
-- CPF statement: per-account (OA/SA/MA/RA) opening, contributions, withdrawals, interest, closing. Each sub-account reconciles. Writes `BalanceSnapshot` rows, not ledger transactions.
-- HDB loan statement: outstanding principal and instalment. Writes snapshots.
+- Narrow ADR 0057's BofA skip: skip a BofA file only when its account is already Plaid-linked. Other BofA accounts go through the normal gate (deterministic BofA parser if it recognises the file, else quarantine; never Gemini for a CSV).
+- Overseas bank and card statements: the existing Gemini path with 3 anchors. Add a card-statement shape (statement balance, previous balance, payments, new charges) and its anchor maths.
+- Retirement-scheme statement: per sub-account, opening, contributions, withdrawals, interest, closing. Each sub-account reconciles. Writes `BalanceSnapshot` rows, not ledger transactions.
+- Housing-loan statement: outstanding principal and instalment. Writes snapshots.
 - Brokerage and bond holdings statements, if dropped: snapshots only.
 - Each file is matched to a `FinanceAccount` by `statement_match`. An unmatched file quarantines with "no account matches".
 - An ADR 0057 amendment note goes into `docs/adr/` (the ADR text keeps its history).

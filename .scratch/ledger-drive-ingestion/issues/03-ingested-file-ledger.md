@@ -137,7 +137,7 @@ New entity `ingested_files`:
 | `duplicatesSkipped` | INTEGER NOT NULL | **amendment 2.** Lines that matched existing rows |
 
 **Multi-folder is carried in the schema now**, hence `treeUri`. This is explicitly a two-country
-SGD/USD household ledger and Kevin's Drive already separates USA and Singapore statements into
+two-currency household ledger and the Drive folder already separates the two countries' statements into
 different folders, so single-folder is a constraint that would be hit immediately. The connected
 folder set itself lives in **DataStore as a `Set<String>`**, not a Room table: it is a handful of
 URI strings with no relations.

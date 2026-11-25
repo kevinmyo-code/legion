@@ -1,7 +1,7 @@
 ---
 map: household-finance
 ticket: "05"
-title: "IBKR Flex connector"
+title: "Broker Flex connector"
 type: build
 status: open
 status-detail: "charted 2026-11-05"
@@ -11,7 +11,7 @@ open-blockers: 2
 ready: false
 tags: [ticket]
 ---
-# IBKR Flex connector
+# Broker Flex connector
 
 ## What
 - Store the Flex Web Service token and query id encrypted with the vault key (`SourceCredential`, like Plaid).

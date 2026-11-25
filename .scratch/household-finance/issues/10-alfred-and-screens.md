@@ -15,14 +15,14 @@ tags: [ticket]
 
 ## What
 - Phone and web Money screen:
-  - net worth by layer (USD, with an SGD toggle)
+  - net worth by layer (home currency, with a second-currency toggle)
   - this month's cash flow
   - budgets with pace
   - runway and floor date
   - transfer-needed card
   - accounts with as_of and estimate tags
   - missing statements
-- Voice: Alfred answers "what's our net worth", "are we on budget", "do I need to move money from Singapore" from the engine tools. Same controller as the screen (ADR 0035).
+- Voice: Alfred answers "what's our net worth", "are we on budget", "do I need to move money from the overseas account" from the engine tools. Same controller as the screen (ADR 0035).
 - Monthly review page on the 1st (`deliver: phone`).
 ## Verification
 - JVM and frontend tests.

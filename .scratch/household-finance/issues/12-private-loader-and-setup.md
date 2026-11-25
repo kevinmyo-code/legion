@@ -18,9 +18,9 @@ tags: [ticket]
 - A guard test: no fixture under `server/` contains a household-specific figure (synthetic data only).
 - Kevin's setup list:
   1. Run the loader against `Documents/legion-household-finance.md`.
-  2. His wife creates an IBKR Flex query and a read-only token; Kevin stores them with `manage.py set_ibkr_flex`.
-  3. Enter the SSB issue codes, the HDB loan rate and the latest balance, and the flat's town, type and storey band.
-  4. First statement drop: her BofA, both DBS, Citi SG, both CPF.
-  5. Confirm the car value.
+  2. A second member creates a broker Flex query and a read-only token; Kevin stores them with `manage.py set_ibkr_flex`.
+  3. Enter the bond issue codes, the housing-loan rate and the latest balance, and the property's locality, type and band.
+  4. First statement drop: the second member's domestic bank, both overseas banks, and both retirement sub-accounts.
+  5. Confirm the vehicle value.
 ## Verification
 - pytest: the loader is idempotent and its output carries no figures.
