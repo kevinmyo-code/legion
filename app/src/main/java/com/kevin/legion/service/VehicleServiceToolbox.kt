@@ -12,6 +12,7 @@ import com.kevin.legion.vehicle.CarToolbelt
 import com.kevin.legion.vehicle.MaintenanceAgent
 import com.kevin.legion.vehicle.TelemetryRecorder
 import com.kevin.legion.vehicle.VehicleController
+import com.kevin.legion.vehicle.needsMileageAskNote
 import java.time.YearMonth
 import org.json.JSONObject
 
@@ -177,11 +178,10 @@ object VehicleServiceToolbox {
         // and the only thing that fixes it is a number the driver has in front of him. So it is
         // NAMED and asked about: never folded into `allDue` (computeNextService holds that false
         // whenever this list is non-empty) and never silently dropped out of the schedule.
-        val needsMileageNote = if (next.needsMileage.isNotEmpty()) {
-            val names = next.needsMileage.joinToString(", ")
-            val them = if (next.needsMileage.size == 1) "that one" else "those"
-            " I don't have a mileage reading against $names, so I can't time $them by miles - what's on the odometer?"
-        } else ""
+        // The question is answerable: the reading he gives back goes through `set_odometer`, which
+        // pins it onto exactly these items (`VehicleController.setOdometer` ->
+        // `pinStatedReadingToWaitingItems`), so asking again next turn means he did not answer.
+        val needsMileageNote = needsMileageAskNote(next.needsMileage)
 
         val unknownNote = if (next.unknownCount > 0) {
             if (next.unknownCount == 1) {

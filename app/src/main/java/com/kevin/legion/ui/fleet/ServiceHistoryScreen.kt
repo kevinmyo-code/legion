@@ -112,6 +112,18 @@ internal fun parseMileageEntry(text: String): MileageEntry {
 }
 
 /**
+ * [parseMileageEntry] inverted: what the box STARTS as for a record. A row with no reading opens
+ * blank, so the driver can add a cost and save without a figure being invented to get past the
+ * form; the old `(record.mileage ?: 0)` opened at `0`, and a save then wrote a stated reading of
+ * zero onto the anchor.
+ *
+ * Paired with its inverse deliberately, and pinned as a round trip by
+ * `ServiceRecordNullMileageEditTest`: the prefill lives inside a Compose `remember` where no test
+ * can see it, which is exactly why reverting it left the suite green in round 2 of the review.
+ */
+internal fun mileageFieldText(mileage: Int?): String = mileage?.toString().orEmpty()
+
+/**
  * What the edit dialog's two boxes mean TOGETHER: either a save to make, or a reason it is refused.
  *
  * One function for both fields because the dialog's rule is one rule - nothing is written unless
@@ -340,7 +352,7 @@ private fun EditServiceRecordDialog(
         // to an existing record retroactively, and a pre-filled 0 that SAVE then wrote would turn
         // "he gave no reading" into a STATED reading of zero - which projects onto the item's
         // mileage anchor and reads the service as permanently overdue from then on.
-        var mileageText by remember(record.id) { mutableStateOf(record.mileage?.toString().orEmpty()) }
+        var mileageText by remember(record.id) { mutableStateOf(mileageFieldText(record.mileage)) }
         // Plain "%.2f" here, deliberately NOT formatCents' grouped-thousands form ("1,234.56") - this
         // field round-trips through toDoubleOrNull() on SAVE below, and a comma would fail that parse
         // for any cost >= $1,000 the driver didn't happen to retype by hand.

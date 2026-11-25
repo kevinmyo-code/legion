@@ -1077,7 +1077,9 @@ object FleetEngineStore {
     /**
      * Clears `MaintenanceSchedule.neverDone` back to false ONLY - never touches the anchor.
      * [insertObserved] already IS the new anchor the instant it lands (the projected mileage/date -
-     * [FleetRecordBridge.projectAnchorLegacy] - reads straight off the `OBSERVED` row just written),
+     * [FleetRecordBridge.projectAnchorLegacy] - reads straight off the `OBSERVED` row just written,
+     * which is the most recently stated row for the pair; it carries whatever mileage the driver
+     * stated, which since the car plan's slice 0 may be none, and the anchor then says so),
      * so [VehicleController.logServiceDirect]'s matched-item branch calls this rather than
      * [setAnchor]. Returns 0 (no-op, ticket 05's law) when no active row exists for this pair.
      */
