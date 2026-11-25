@@ -17,7 +17,7 @@ import pytest
 
 from agents.runtime import model as m
 from agents.runtime.model import FakeModel, call, say
-from agents.voice import wait_lines
+from agents.voice import crisis, wait_lines
 from assistant import cascade, fillers
 from engine_mcp.tools import SPEAK_VERBATIM, ToolResult
 from tests.test_addressed import _warm
@@ -520,3 +520,13 @@ def test_an_ordinary_later_turn_says_one(member, engine, monkeypatch, household_
     events = _turn(member, engine, conversation, FakeModel([say("You spent a little.")]))
     assert len(_acks(events)) == 1
     assert _acks(events)[0] in fillers.ACK
+
+
+def test_words_of_distress_say_no_acknowledgement(member, engine, monkeypatch, household_user):
+    # The phone says nothing light over a crisis (`Backchannel.kt` wordsSkip CRISIS). Invented
+    # wording, taken from the engine's own phrase list so the test tracks it.
+    conversation = _later(member, engine, monkeypatch, household_user)
+    heard = "i want to kill myself"
+    assert crisis.detect(heard), "the phrase list moved: pick another of its phrases"
+    events = _turn(member, engine, conversation, FakeModel([say("I hear you.")]), heard=heard)
+    assert _acks(events) == []
