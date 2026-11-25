@@ -110,6 +110,31 @@ class EngineCarLinkSignInTest {
     }
 
     /**
+     * RED review of fix/huauth-releases-carlink-1124: a 401 on a RELEASE read must not end the
+     * hand-over. An engine older than this build answers 401 to a `hu1_` key there, and the updater
+     * asks 20 seconds after each start and every 6 hours, so treating it as a dead sign-in would
+     * take the car's drive-log and OBD uploads down until the phone paired again. The car's own
+     * uploads keep the old behaviour, proved in the test above this one.
+     */
+    @Test fun a401OnAReleaseReadLeavesTheCarsSignInWorking() = runBlocking {
+        val c = carLinked()
+        val http = EngineHttp(c, OkHttpClient())
+        server.enqueue(MockResponse().setResponseCode(401).setBody("""{"detail":"Invalid token."}"""))
+        val refused = http.get("/api/releases/latest", mapOf("app" to "headunit"))
+        assertTrue(refused.failure().toString(), refused.failure() is EngineFailure.Refused)
+        assertTrue(refused.failure().sentence, refused.failure().sentence.contains("still valid"))
+        assertFalse("a release 401 ended the hand-over", c.carLinkRefused())
+        // The whole point: the car's own uploads still go out afterwards.
+        server.enqueue(MockResponse().setResponseCode(201).setBody("{}"))
+        assertTrue(http.post("/api/device-logs/", "{}").isSuccess)
+        // And so does the next update check, rather than being refused locally.
+        server.enqueue(MockResponse().setResponseCode(401).setBody("{}"))
+        assertTrue(http.get("/api/releases/latest", mapOf("app" to "headunit")).isFailure)
+        assertEquals(3, server.requestCount)
+        assertFalse(c.carLinkRefused())
+    }
+
+    /**
      * Review F1 (orchestrator's call): a member signed in on the unit stays in use; the car's token
      * from a pairing waits in reserve and is used only once no member sign-in exists.
      */
