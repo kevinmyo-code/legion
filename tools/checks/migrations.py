@@ -10,8 +10,9 @@ Django (`server/<app>/migrations/NNNN_*.py`):
   - WARN: an added migration whose OPERATIONS are destructive to the database (the engine ship
     refuses it later). `migration_ops.py` owns that judgement: the operations are read with `ast`,
     a docstring naming `DeleteModel` is not an operation, the `state_operations` of a
-    `SeparateDatabaseAndState(database_operations=[], ...)` run no SQL, and a `RunSQL` that drops a
-    table or deletes rows counts even though no Django operation names it.
+    `SeparateDatabaseAndState(database_operations=[], ...)` run no SQL (granted by the whole file's
+    shape, so nothing can carry an operation back out of them), and a `RunSQL` that drops a table or
+    deletes rows counts even though no Django operation names it.
   Declaration itself is Django's own graph, checked by `makemigrations --check` in server.yml.
 Room (`app/schemas/<db>/N.json`, `headunit/app/schemas/<db>/N.json`):
   - FAIL: an added version N > 1 whose `MIGRATION_<N-1>_<N>` is not inside an `.addMigrations(...)` call
