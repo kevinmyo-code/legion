@@ -318,3 +318,46 @@ def test_a_dated_log_today_outranks_an_asserted_anchor_stated_earlier_today(
 
     assert item.last_done_miles == 240_000, "the newer write is the anchor"
     assert item.due_at_miles == 245_000
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_re_stated_anchor_is_the_newest_row_even_though_its_row_is_old(
+    auth_client, household_a, household_user
+):
+    """The flow blocker B's own fix creates. An item anchored long ago, logged
+    again today with no reading (so the anchor goes dark on both sides), and then
+    the driver states a reading, which `set_odometer` pins onto the item. The
+    phone re-stamps that ASSERTED row's `updatedAt` and clears. Over the wire the
+    sync PUTs the SAME deterministic row, so `created_at` still names the first
+    statement - ranking on it alone would leave this side saying the item still
+    needs a reading after the phone had stopped asking. `transaction=True`
+    because the point is real timestamps: inside one test transaction the
+    `touch_updated_at` trigger stamps the transaction's start for every row.
+    The phone's half is `OdometerAnswersTheMileageAskTest`."""
+    from brief.maintenance import schedule_status
+    from legacy.models.fleet import Vehicle
+
+    vehicle = _car(auth_client)
+    _put(
+        auth_client,
+        f"maintenance_schedules/{vehicle}/oil change/",
+        {"interval_miles": 5_000, "interval_source": "SEEDED", "never_done": False},
+    )
+    today = dt.date.today()
+    # Anchored a year ago, then logged today with no reading.
+    _service(auth_client, "a1", vehicle, "oil change", dt.date(2025, 1, 10), 71_200, kind="ASSERTED")
+    _service(auth_client, "s1", vehicle, "oil change", today, None)
+    anchor = schedule_status(
+        Viewer(user=household_user), Vehicle.objects.get(household=household_a)
+    )[0]
+    assert anchor.needs_mileage, "today's reading-less log is the anchor, so a reading is owed"
+
+    # He answers. set_odometer pins it, which re-states the one ASSERTED row.
+    _service(auth_client, "a1", vehicle, "oil change", today, 235_000, kind="ASSERTED")
+
+    item = schedule_status(
+        Viewer(user=household_user), Vehicle.objects.get(household=household_a)
+    )[0]
+    assert item.last_done_miles == 235_000, "the re-stated anchor is the newest statement"
+    assert item.due_at_miles == 240_000
+    assert not item.needs_mileage, "so this side stops asking, exactly when the phone does"
