@@ -432,18 +432,80 @@ class SpotifyMatchTest {
     }
 
     @Test
-    fun `a possessive is the same word, one trailing s and no more`() {
-        assertTrue(SpotifyMatch.tokensMatch("reeds", "reed"))
-        assertTrue(SpotifyMatch.tokensMatch("reed", "reeds"))
-        // The other direction: one character off is not a licence for any near-miss.
-        assertFalse(SpotifyMatch.tokensMatch("bike", "bake"))
-        assertFalse(SpotifyMatch.tokensMatch("head", "heard"))
-        assertFalse(SpotifyMatch.tokensMatch("reed", "reedy"))
-        assertFalse(SpotifyMatch.tokensMatch("reed", "reedss"))
+    fun `a possessive apostrophe-s carries no information and is dropped on both sides`() {
+        assertEquals("hana reed paper lanterns", SpotifyMatch.normalize("Hana Reed's Paper Lanterns"))
+        assertEquals("hana reed paper lanterns", SpotifyMatch.normalize("Hana Reed’s Paper Lanterns"))
+        // Both sides, so a title that really carries one still compares equal to itself.
+        assertEquals("jolene song", SpotifyMatch.normalize("Jolene's Song"))
+        // Not every apostrophe: only an apostrophe-s at the end of a word.
+        assertEquals("dont stop", SpotifyMatch.normalize("Don't Stop"))
+        assertEquals("sheslike", SpotifyMatch.normalize("She'slike"))
         val c = track("Paper Lanterns", "Hana Reed", "spotify:track:pl")
         assertEquals(
             "spotify:track:pl",
-            SpotifyMatch.pick(listOf(c), "hana reeds paper lanterns", null)?.optString("uri"),
+            SpotifyMatch.pick(listOf(c), "hana reed's paper lanterns", null)?.optString("uri"),
+        )
+    }
+
+    @Test
+    fun `a plain trailing s is a different name, never a possessive`() {
+        // Blind review 2026-11-25 finding 2: an earlier round folded any trailing s on any token,
+        // which collided real artists. A catalogue that prints "Queens" has no apostrophe.
+        assertFalse(SpotifyMatch.artistMatches(listOf("Queen"), "Queens"))
+        assertFalse(SpotifyMatch.artistMatches(listOf("Queens Of The Stone Age"), "Queen"))
+        assertFalse(SpotifyMatch.artistMatches(listOf("Wings"), "Wing"))
+        assertFalse(SpotifyMatch.artistMatches(listOf("Ye"), "Yes"))
+        assertFalse(SpotifyMatch.artistMatches(listOf("Yes"), "Ye"))
+        assertFalse(SpotifyMatch.artistMatches(listOf("Train"), "Trains"))
+        // The plays those collisions turned into: a shared title word must not carry a wrong artist.
+        assertNull(SpotifyMatch.pick(listOf(track("Little Sister", "Queens Of The Stone Age", "spotify:track:q")),
+            "little sister by queen", null))
+        assertNull(SpotifyMatch.pick(listOf(track("Sister", "Queens Of The Stone Age", "spotify:track:q2")),
+            "little sister by queen", null))
+        assertNull(SpotifyMatch.pick(listOf(track("Run", "Wings", "spotify:track:w")),
+            "band on the run by wing", null))
+        // A plural title word is its own word too.
+        assertFalse(SpotifyMatch.titleMatches("Paper Lantern", "paper lanterns"))
+    }
+
+    @Test
+    fun `a feat tail shed for scoring is still judged against the candidate`() {
+        // The request-side feat strip must not hand a stranger the song: the tail named North Sail
+        // and this candidate is by neither the asked-for artist nor that feature.
+        val stranger = track("Paper Lanterns Tonight", "Gravel Choir", "spotify:track:wrong")
+        for (joiner in listOf("feat", "ft", "featuring", "with")) {
+            assertNull(joiner, SpotifyMatch.pick(listOf(stranger), "paper lanterns $joiner north sail", null))
+        }
+        assertNull(
+            SpotifyMatch.pick(
+                listOf(track("Mask Off Remix", "Some Guy", "spotify:track:w")),
+                "mask off feat kendrick",
+                null,
+            ),
+        )
+        // Even with the right track in the list, the stranger must not win it.
+        val right = track("Paper Lanterns", "North Sail", "spotify:track:ns")
+        assertEquals(
+            "spotify:track:ns",
+            SpotifyMatch.pick(listOf(stranger, right), "paper lanterns feat north sail", null)?.optString("uri"),
+        )
+        // Still plays: the tail names this candidate's own artist.
+        val theirs = track("Paper Lanterns Tonight", "North Sail", "spotify:track:right")
+        assertEquals(
+            "spotify:track:right",
+            SpotifyMatch.pick(listOf(theirs), "paper lanterns feat north sail", null)?.optString("uri"),
+        )
+        // And a real feature the catalogue prints in its own raw title is still explained.
+        val feature = track("Mask Off (feat. Kendrick Lamar)", "Future", "spotify:track:mo")
+        assertEquals(
+            "spotify:track:mo",
+            SpotifyMatch.pick(listOf(feature), "mask off feat kendrick", null)?.optString("uri"),
+        )
+        // The joining word itself is grammar, not a claim: "stay with me" still plays.
+        val stay = track("Stay With Me", "Sam Smith", "spotify:track:swm")
+        assertEquals(
+            "spotify:track:swm",
+            SpotifyMatch.pick(listOf(stay), "stay with me", null)?.optString("uri"),
         )
     }
 
