@@ -873,12 +873,14 @@ object SpotifyWebApi {
         Page(parseLikedSongs(json), pageTotal(json))
 
     /**
-     * Recently-played is CURSOR-paged: Spotify documents a `total` field but does not reliably
-     * send a meaningful one, so this reads whatever is there and stays null when it is absent. It
-     * must never be made to report the page size as a history length.
+     * Recently-played is CURSOR-paged, so it states no COMPARABLE total: Spotify documents a
+     * `total` field on this body and does not reliably send a meaningful one - it does not count
+     * what the cursor returned, and a 0 beside a full page is a shape this read really produces.
+     * Null, like the queue, rather than passing a figure through that contradicts its own rows.
+     * It must never report the page size as a history length either.
      */
     internal fun recentlyPlayedPage(json: JSONObject): Page<RecentlyPlayedTrack> =
-        Page(parseRecentlyPlayed(json), pageTotal(json))
+        Page(parseRecentlyPlayed(json), null)
 
     /** The queue is not paged and states nothing to compare against: no total, ever. */
     internal fun queuePage(json: JSONObject): Page<QueuedTrack> = Page(parseQueue(json), null)

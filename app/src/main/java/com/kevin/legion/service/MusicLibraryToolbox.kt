@@ -126,6 +126,13 @@ object MusicLibraryToolbox {
      *
      * An empty row list is a REAL, distinct answer ("Spotify said zero"), never a failure shape
      * and never phrased as if nothing was checked. Pure and `internal`: a plain JVM test.
+     *
+     * A total SMALLER than the page in hand is dropped, not published. Spotify's cursor-paged
+     * bodies carry a `total` that does not count what the cursor returned, so a 0 beside five rows
+     * would reach the model as `total: 0, truncated: false` - a stated library figure, and a claim
+     * that this is all of it, both contradicted by the rows underneath. With no publishable total
+     * the result states none, which the rule already tells the model to read as "I cannot say how
+     * many he has".
      */
     internal fun pageResult(rows: List<JSONObject>, total: Int?, sourceLabel: String): JSONObject {
         val items = JSONArray()
@@ -135,7 +142,7 @@ object MusicLibraryToolbox {
             .put("items", items)
             .put("count", rows.size)
             .apply {
-                total?.let {
+                total?.takeIf { it >= rows.size }?.let {
                     put("total", it)
                     put("truncated", rows.size < it)
                 }

@@ -94,6 +94,10 @@ class SpotifyWebApiParsingTest {
         // duplicates that the parser collapses, so it is not a figure about what came back.
         assertEquals(null, SpotifyWebApi.queuePage(JSONObject("""{"queue": [], "total": 99}""")).total)
         assertEquals(null, SpotifyWebApi.artistAlbumsPage(JSONObject("""{"items": [], "total": 99}""")).total)
+        // Recently-played is cursor-paged: the `total` Spotify documents on that body does not
+        // count what the cursor returned, so the reader drops it rather than passing on a figure
+        // its own rows can contradict.
+        assertEquals(null, SpotifyWebApi.recentlyPlayedPage(JSONObject("""{"items": [], "total": 50}""")).total)
         // And a paged body that simply omits it stays null rather than inventing the page size.
         assertEquals(null, SpotifyWebApi.savedAlbumsPage(JSONObject("""{"items": []}""")).total)
         assertEquals(null, SpotifyWebApi.recentlyPlayedPage(JSONObject("""{"items": []}""")).total)

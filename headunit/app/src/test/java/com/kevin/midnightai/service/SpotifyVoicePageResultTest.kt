@@ -55,5 +55,21 @@ class SpotifyVoicePageResultTest {
         assertEquals(null, SpotifyWebApi.queuePage(JSONObject("""{"queue": [], "total": 99}""")).total)
         assertEquals(null, SpotifyWebApi.artistAlbumsPage(JSONObject("""{"items": [], "total": 99}""")).total)
         assertEquals(null, SpotifyWebApi.savedAlbumsPage(JSONObject("""{"items": []}""")).total)
+        // Recently-played is cursor-paged: its documented total does not count what the cursor
+        // returned, so it is dropped at the reader rather than passed on to be contradicted.
+        assertEquals(null, SpotifyWebApi.recentlyPlayedPage(JSONObject("""{"items": [], "total": 50}""")).total)
+    }
+
+    @Test
+    fun `a total smaller than the page in hand is never published`() {
+        // A 0 beside five rows would reach the model as a stated library figure of zero AND
+        // `truncated: false`, both contradicted by the rows under them (phone parity).
+        val json = SpotifyVoice.pageResult(rows(5), total = 0, sourceLabel = "recently played")
+        assertEquals(5, json.getInt("count"))
+        assertFalse("a library of zero beside five rows is not a figure to state", json.has("total"))
+        assertFalse("and never truncated false standing in for \"that is all of them\"", json.has("truncated"))
+        val short = SpotifyVoice.pageResult(rows(5), total = 3, sourceLabel = "recently played")
+        assertFalse(short.has("total"))
+        assertFalse(short.has("truncated"))
     }
 }
