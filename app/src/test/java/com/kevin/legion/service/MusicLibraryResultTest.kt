@@ -19,7 +19,9 @@ class MusicLibraryResultTest {
     private fun rows(n: Int): List<JSONObject> = (1..n).map { JSONObject().put("name", "Row $it") }
 
     private fun playlists(vararg names: String): List<SpotifyPlaylist> =
-        names.mapIndexed { i, n -> SpotifyPlaylist(name = n, uri = "spotify:playlist:p$i", id = "p$i", readable = true) }
+        names.mapIndexed { i, n ->
+            SpotifyPlaylist(name = n, uri = "spotify:playlist:p$i", id = "p$i", readable = true)
+        }
 
     // ------------------------------------------------------------ the page versus the library
 
@@ -65,7 +67,8 @@ class MusicLibraryResultTest {
             "Slow Sunday", "Night Shift", "Garden Hour", "Tape Deck Nine", "Winter Light",
             "Open Road", "Last Train",
         )
-        val json = MusicLibraryToolbox.pageResult(library.map(MusicLibraryToolbox::playlistRow), library.size, "playlists")
+        val rows = library.map(MusicLibraryToolbox::playlistRow)
+        val json = MusicLibraryToolbox.pageResult(rows, library.size, "playlists")
         // Row nine, well past the old five-row page: the match must come from the whole list.
         val withMatch = MusicLibraryToolbox.withPlaylistMatch(json, library, "tape deck nine")
         assertEquals("Tape Deck Nine", withMatch.getString("match"))
@@ -77,7 +80,8 @@ class MusicLibraryResultTest {
     @Test
     fun `a name nothing matches says so and still lists what he has`() {
         val library = playlists("Monday Mornings", "Kitchen Radio")
-        val json = MusicLibraryToolbox.pageResult(library.map(MusicLibraryToolbox::playlistRow), library.size, "playlists")
+        val rows = library.map(MusicLibraryToolbox::playlistRow)
+        val json = MusicLibraryToolbox.pageResult(rows, library.size, "playlists")
         val missed = MusicLibraryToolbox.withPlaylistMatch(json, library, "harpsichord experiments")
         assertFalse(missed.has("match"))
         assertTrue(missed.getString("matchNote").contains("never that he has no playlists"))
