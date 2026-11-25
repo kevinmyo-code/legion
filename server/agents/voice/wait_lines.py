@@ -124,6 +124,36 @@ def clip_fits(ms: int) -> bool:
     return MIN_CLIP_MS <= ms <= MAX_CLIP_MS
 
 
+# ---- the phone's `DeadAir.kt`: a line may not land in front of an answer already on its way -----
+
+# Request to first audio on the cloud voice, the phone's measure (`DeadAir.CLOUD_FIRST_AUDIO_MS`).
+FIRST_AUDIO_MS = 800
+# A line started after the answer's speech was asked for may end at most this long after the audio
+# is expected (`DeadAir.MAX_HOLD_MS`).
+MAX_HOLD_MS = 300
+# Audio this far past its expected time means the estimate is wrong (a slow or failing voice), and
+# lines may start again (`DeadAir.STALE_MS`).
+STALE_MS = 700
+
+
+def fits_before_answer(*, now: float, asked_at: float | None, clip_ms: int) -> bool:
+    """Whether a wait line of `clip_ms` may START now, given when the answer's speech was asked
+    for (`asked_at`, None when nothing has been asked yet: a tool round, or text the speaker is
+    still holding). The phone's `DeadAir.fits`.
+
+    Without this a line falls due the instant a sentence goes to the voice and the answer waits a
+    whole clip behind it, which is the regression `test_filler_every_turn.py` was written against.
+    A no is NOT the end of the chain (the phone's `NO_FIT`): the next tick asks again, because the
+    expected time can go stale.
+    """
+    if asked_at is None:
+        return True
+    expected = asked_at + FIRST_AUDIO_MS / 1000
+    if now > expected + STALE_MS / 1000:
+        return True
+    return now + clip_ms / 1000 <= expected + MAX_HOLD_MS / 1000
+
+
 def timeline(last_end: float, said: int, answer_at: float, clip_s: float) -> list[float]:
     """When each wait line would start in a turn whose answer is ready at `answer_at`, each line
     `clip_s` long, after `said` fillers that ended at `last_end`. The same rule the door runs, as a
