@@ -110,9 +110,17 @@ class HandoverPlan(
     /** The minted token's engine id, kept so "Forget head unit" can revoke it (5.4). */
     fun mintedId(): String? = minted?.id
 
-    /** The pairing failed: revoke a token minted for it, so none is left live on the engine. */
+    /**
+     * The pairing failed: revoke a token minted for it, so none is left live on the engine.
+     *
+     * **Bounded for the same reason [prepare] is.** This runs in the pairing's `finally`, under
+     * `NonCancellable`, and the person's next "Pair" tap does nothing until it returns. The HTTP
+     * client sets no timeouts of its own, so on a weak signal an unbounded revoke would spend tens
+     * of seconds in silence on exactly the retry path a failed pairing leads to. Past
+     * [REVOKE_TIMEOUT_MS] the credential is left to expire on its own instead, the lesser cost.
+     */
     suspend fun discard() {
-        minted?.let { tokens.revoke(it.id) }
+        minted?.let { token -> withTimeoutOrNull(REVOKE_TIMEOUT_MS) { tokens.revoke(token.id) } }
         minted = null
     }
 
@@ -133,5 +141,8 @@ class HandoverPlan(
          * comfortably over one HTTP round trip on a hotspot.
          */
         const val MINT_TIMEOUT_MS = 20_000L
+
+        /** How long [discard] may spend revoking before the pairing's failure is reported anyway. */
+        const val REVOKE_TIMEOUT_MS = 10_000L
     }
 }

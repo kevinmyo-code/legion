@@ -157,6 +157,26 @@ class HandoverPlanTest {
             assertEquals("vehicle-id-for-tests", slow.body().engineVehicleId)
         }
 
+    /**
+     * `discard` runs in the pairing's `finally` and the person's next "Pair" tap waits for it, so a
+     * revoke the engine never answers must cost the credential and not the retry. `runTest` runs on
+     * a virtual clock, so this takes no real time.
+     */
+    @Test fun `a revoke that never answers is given up on, so the next pairing is not held up`() =
+        kotlinx.coroutines.test.runTest {
+            val hangs = object : UnitTokenSource {
+                override suspend fun mint(name: String, vehicleId: String?): UnitToken =
+                    UnitToken("hu-1", "unit-token-for-tests", null)
+                override suspend fun rotate(id: String): UnitToken? = null
+                override suspend fun revoke(id: String): Boolean = kotlinx.coroutines.awaitCancellation()
+            }
+            val slow = HandoverPlan(HandoverSources({ null }, { null }, { "Test phone" }), hangs) {}
+            slow.prepare(null)
+            slow.discard()
+            assertNull(slow.mintedId())
+            assertNull(slow.body().engineToken)
+        }
+
     @Test fun `the chosen car goes as engine_vehicle_id, and no car means no field`() = runBlocking {
         assertNull(fields(plan.body().toJson())["engine_vehicle_id"])
         plan.prepare("vehicle-id-for-tests")
