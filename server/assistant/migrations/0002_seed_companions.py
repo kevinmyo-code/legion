@@ -1,7 +1,9 @@
+# migration-edit-ok: server/assistant/migrations/0002_seed_companions.py docstring wording only, no data and no operations changed
 """Give every existing member their companion (web-assistant ticket 03).
 
-Kevin, 2026-10-04: Mia talks to Dorothy, Kevin to his own companion (Alfred
-on the engine until the phone pushes its roster up). The rule itself lives in
+Kevin, 2026-10-04: the member whose signup first name matches the seed talks
+to Dorothy, Kevin to his own companion (Alfred on the engine until the phone
+pushes its roster up). The rule itself lives in
 `assistant/companions.py` (`seed_persona_key`) and the persona names in
 `assistant/personas.py`, copied from `app/.../ai/Personas.kt` under a drift
 test; this migration imports both rather than restating them, so the rows it
