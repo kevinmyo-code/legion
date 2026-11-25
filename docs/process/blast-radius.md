@@ -34,7 +34,8 @@ The reviewer gets only the task text and the full diff, never the author's plan 
 subject (gate, read-through, crisis, money, auth, vault, privacy, migration, schema, relay, the
 worker, ingest, sign-in, connect session, household, the synthetic finance allowlist, the ship and
 release tools, the gate's own cases, bank statements and sync, dedup, categorising, tenant isolation,
-visibility, write guards, spoken figures) is RED: weakening a guard's test weakens the guard. The name
+visibility, write guards, spoken figures, the re-wake carry) is RED: weakening a guard's test weakens
+the guard. The name
 list is a rough rule and will miss some tests: a reviewer who spots a test of a RED subject that tiers
 lower raises its tier, and the name goes into the script.
 

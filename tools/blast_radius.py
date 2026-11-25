@@ -151,6 +151,10 @@ RED_TEST_NAMES = (
     "*connect_session*", "*household*", "finance_synthetic*",
     "*bofa*", "*plaid*", "*dedup*", "*merchant_alias*", "*drive_statements*", "*ledger_categor*", "*spend_api*",
     "*isolation*", "*visibility*", "*write_guard*", "*spoken*",
+    # The re-wake carry is what one conversation leaves in front of the model for the next one, and
+    # its only safety argument is ADR 0090's read-through write taint: weakening its tests weakens
+    # that guard (raised by the blind review of feat/rewake-carry, 2026-11-24).
+    "*rewakecarry*",
 )
 
 YELLOW_RULES: list[tuple[str, tuple[str, ...]]] = [
