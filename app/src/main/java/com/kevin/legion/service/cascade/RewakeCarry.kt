@@ -68,10 +68,10 @@ internal class RewakeCarry {
      * out of time empties the holder on its way past, because nothing will want it again.
      */
     fun take(nowMs: Long): List<ChatTurn> {
-        val k = kept ?: return emptyList()
-        if (carries(k.endedAtMs, nowMs)) return k.turns
-        kept = null
-        return emptyList()
+        val fresh = kept?.takeIf { carries(it.endedAtMs, nowMs) }
+        // Nothing held, or held too long: the holder is emptied, because nothing will want it again.
+        if (fresh == null) kept = null
+        return fresh?.turns ?: emptyList()
     }
 
     companion object {
