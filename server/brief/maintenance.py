@@ -274,10 +274,10 @@ def _stated_at(row, anchor_days: frozenset[dt.date]) -> dt.datetime:
         return event_day
     # Written on the day it records (within a day): the row was stated at the event, so when it was
     # written IS the moment the phone stamps. The day of slack covers a sync that lands on a later
-    # UTC day than the log it carries - a log at 17:50 local is 23:50Z, and a PUT of it that queues
-    # offline for twenty minutes arrives on the next UTC day. Without the slack that log ranks at
-    # midnight of its own day, below every row that synced promptly, which is a reachable
-    # regression; with it, a live log ranks by arrival either way.
+    # UTC day than the log it carries - a log made in the last few minutes before midnight UTC, and
+    # a PUT of it that queues offline past it. Without the slack that log ranks at midnight of its
+    # own day, below every row that synced promptly, which is a reachable regression; with it, a
+    # live log ranks by arrival either way.
     #
     # Traced for round 3's review, which asked whether the slack only widens the window: it no
     # longer widens anything that matters, because the branch ABOVE runs first and that is the pair
