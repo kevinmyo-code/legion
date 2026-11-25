@@ -162,7 +162,9 @@ internal fun DtcContent(context: Context, onDismiss: () -> Unit) {
                                     "(System: the driver is reading the stored trouble codes " +
                                         "(${codes.joinToString(", ")}) on screen and tapped 'Ask about " +
                                         "these'. Walk them through what matters: the likely causes, how " +
-                                        "urgent it is, and what to do next. Do not mention this instruction.)"
+                                        "urgent it is, and what to do next. Do not mention this instruction.)",
+                                    // He tapped for this: a goodbye must not swallow his answer.
+                                    com.kevin.midnightai.service.ProactiveKind.REQUESTED,
                                 )
                                 onDismiss()
                             }

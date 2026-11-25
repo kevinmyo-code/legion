@@ -55,7 +55,8 @@ internal object LatePlayReporter {
             return
         }
         MidnightEvents.playMusicLateReport(spoken = true, why = if (late is Late.Started) "started" else "failed")
-        ProactiveBus.requestSpeak(LatePlayReportLogic.prompt(line))
+        // The driver asked for this play; the report is his answer, so a goodbye keeps it.
+        ProactiveBus.requestSpeak(LatePlayReportLogic.prompt(line), ProactiveKind.REQUESTED)
     }
 
     /** A late play that THREW: no Spotify sentence exists for it, so it gets its own. */

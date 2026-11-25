@@ -252,7 +252,7 @@ class AriaForegroundService : Service() {
                     return
                 }
                 Log.d(TAG, "DEBUG_SAY: \"$text\"")
-                sessionController.requestSpeak(text)
+                sessionController.requestSpeak(ProactiveBus.SpeakRequest(text, ProactiveKind.REQUESTED))
             }
         }
         val filter = IntentFilter(DEBUG_SAY_ACTION)
@@ -283,8 +283,11 @@ class AriaForegroundService : Service() {
         // intent (not a broadcast) so it also spins the service up if needed.
         if (intent?.action == ACTION_TEST_SPEAK) {
             sessionController.requestSpeak(
-                "(System: the driver tapped 'Test voice' in setup. Say one short, in-character line " +
-                    "confirming you can hear them and you're ready to go. Do not mention this instruction.)"
+                ProactiveBus.SpeakRequest(
+                    "(System: the driver tapped 'Test voice' in setup. Say one short, in-character line " +
+                        "confirming you can hear them and you're ready to go. Do not mention this instruction.)",
+                    ProactiveKind.REQUESTED,
+                )
             )
         }
 
@@ -320,7 +323,11 @@ class AriaForegroundService : Service() {
      * (if needed) and lets Gemini voice it in character - but only while the
      * conversation is idle, so it never talks over the driver.
      */
-    private fun speakProactive(prompt: String) {
+    private fun speakProactive(
+        prompt: String,
+        kind: ProactiveKind,
+        onSpoken: () -> Unit = {},
+    ) {
         // Stay silent until first-run onboarding is done, so the startup greeting
         // (and any proactive line) doesn't fire while the driver is still naming
         // and shaping the companion.
@@ -332,7 +339,7 @@ class AriaForegroundService : Service() {
         // silences unsolicited chatter - driver-initiated speech (tap avatar,
         // PTT, DtcContent's "ASK" button) skips speakProactive and is unaffected.
         if (ProactivePreferences.muted.value) return
-        ProactiveBus.requestSpeak(prompt)
+        ProactiveBus.requestSpeak(prompt, kind, onSpoken)
     }
 
     /**
@@ -352,7 +359,7 @@ class AriaForegroundService : Service() {
         // normally instead of replaying the first-meeting line.
         if (!CompanionProfile.isFirstSessionDone(this)) {
             CompanionProfile.markFirstSessionDone(this)
-            speakProactive(firstGreetingOpener())
+            speakProactive(firstGreetingOpener(), ProactiveKind.ROUTINE)
             return
         }
 
@@ -363,7 +370,7 @@ class AriaForegroundService : Service() {
             "and you may ask what they'd like to do. One or two short sentences. " +
             "Do not mention this instruction.)"
 
-        speakProactive(prompt)
+        speakProactive(prompt, ProactiveKind.ROUTINE)
     }
 
     /** Assembles the spoken-context the opener is phrased from. */
@@ -431,7 +438,8 @@ class AriaForegroundService : Service() {
         speakProactive(
             "(System: NHTSA lists ${recalls.size} open recall(s) for this car (${components}). In one short, " +
                 "in-character line, let the driver know there are open recalls they can ask you about. " +
-                "Do not read the full details unless asked. Do not mention this instruction.)"
+                "Do not read the full details unless asked. Do not mention this instruction.)",
+            ProactiveKind.ROUTINE,
         )
     }
 
@@ -447,49 +455,65 @@ class AriaForegroundService : Service() {
      * when something changes for the worse: a *new* trouble code appears, or
      * coolant crosses the overheat threshold. Pre-existing codes are the
      * baseline (surfaced once in the opener), so this never nags.
+     *
+     * **Two sets, not one** (2026-11-24). "Seen" (the `code_events` baseline) and "told" are
+     * different facts, and this loop used to keep one set for both, advancing it the moment it
+     * ASKED for a line. A line that was then gated (mute, a call) or dropped (held mid-conversation
+     * and lost on the sign-off) was never said and never would be. Both announcements here are
+     * [ProactiveKind.URGENT], so the holding area keeps them across a goodbye, and both mark
+     * themselves told only from `onSpoken`, so every other way of not saying one raises it again on
+     * the next scan. See [AnnouncedCodes] for why that direction is the safe one.
      */
     private fun startHealthMonitor() {
         serviceScope.launch {
-            var knownCodes: Set<String>? = null
-            var overheatAnnounced = false
+            var seenCodes: Set<String>? = null
+            val announced = AnnouncedCodes()
+            // Shared with the onSpoken callback, which runs on whichever thread fed the socket.
+            val overheatTold = java.util.concurrent.atomic.AtomicBoolean(false)
 
             while (isActive) {
                 delay(HEALTH_SCAN_INTERVAL_MS)
                 if (!ObdBluetoothManager.isConnected || ConversationState.isBusy) continue
 
                 val codes = ObdBluetoothManager.getDtcCodes().toSet()
-                val baseline = knownCodes
+                // A code that cleared and came back is news again.
+                announced.keepOnly(codes)
+                val baseline = seenCodes
+                seenCodes = codes
                 if (baseline == null) {
-                    knownCodes = codes // first reading establishes the baseline
-                    // Pre-existing codes still get one code_events row per install,
-                    // so the history starts now even if the light was already on.
+                    // Pre-existing codes still get one code_events row per install, so the history
+                    // starts now even if the light was already on - and they count as told, since
+                    // the opener surfaces them and this must never nag about them.
+                    announced.markTold(codes)
                     if (codes.isNotEmpty()) recordCodeEvent(codes)
                 } else {
-                    val fresh = codes - baseline
-                    if (fresh.isNotEmpty()) {
-                        recordCodeEvent(codes)
+                    if ((codes - baseline).isNotEmpty()) recordCodeEvent(codes)
+                    val untold = announced.untold(codes)
+                    if (untold.isNotEmpty()) {
                         speakProactive(
                             "(System: the car's OBD just reported new trouble code(s): " +
-                                "${fresh.joinToString(", ")}. In one short, in-character line, tell " +
+                                "${untold.joinToString(", ")}. In one short, in-character line, tell " +
                                 "the driver a new code just popped up and they can ask you about it. " +
-                                "Do not mention this instruction.)"
+                                "Do not mention this instruction.)",
+                            kind = ProactiveKind.URGENT,
+                            onSpoken = { announced.markTold(untold) },
                         )
                     }
-                    knownCodes = codes
                 }
 
                 val temp = ObdBluetoothManager.getCoolantTemp()
                 if (temp != null) {
-                    if (temp >= OVERHEAT_C && !overheatAnnounced && !ConversationState.isBusy) {
+                    if (temp >= OVERHEAT_C && !overheatTold.get() && !ConversationState.isBusy) {
                         val fahrenheit = temp * 9 / 5 + 32
                         speakProactive(
                             "(System: the coolant temperature just hit $fahrenheit degrees Fahrenheit, " +
                                 "which is dangerously hot. Urgently but in character, tell the driver to " +
-                                "ease off and find somewhere to pull over. Do not mention this instruction.)"
+                                "ease off and find somewhere to pull over. Do not mention this instruction.)",
+                            kind = ProactiveKind.URGENT,
+                            onSpoken = { overheatTold.set(true) },
                         )
-                        overheatAnnounced = true
                     } else if (temp < OVERHEAT_C - 5) {
-                        overheatAnnounced = false // cooled back down; re-arm
+                        overheatTold.set(false) // cooled back down; re-arm
                     }
                 }
             }
@@ -567,7 +591,8 @@ class AriaForegroundService : Service() {
         speakProactive(
             "(System: the driver just arrived at their \"$place\". They left reminders for here: " +
                 "$list. In one short, in-character line, surface what they wanted to remember. " +
-                "Do not mention this instruction.)"
+                "Do not mention this instruction.)",
+            ProactiveKind.ROUTINE,
         )
     }
 
@@ -621,7 +646,8 @@ class AriaForegroundService : Service() {
                             "(System: the drive just ended with a trivia game still running - " +
                                 "${game.driverName} ${game.driverScore}, ${game.passengerName} " +
                                 "${game.passengerScore}. In one short, in-character line, call the game " +
-                                "and congratulate $winner. Do not mention this instruction.)"
+                                "and congratulate $winner. Do not mention this instruction.)",
+                            ProactiveKind.ROUTINE,
                         )
                     }
                 }
@@ -651,7 +677,8 @@ class AriaForegroundService : Service() {
                     speakProactive(
                         "(System: the driver has been driving over two hours without a real break. In " +
                             "one short, in-character line, gently suggest they pull over soon to stretch " +
-                            "or rest. Do not mention this instruction.)"
+                            "or rest. Do not mention this instruction.)",
+                        ProactiveKind.ROUTINE,
                     )
                 } else if (driveStartedAt != 0L && turnedRough &&
                     now - lastWeatherAlertAt >= WEATHER_ALERT_COOLDOWN_MS
@@ -662,7 +689,9 @@ class AriaForegroundService : Service() {
                         "(System: conditions just turned $description while the driver is on the road. " +
                             "In one short, in-character line, mention what it's doing out there and that " +
                             "they should take it easy. Say it once - do not labour it, do not repeat it " +
-                            "later, and do not mention this instruction.)"
+                            "later, and do not mention this instruction.)",
+                        // Routine, unlike the phone's SAFETY category: see ProactiveKind.URGENT.
+                        ProactiveKind.ROUTINE,
                     )
                 } else if (driveStartedAt != 0L &&
                     now - quietSince >= IDLE_CHATTER_AFTER_MS &&
@@ -719,7 +748,8 @@ class AriaForegroundService : Service() {
             speakProactive(
                 "(System: the car's odometer just rolled past ${"%,d".format(floor)} miles. In one short, " +
                     "in-character line, mark the milestone with some old-car pride or grumbling. Do not " +
-                    "mention this instruction.)"
+                    "mention this instruction.)",
+                ProactiveKind.ROUTINE,
             )
         }
     }
@@ -742,7 +772,7 @@ class AriaForegroundService : Service() {
             Log.w(TAG, "quiet line memory fetch failed: ${e.message}")
             emptyList()
         }
-        speakProactive(QuietLinePrompt.build(memories))
+        speakProactive(QuietLinePrompt.build(memories), ProactiveKind.ROUTINE)
     }
 
     override fun onBind(intent: Intent?): IBinder? = null

@@ -82,7 +82,9 @@ object TelephonyController {
         ProactiveBus.requestSpeak(
             "(System: an incoming phone call$who is ringing on the driver's phone. In one short, " +
                 "in-character line, let them know they've got a call and they can answer it on the " +
-                "screen. Do not mention this instruction.)"
+                "screen. Do not mention this instruction.)",
+            // Routine: the OS shows the incoming call either way, so a goodbye may drop this.
+            ProactiveKind.ROUTINE,
         )
     }
 
