@@ -1316,7 +1316,12 @@ def _answer(
         ready = held.ready(lambda line: filler_audio.get(voice, line) is not None)
         if not ready:
             return None
-        line = ready[timings.get("wait_lines", 0) % len(ready)]
+        # The door's own picker, so the same holding line is not heard twice running ACROSS turns
+        # (the phone's `RecentLines` rotation): a per-turn index would open every turn with
+        # "Still on it.". `held.words` is what stops a repeat inside one turn.
+        line = filler_audio.picker().pick(ready)
+        if line is None:
+            return None
         audio = filler_audio.get(voice, line)
         clip_ms = _clip_ms(audio)
         if not wait_lines.clip_fits(clip_ms):
