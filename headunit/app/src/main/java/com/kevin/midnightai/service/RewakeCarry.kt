@@ -21,7 +21,7 @@ package com.kevin.midnightai.service
  * new: it holds them for a minute instead of a drive. Tool output and sub-agent text never enter
  * it, only Moose's spoken sentences.
  */
-internal class RewakeCarry {
+class RewakeCarry {
 
     /** One exchange as it was heard and spoken. */
     data class Turn(val driver: String, val companion: String)

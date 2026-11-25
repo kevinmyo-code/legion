@@ -17,7 +17,7 @@ import org.junit.Test
 class RewakeCarryWiringTest {
 
     @Test
-    fun `the holder outlives a conversation: the controller owns it and hands it to each one`() {
+    fun `the holder outlives a conversation - the controller owns it and hands it to each one`() {
         val controller = stripComments(File(sourceRoot(), "service/LiveSessionController.kt").readText())
         assertTrue("one holder for the device", controller.contains("private val rewakeCarry = RewakeCarry()"))
         assertEquals(
@@ -31,12 +31,25 @@ class RewakeCarryWiringTest {
     }
 
     @Test
-    fun `the last conversation's turns are taken once, at open, and never for a test conversation`() {
+    fun `only a conversation he opened to talk takes the context, or leaves any`() {
         val s = session()
+        // A line Alfred opens (a proactive raise, Brief me, Look), a ring window the mic only
+        // listens through, and a test conversation each take nothing and leave what is held alone,
+        // so a line he never answered cannot spend or wipe the context his real re-wake wants.
         assertTrue(
-            s.contains("if (test == null) rewake.take(System.currentTimeMillis()) else emptyList()"),
+            s.contains("test == null && opener == null && micClaimant == MicArbiter.Claimant.LIVE_TURN"),
         )
+        assertTrue(s.contains("if (ownConversation) rewake.take(SystemClock.elapsedRealtime()) else emptyList()"))
         assertEquals("taken in one place", 1, Regex("rewake\\.take\\(").findAll(s).count())
+        assertTrue("and left in one place, under the same rule", bodyOf(s, "shutdown").contains("if (ownConversation) {"))
+    }
+
+    @Test
+    fun `the window is measured on a monotonic clock, not a wall clock that jumps`() {
+        val s = session()
+        assertTrue(s.contains("rewake.take(SystemClock.elapsedRealtime())"))
+        assertTrue(bodyOf(s, "shutdown").contains("nowMs = SystemClock.elapsedRealtime(),"))
+        assertFalse(bodyOf(s, "shutdown").contains("nowMs = System.currentTimeMillis()"))
     }
 
     @Test
@@ -60,7 +73,12 @@ class RewakeCarryWiringTest {
         val shutdown = bodyOf(session(), "shutdown")
         assertTrue("every close leaves its decision behind", shutdown.contains("rewake.ended("))
         // Not a constant: the write guard would be bypassed by a carried turn if this read `false`.
-        assertTrue("the session's own read-through state", shutdown.contains("outsideTextRead = outsideTextRead,"))
+        // The interrupted turn's own mark counts too: a close can land mid-turn, after a
+        // read-through tool ran but before the turn reached history.
+        assertTrue(
+            "the session's own read-through state",
+            shutdown.contains("outsideTextRead = outsideTextRead || turn?.readThrough == true,"),
+        )
         assertTrue(shutdown.contains("test = test != null,"))
         assertTrue(shutdown.contains("turns = history.toList(),"))
         assertTrue(shutdown.contains("reason = reason,"))
