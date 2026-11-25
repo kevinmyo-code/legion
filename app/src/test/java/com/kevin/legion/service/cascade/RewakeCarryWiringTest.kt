@@ -41,7 +41,10 @@ class RewakeCarryWiringTest {
         )
         assertTrue(s.contains("if (ownConversation) rewake.take(SystemClock.elapsedRealtime()) else emptyList()"))
         assertEquals("taken in one place", 1, Regex("rewake\\.take\\(").findAll(s).count())
-        assertTrue("and left in one place, under the same rule", bodyOf(s, "shutdown").contains("if (ownConversation) {"))
+        assertTrue(
+            "and left in one place, under the same rule",
+            bodyOf(s, "shutdown").contains("if (ownConversation) {"),
+        )
     }
 
     @Test
@@ -104,11 +107,13 @@ class RewakeCarryWiringTest {
     @Test
     fun `the chime and the carry share one definition of the end of his conversation`() {
         val cue = stripComments(File(sourceRoot(), "service/cascade/CloseCue.kt").readText())
-        assertTrue(cue.contains("fun endsHisConversation(reason: String): Boolean = reason in PLAYS"))
-        // One list: `decide` reads the predicate too, so the two can never drift apart.
-        assertEquals("PLAYS is read through the predicate alone", 1, Regex("in PLAYS").findAll(cue).count())
+        // One list, two readers: the chime's own `decide`, and the carry below.
+        assertTrue("the list is the shared definition", cue.contains("val PLAYS = setOf("))
+        assertEquals("the chime reads it once", 1, Regex("reason !in PLAYS").findAll(cue).count())
         val carry = stripComments(File(sourceRoot(), "service/cascade/RewakeCarry.kt").readText())
-        assertTrue(carry.contains("CloseCue.endsHisConversation(reason)"))
+        assertTrue("and the carry reads the same list", carry.contains("reason in CloseCue.PLAYS"))
+        // No second list of close reasons anywhere in the carry.
+        assertFalse(carry.contains("setOf("))
     }
 
     // --- source access ----------------------------------------------------------------------------

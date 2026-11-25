@@ -63,7 +63,10 @@ class RewakeCarryWiringTest {
         val c = controller()
         val cold = bodyOf(c, "startConversation")
         assertTrue("taken where the live context already rides", cold.contains("rewakeCarry.take("))
-        assertTrue("never on the very first session, which has no conversation behind it", cold.contains("if (isFirst) null"))
+        assertTrue(
+            "never on the very first session, which has no conversation behind it",
+            cold.contains("if (isFirst) null"),
+        )
         assertTrue("it reaches the greeting", cold.contains("carried,"))
         assertEquals("one take, so a warm resume takes none", 1, Regex("rewakeCarry\\.take\\(").findAll(c).count())
         // A warm resume still has Gemini's own context on the same socket and needs no replay.
