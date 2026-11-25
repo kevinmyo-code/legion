@@ -435,7 +435,9 @@ class CarLinkControllerTest {
         Thread.sleep(500)
         assertTrue("the hand-over went out while the mint was still running", unit.handovers.isEmpty())
         release.complete(Unit)
-        waitFor("the pairing") { c.status.value.pairing == com.kevin.legion.carlink.protocol.PairingStage.Paired }
+        // LinkState.PAIRED is the END of finish(): the Paired STAGE is published earlier, by the
+        // runner's own stage callback, so waiting on the stage would race the store write.
+        waitFor("the pairing stored") { c.status.value.link == LinkState.PAIRED }
         assertEquals(MINTED_TOKEN, field(unit.handovers.single(), "engine_token"))
         assertEquals(MINTED_ID, store.unitDeviceId())
     }
@@ -451,7 +453,9 @@ class CarLinkControllerTest {
         transport = com.kevin.legion.carlink.protocol.PairingTransport { _, _ -> unit }
         val c = controller()
         c.pair(unit.qrText())
-        waitFor("the pairing") { c.status.value.pairing == com.kevin.legion.carlink.protocol.PairingStage.Paired }
+        // LinkState.PAIRED is the END of finish(): the Paired STAGE is published earlier, by the
+        // runner's own stage callback, so waiting on the stage would race the store write.
+        waitFor("the pairing stored") { c.status.value.link == LinkState.PAIRED }
         assertEquals(null, field(unit.handovers.single(), "engine_token"))
         assertEquals("hu-before", store.unitDeviceId())
     }
