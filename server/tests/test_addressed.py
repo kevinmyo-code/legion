@@ -42,9 +42,14 @@ def test_side_talk_is_ignored_and_keeps_nothing_but_a_count(
     engine.speech.heard = "Wow, the voice on this thing is wild."
     engine.model = FakeModel([call(cascade.NOT_FOR_ME_TOOL, {})])
     events = _events(_post(member, audio=PCM, conversation_id=first))
-    # Silence: not even an acknowledgement (round 2 speech review 5).
+    # Nothing of its own is said, and nothing of theirs is kept. Since 2026-11-24 the
+    # acknowledgement is said on every turn of theirs (Kevin: the same voice behavior as the
+    # phone), and whether a sentence was for the assistant is the MODEL's answer, which only
+    # arrives after it. So "Yeah, one sec." may be heard over side talk; what this test protects
+    # is that nothing follows it and nothing is recorded.
     assert _of(events, "sentence") == []
-    assert _of(events, "audio") == [] and _of(events, "filler") == []
+    assert [f["tool"] for f in _of(events, "filler")] in ([], [""])
+    assert len(_of(events, "audio")) == len(_of(events, "filler"))
     done = _of(events, "done")[0]
     assert done["ignored"] == "not_addressed" and "words" not in done
     record = _record(_of(events, "turn")[0]["conversation_id"])
@@ -53,7 +58,7 @@ def test_side_talk_is_ignored_and_keeps_nothing_but_a_count(
     assert len(engine.model.requests) == 1  # the same model call, no extra round
 
 
-def test_the_first_utterance_after_the_tap_may_get_an_acknowledgement(
+def test_an_utterance_that_needs_a_look_gets_an_acknowledgement(
     member, engine, monkeypatch, household_user
 ):
     _warm(monkeypatch, engine, household_user)
@@ -122,11 +127,12 @@ def test_the_signals_read_from_the_words():
     assert quiet == {"named": False, "answers_question": False, "second_person": False}
 
 
-def test_tap_then_side_talk_twice_gets_at_most_one_acknowledgement(
+def test_side_talk_twice_gets_one_acknowledgement_each_and_no_more(
     member, engine, monkeypatch, household_user
 ):
-    """Round 3 speech S5: utterances are counted as received, answered or not; only the first
-    after the tap may get "one sec"."""
+    """Round 3 speech S5 said only the first utterance after the tap may get "one sec"; Kevin
+    reversed that on 2026-11-24 (the phone says one every turn). What still holds is at most ONE a
+    turn, and nothing else said."""
     _warm(monkeypatch, engine, household_user)
     engine.model = FakeModel([say("Morning.")])
     opened = _events(_post(member, greet="true"))
@@ -136,19 +142,24 @@ def test_tap_then_side_talk_twice_gets_at_most_one_acknowledgement(
         engine.speech.heard = "Did you look at what we spent on groceries last month?"
         engine.model = FakeModel([call(cascade.NOT_FOR_ME_TOOL, {})])
         events = _events(_post(member, audio=PCM, conversation_id=conversation))
-        acks += len([f for f in _of(events, "filler") if f["tool"] == ""])
-    assert acks <= 1
+        turn_acks = [f for f in _of(events, "filler") if f["tool"] == ""]
+        assert len(turn_acks) <= 1, turn_acks
+        assert _of(events, "sentence") == []
+        acks += len(turn_acks)
+    assert acks == 2
 
 
-def test_room_noise_before_the_first_question_does_not_use_up_the_acknowledgement(
+def test_room_noise_gets_no_acknowledgement_and_the_next_question_still_does(
     member, engine, monkeypatch, household_user
 ):
-    """Round 4 speech: only utterances heard as speech count."""
+    """Round 4 speech: only utterances heard as speech are answered at all, so noise says nothing
+    (`fillers.ack_skip` NOISE) and the question after it is an ordinary turn."""
     _warm(monkeypatch, engine, household_user)
     engine.model = FakeModel([say("Morning.")])
     conversation = _of(_events(_post(member, greet="true")), "turn")[0]["conversation_id"]
     engine.speech.heard = ""  # room noise: nothing heard
-    _events(_post(member, audio=PCM, conversation_id=conversation))
+    noise = _events(_post(member, audio=PCM, conversation_id=conversation))
+    assert _of(noise, "filler") == []
     engine.speech.heard = "What did we spend on groceries last month?"
     engine.model = FakeModel([say("About four hundred.")])
     events = _events(_post(member, audio=PCM, conversation_id=conversation))
