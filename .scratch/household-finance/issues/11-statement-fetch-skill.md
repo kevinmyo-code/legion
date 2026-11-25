@@ -16,7 +16,7 @@ tags: [ticket]
 ## What
 - Worker skill `statement-fetch` (private skills folder, not the repo).
   - Triggered when Alfred hears "fetch the statements", or when Gmail shows a statement-ready notice (read-only Gmail carve-out) and Kevin says yes.
-  - Opens each bank's or CPF's site in Chrome and STOPS at the login for Kevin to sign in (Singpass or bank token).
+  - Opens each bank's or the scheme's site in Chrome and STOPS at the login for Kevin to sign in (the site's own token).
   - Downloads the latest statement PDF(s) into the Drive statements folder.
   - Read and download only (ruling 7): never transfers, never changes settings, never types a password, never bypasses a check.
 - Reports which statements were fetched and which are still missing.

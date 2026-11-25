@@ -27,26 +27,26 @@ investments. Moving money is Kevin's job; an alert names the shortfall and the d
 
 ## Shape (Kevin, 2026-11-05)
 
-- **One household:** every account is visible to both spouses. No private finance rows.
-- **Two countries, two currencies:** USD and SGD. Accounts sit in US and Singapore banks, plus a brokerage, government savings bonds, CPF, an HDB flat and its loan, and a car.
+- **One household:** every account is visible to both members. No private finance rows.
+- **Two countries, two currencies.** Accounts sit in domestic and overseas banks, plus a brokerage, government savings bonds, a retirement scheme, a property and its loan, and a vehicle.
 - **Net worth layers:**
   - **liquid:** bank accounts minus cards
   - **investments:** brokerage, bonds
-  - **CPF:** locked
-  - **property:** flat minus loan, locked
-  - **other:** car
+  - **retirement scheme:** locked
+  - **property:** property minus loan, locked
+  - **other:** vehicle
 - **Runway** uses liquid + investments only.
-- **Income plan:** a job ending on a known date, an expected restart (with a fallback), steady rental income, and a small steady second income. All of it is in the private file.
+- **Income plan:** a primary income with a known end date and an expected restart (with a fallback), plus two steady secondary incomes. The figures are all in the private file.
 
 ## Rulings (all Kevin, 2026-11-05)
 
 1. **Sources.**
    - Kevin's two everyday US accounts stay live on Plaid.
    - Every other account is a monthly statement drop ("slow moving").
-   - ADR 0057's "skip every BofA file" narrows to "skip a BofA file whose account is Plaid-linked", so the spouse's BofA statements are read and gated.
+   - ADR 0057's "skip every BofA file" narrows to "skip a BofA file whose account is Plaid-linked", so a second member's BofA statements are read and gated.
 2. **Layers** as above. The runway counts liquid + investments.
 3. **Currency.**
-   - The headline is USD, with an SGD view at today's rate.
+   - The headline is the home currency, with a second-currency view at today's rate.
    - Each day's rate is stored, so a past figure can be re-checked.
 4. **The test (A + C).**
    - A, no burn: monthly household income covers household spend plus the mortgage.
@@ -64,26 +64,26 @@ investments. Moving money is Kevin's job; an alert names the shortfall and the d
    - statement missing on the 5th
    - monthly review on the 1st
 7. **Statement fetch:**
-   - The Claude worker may open bank and CPF sites in Chrome AFTER Kevin signs in himself, and download statements into the Drive folder.
+   - The Claude worker may open bank and scheme sites in Chrome AFTER Kevin signs in himself, and download statements into the Drive folder.
    - Read and download only: no transfers, no settings.
    - It never types a password.
-8. **Brokerage:** the engine may store the brokerage's read-only report token (IBKR Flex), encrypted with the vault key like Plaid's.
+8. **Brokerage:** the engine may store the brokerage's read-only report token (a Flex report), encrypted with the vault key like Plaid's.
 9. **Automation tiers:**
-   - automatic: brokerage, FX, flat value, bonds, loan amortisation, CPF interest
-   - one sign-in a month: bank and CPF statements, fetched by Claude
+   - automatic: brokerage, FX, property value, bonds, loan amortisation, scheme interest
+   - one sign-in a month: bank and scheme statements, fetched by Claude
    - manual: anything left
-10. **Transfers between spouses** count as household-internal, not spend.
+10. **Transfers between members** count as household-internal, not spend.
 
 ## What exists (dev `b6912cc3`)
 
 - **Spend.** `api/spend.py` (`GET /api/ledger/spend`) nets transfers: equal-and-opposite pairs within 5 days, own-account references, and not-spending categories.
-  - A Zelle to a person still counts as spend (pass 3 only flags it). Ruling 10 changes that for the spouse (ticket 02).
+  - A Zelle to a person still counts as spend (pass 3 only flags it). Ruling 10 changes that for another member (ticket 02).
 - **Statements.**
-  - SGD statements are read by Gemini behind the 3-anchor gate (`ingest/statements.py`, CLAUDE.md §4).
+  - Second-currency statements are read by Gemini behind the 3-anchor gate (`ingest/statements.py`, CLAUDE.md §4).
   - `BudgetTarget(category, currency, effective_from_month)` exists and is unused.
 - **Plaid balances** are stored on `PlaidItem.accounts` (`api/ledger_balances.py`).
 - **Not built:** FX rates, assets, liabilities, net worth, income plan, runway, alerts.
-- **Data gap:** a large share of US outflow is uncategorised, mostly card payments and spouse transfers.
+- **Data gap:** a large share of US outflow is uncategorised, mostly card payments and member transfers.
 
 ## Tickets
 
@@ -93,8 +93,8 @@ investments. Moving money is Kevin's job; an alert names the shortfall and the d
 | 02 | [Household-internal money](issues/02-household-internal-money.md) | engine | 01 |
 | 03 | [Daily FX rates](issues/03-fx-rates.md) | engine | - |
 | 04 | [Statement drops for the other accounts](issues/04-statement-drops.md) | engine | 01 |
-| 05 | [IBKR Flex connector](issues/05-ibkr-flex.md) | engine | 01, 03 |
-| 06 | [Computed values: bonds, loan, flat, CPF interest, car](issues/06-computed-values.md) | engine | 01, 03 |
+| 05 | [Broker Flex connector](issues/05-ibkr-flex.md) | engine | 01, 03 |
+| 06 | [Computed values: bonds, loan, property, scheme interest, vehicle](issues/06-computed-values.md) | engine | 01, 03 |
 | 07 | [Net worth, cash flow, runway, income plan](issues/07-net-worth-and-runway.md) | engine | 01, 02, 03 |
 | 08 | [Budgets and pace](issues/08-budgets-and-pace.md) | engine | 02 |
 | 09 | [Money alerts](issues/09-money-alerts.md) | engine + phone | 07, 08 |
