@@ -97,7 +97,7 @@ class CarDatabaseMigration48To49Test {
         helper.createDatabase(dbName, 48).apply {
             execSQL(
                 "INSERT INTO events (id, serverId, title, startsAt, allDay, source, kind, done, exact, exactDowngraded, updatedAtMs, deleted, createdAt, structuredMeta) " +
-                    "VALUES (1, 'server-1', 'Team offsite', 70000, 1, 'google', 'appointment', 0, 0, 0, 300, 0, 32345, '{\"course\":\"COSC4320\"}')"
+                    "VALUES (1, 'server-1', 'Team offsite', 70000, 1, 'google', 'appointment', 0, 0, 0, 300, 0, 32345, '{\"course\":\"CSCI3400\"}')"
             )
             close()
         }
@@ -108,7 +108,7 @@ class CarDatabaseMigration48To49Test {
         assertTrue(cursor.moveToFirst())
         assertEquals("server-1", cursor.getString(0))
         assertEquals("appointment", cursor.getString(1))
-        assertEquals("{\"course\":\"COSC4320\"}", cursor.getString(2))
+        assertEquals("{\"course\":\"CSCI3400\"}", cursor.getString(2))
         cursor.close()
     }
 }

@@ -18,7 +18,7 @@ import org.junit.runner.RunWith
  * constraint) and why the version bump is still required regardless.
  *
  * Three cases, matching the ticket's own required verification list:
- * 1. An `appointment` row that was ticked done (the real on-device `COSC 3334` row, 2026-09-01)
+ * 1. An `appointment` row that was ticked done (a captured `CSCI 2200` row shape, 2026-09-01)
  *    becomes `kind = 'event'` with `done`/`doneAt` CLEARED, not merely hidden.
  * 2. An `appointment` row that was never ticked also becomes `event`, `done` staying `0`.
  * 3. A `reminder` row - ticked or not - is completely untouched: this migration's `WHERE` clause
@@ -54,7 +54,7 @@ class CarDatabaseMigration56To57Test {
     @Test
     fun migrate56To57_reclassifiesTickedAppointmentAndClearsDone() {
         helper.createDatabase(dbName, 56).apply {
-            // The real shape found on-device 2026-09-01: a COSC 3334 appointment row ticked done
+            // The row shape captured on 2026-09-01: a CSCI 2200 appointment row ticked done
             // during testing, which must not survive as a stale true on a row that becomes an event.
             insertEvent(this, id = 1, kind = "appointment", done = true, doneAt = 1735700000000)
             close()

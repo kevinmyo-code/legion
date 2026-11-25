@@ -62,11 +62,11 @@ class CarDatabaseMigration47To48Test {
 
         db.execSQL(
             "INSERT INTO events (id, serverId, title, startsAt, allDay, source, kind, done, exact, exactDowngraded, updatedAtMs, deleted, createdAt, structuredMeta) " +
-                "VALUES (2, 'server-2', 'Midterm', 60000, 0, 'google', 'appointment', 0, 0, 0, 200, 0, 22345, '{\"course\":\"COSC4320\"}')"
+                "VALUES (2, 'server-2', 'Midterm', 60000, 0, 'google', 'appointment', 0, 0, 0, 200, 0, 22345, '{\"course\":\"CSCI3400\"}')"
         )
         val cursor = db.query("SELECT structuredMeta FROM events WHERE id = 2")
         assertTrue(cursor.moveToFirst())
-        assertEquals("{\"course\":\"COSC4320\"}", cursor.getString(0))
+        assertEquals("{\"course\":\"CSCI3400\"}", cursor.getString(0))
         cursor.close()
     }
 
