@@ -149,11 +149,12 @@ def test_a_deleted_image_file_ships_only_on_a_deletion_pin():
     `parse_pins` only takes a 40-hex blob, so every one of them STOPped as `changed but not
     pinned` and the ship could not be expressed at all."""
     D = sc.DELETED_PIN
+    gone = "server/homes/records.py"
     # The deletion the ship named is the deletion it gets.
-    assert sc.image_problems({"server/homes/records.py": None}, {"server/homes/records.py": D}) == []
+    assert sc.image_problems({gone: None}, {gone: D}) == []
     # A deletion pin on a file that is still there is a lie about the image: STOP.
     assert sc.image_problems({"server/x.py": A}, {"server/x.py": D}) == [
-        "server/x.py is blob %s, pinned deleted" % A
+        f"server/x.py is blob {A}, pinned deleted"
     ]
     # An unpinned deletion is still unpinned.
     assert sc.image_problems({"server/x.py": None}, {}) == ["changed but not pinned: server/x.py"]
