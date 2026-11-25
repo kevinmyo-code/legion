@@ -45,6 +45,7 @@ import dataclasses
 from demo.tools import ABOUT_KEVIN, SHOW_RESUME
 from engine_mcp.tools import READABLE, TOOLS, TOOLS_BY_NAME, WRITE_SCOPE_SENTENCE, dark_tools
 from household.models import is_recruiter
+from household.permissions import is_engine_owner
 from household.recruiter_routes import RECRUITER_DENIED
 
 EXCLUDED_FROM_WEB: frozenset[str] = frozenset()
@@ -275,22 +276,11 @@ def off_registry_tool(name: str, user):
     return member_only_tools(user).get(name)
 
 
-def _engine_owner(user) -> bool:
-    """An owner of the household that runs this engine: the check `releases.views` uses for
-    publishing. The garage table is one owner's truck, so nobody else is offered it."""
-    from household.models import HouseholdMember
-    from household.tenancy import resolve_default_household
-
-    engine_household = resolve_default_household()
-    return engine_household is not None and HouseholdMember.objects.filter(
-        user=user, household=engine_household, role=HouseholdMember.OWNER
-    ).exists()
-
-
 def member_only_tools(user) -> dict:
     """The tools a member's web assistant gets that are kept out of the registry, each behind its
     own switch: today `show_part`, only while `LEGION_JEEP_ASSISTANT=on` (`garage.flags`), and
-    only for the engine household's owner (`_engine_owner`). Never a recruiter's; never `/mcp`'s,
+    only for the engine household's owner
+    (`household.permissions.is_engine_owner`). Never a recruiter's; never `/mcp`'s,
     which lists the registry alone. Empty with every switch off. Cascade only: on the Live
     fallback nothing speaks code's lines and no torque guard runs."""
     from assistant import voice_engine
@@ -299,7 +289,7 @@ def member_only_tools(user) -> dict:
     # The switch first: off, this costs no query (the deployed query count holds).
     if not garage_flags.enabled() or is_recruiter(user):
         return {}
-    if voice_engine.engine_for(user) != voice_engine.CASCADE or not _engine_owner(user):
+    if voice_engine.engine_for(user) != voice_engine.CASCADE or not is_engine_owner(user):
         return {}
     from garage.tool import SHOW_PART
 

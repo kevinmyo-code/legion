@@ -35,8 +35,7 @@ from rest_framework import serializers, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from household.models import HouseholdMember
-from household.permissions import IsHouseholdOwner
+from household.permissions import IsHouseholdOwner, is_owner_of
 from household.tenancy import household_of
 from ingest import plaid_client, plaid_sync, vault
 from ingest.freshness import freshness_for
@@ -144,9 +143,11 @@ class SyncResultSerializer(serializers.Serializer):
 
 
 def _is_owner(request) -> bool:
-    return HouseholdMember.objects.filter(
-        user=request.user, role=HouseholdMember.OWNER
-    ).exists()
+    """Whether the caller owns the household this request acts on - the same
+    question `IsHouseholdOwnerForBank` answers, so the `is_owner` flag the
+    page hides its Link button on cannot disagree with the 403 the route
+    gives."""
+    return is_owner_of(request.user, household_of(request))
 
 
 def status_body(request) -> dict:
