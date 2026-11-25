@@ -879,9 +879,13 @@ object VehicleController {
             // mileage this record deliberately does not carry, so `explainedBy` is false and the
             // ASSERTED row survives beside it. That is the intended outcome - the remembered
             // "8,000 miles ago" stays a driver statement on an ASSERTED row and keeps timing the
-            // item, while the OBSERVED event stays free of a derived figure. The two rows then
-            // disagree about which is the anchor between the phone and the engine in one narrow
-            // case; see `server/brief/maintenance.py`'s `_newest_first`.
+            // item, while the OBSERVED event stays free of a derived figure. Here that is settled
+            // by the stamps: `insertObserved` writes `updatedAt = date`, midnight of the stated
+            // day, and `setAnchor` writes the wall clock, so the ASSERTED row is the anchor for
+            // every stated day. `server/brief/maintenance.py`'s `_days_an_anchor_was_stated_for`
+            // is the engine's half of the same rule, and `FleetAnchorParityTest` plus
+            // `test_a_miles_ago_backfill_leaves_the_asserted_anchor_standing` are the two tests
+            // that keep the pair in step.
             //
             // A failure here is reported rather than silently dropped, same posture as
             // logServiceDirect's own insertObserved call.
