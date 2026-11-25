@@ -131,6 +131,26 @@
       "color": "4"
     },
     {
+      "id": "5cb1dad742629b05",
+      "type": "file",
+      "file": ".scratch/android-auto/issues/17-deaf-on-the-cars-bluetooth-mic.md",
+      "x": 0,
+      "y": 1950,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "7aa543c2ad834df8",
+      "type": "file",
+      "file": ".scratch/android-auto/issues/18-does-an-app-update-break-the-car-link.md",
+      "x": 0,
+      "y": 2100,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
       "id": "dcfda0fe0a181e71",
       "type": "file",
       "file": ".scratch/android-auto/issues/06-get-a-sideloaded-build-visible-in-android-auto.md",
