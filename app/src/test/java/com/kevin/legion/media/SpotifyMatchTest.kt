@@ -232,6 +232,68 @@ class SpotifyMatchTest {
         assertEquals("spotify:track:lv", SpotifyMatch.pick(listOf(live), "paper lanterns live", null)?.optString("uri"))
     }
 
+    // --- 2026-11-24 round 2: the leftover rule must not reject the right song by the right -----
+    // artist. Every case here played at BASE (where a bare title match was the whole test) and
+    // the first version of the leftover rule rejected it, because the surplus words had to match
+    // the catalogue's own spelling character for character. Real catalogue artist spellings, so
+    // the fixture is the thing that actually comes back from Spotify's search.
+
+    @Test
+    fun `an ampersand artist is matched when the request says and, or says nothing`() {
+        val c = track("Mrs. Robinson", "Simon & Garfunkel", "spotify:track:sg")
+        fun uriFor(q: String, artist: String? = null) = SpotifyMatch.pick(listOf(c), q, artist)?.optString("uri")
+        val sg = "spotify:track:sg"
+        assertEquals("the artist inside the query", sg, uriFor("mrs robinson simon and garfunkel"))
+        assertEquals("the \" by \" form", sg, uriFor("mrs robinson by simon and garfunkel"))
+        assertEquals("no joining word at all", sg, uriFor("mrs robinson simon garfunkel"))
+        assertEquals("and in the artist argument", sg, uriFor("mrs robinson", "simon and garfunkel"))
+    }
+
+    @Test
+    fun `every other way a catalogue joins two names also matches`() {
+        fun uriFor(c: JSONObject, q: String) = SpotifyMatch.pick(listOf(c), q, null)?.optString("uri")
+        val hall = track("Maneater", "Daryl Hall & John Oates", "spotify:track:ho")
+        assertEquals("spotify:track:ho", uriFor(hall, "maneater daryl hall and john oates"))
+        val ewf = track("September", "Earth, Wind & Fire", "spotify:track:ewf")
+        assertEquals("spotify:track:ewf", uriFor(ewf, "september earth wind and fire"))
+        val mumford = track("Little Lion Man", "Mumford & Sons", "spotify:track:ms")
+        assertEquals("spotify:track:ms", uriFor(mumford, "little lion man mumford and sons"))
+        // A `+` normalises to nothing just as `&` does, so the same rule carries it.
+        val florence = track("Dog Days Are Over", "Florence + The Machine", "spotify:track:ftm")
+        assertEquals("spotify:track:ftm", uriFor(florence, "dog days are over florence and the machine"))
+    }
+
+    @Test
+    fun `a request without the catalogue's diacritics or symbols still matches`() {
+        fun uriFor(c: JSONObject, q: String) = SpotifyMatch.pick(listOf(c), q, null)?.optString("uri")
+        val accented = track("Paper Lanterns", "Beyoncé", "spotify:track:by")
+        assertEquals("spotify:track:by", uriFor(accented, "paper lanterns beyonce"))
+        // `$` stands in for a letter, so it folds to the `*` wildcard rather than to a gap.
+        val symbol = track("Paper Lanterns", "A\$AP Rocky", "spotify:track:ar")
+        assertEquals("spotify:track:ar", uriFor(symbol, "paper lanterns asap rocky"))
+    }
+
+    @Test
+    fun `normalize folds what a request and a catalogue spell differently`() {
+        assertEquals("beyonce", SpotifyMatch.normalize("Beyoncé"))
+        assertEquals("motley crue", SpotifyMatch.normalize("Mötley Crüe"))
+        assertEquals("a*ap rocky", SpotifyMatch.normalize("A\$AP Rocky"))
+        // And the spellings that already worked keep working: a hyphen still splits, an
+        // apostrophe still closes up, a full stop still separates.
+        assertEquals("jay z", SpotifyMatch.normalize("Jay-Z"))
+        assertEquals("dont stop", SpotifyMatch.normalize("Don't Stop"))
+        assertEquals("mrs robinson", SpotifyMatch.normalize("Mrs. Robinson"))
+    }
+
+    @Test
+    fun `a joining word is explained only between the artist's own words`() {
+        // "and" is deliberately not filler. Surplus words that name nobody involved still reject,
+        // and a connective at the edge of the surplus is one of them.
+        val c = track("Paper Lanterns", "Hana Reed", "spotify:track:hr")
+        assertNull(SpotifyMatch.pick(listOf(c), "paper lanterns and chill", null))
+        assertNull(SpotifyMatch.pick(listOf(c), "paper lanterns north sail and friends", null))
+    }
+
     @Test
     fun `a mis-said title word is not treated as surplus`() {
         // The overlap branch, where the unmatched token is a wrong word rather than extra
