@@ -22,7 +22,7 @@ Everything else in that drive worked - all Spotify functions verified, wake word
 
 ## Root cause, from the log rather than from theory
 
-The drive's logcat buffer was still intact and contained, at 17:11:39:
+The drive's logcat buffer was still intact and contained, at the time of the call:
 
 ```
 AudioManager: dispatching onAudioFocusChange(-1) to ...GeminiLiveSession
@@ -97,6 +97,6 @@ ForegroundServiceStartNotAllowedException: startForegroundService() not allowed
 MidnightEvents: app_start_failed stage=resume_assistant_ignition
 ```
 
-**The assistant service was not running, and had not been for 45 minutes.** Nothing could announce
+**The assistant service was not running, and had not been for most of the drive.** Nothing could announce
 a call because nothing was listening. Filed and fixed as
 [wake-word ticket 11](../../wake-word/issues/11-service-refused-to-start.md).

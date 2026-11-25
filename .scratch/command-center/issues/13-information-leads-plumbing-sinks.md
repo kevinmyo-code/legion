@@ -57,9 +57,9 @@ content height when the chart is hidden. One rule in the shared component, not p
 
 ## 5. Row grammar drifts
 
-TRAINING: "3 sets" beside "3 sets x 10 @ 30.0lbs" (also decimal noise - 30.0lbs is 30 lbs).
-Alerts tags misaligned per row (pane already deleted). TODAY // 21:29 an inch from the status
-line's 21:29 - the same clock twice.
+TRAINING: the set count is printed twice on one row, and a weight carries a trailing `.0`.
+Alerts tags misaligned per row (pane already deleted). The TODAY header prints the clock an inch
+from the status line's own clock - the same time twice.
 
 **Fix:** one formatter per fact family (weights, set lines, clocks) in a shared file; the Today
 header drops its clock (the status line already owns it).

@@ -58,7 +58,7 @@ does this week get hard".
 
 1. **Does the horizon differ by surface?** The phone has ~700px; the desktop has 898 and is empty.
    A fourteen-cell strip fits both, but the desktop can afford the strip AND a list.
-2. **Does a past-due, undone task keep appearing?** There are 92 past events. A deadline that passed
+2. **Does a past-due, undone task keep appearing?** The store already holds past events. A deadline that passed
    unticked is either still work or noise, and the answer changes what Today shows on a Monday.
 3. **Is "9 due tomorrow" said in words?** A count is a fact the model of the screen should state,
    not something the user derives by counting rows.
