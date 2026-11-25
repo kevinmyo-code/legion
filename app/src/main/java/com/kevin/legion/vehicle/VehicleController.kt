@@ -1011,12 +1011,22 @@ object VehicleController {
      * A `0` is not a reading either: the caller refuses it rather than passing it on.
      */
     suspend fun editServiceRecordDirect(context: Context, id: Long, miles: Int?, costCents: Long?): WriteOutcome {
+        // Two failures, one exit: nothing written, or written and unreadable. They say different
+        // things - one means the row is gone, the other means the row is there and this reply
+        // cannot prove it - and both are refusals, so they share the return rather than adding a
+        // third one to a function detekt already holds at two.
         val written = FleetEngineStore.editMileageAndCost(context, id, miles, costCents)
-        if (written == 0) {
-            return WriteOutcome(false, "Couldn't save that - the record may have just been deleted.")
+        val after = if (written == 0) null else FleetEngineStore.getServiceRecordById(context, id)
+        if (after == null) {
+            return WriteOutcome(
+                false,
+                if (written == 0) {
+                    "Couldn't save that - the record may have just been deleted."
+                } else {
+                    "Saved, but couldn't read it back to confirm - check the history when you get a chance."
+                },
+            )
         }
-        val after = FleetEngineStore.getServiceRecordById(context, id)
-            ?: return WriteOutcome(false, "Saved, but couldn't read it back to confirm - check the history when you get a chance.")
         val costPhrase = after.costCents?.let { " at $${formatCents(it)}" }.orEmpty()
         // The read-back says what the row holds, so a row with no reading says that rather than
         // naming a figure ("0 miles", or a bare "null miles").
