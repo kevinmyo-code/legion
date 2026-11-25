@@ -177,9 +177,19 @@ def test_schema_files_added_pinned_and_never_destructive():
     ]
 
 
-# The two reviewed state-only migrations, read from the checked-in list rather than retyped here, so
-# this file cannot drift from tools/checks/state_only_migrations.txt.
+# Whatever tools/checks/state_only_migrations.txt lists today, read from the checked-in list rather
+# than retyped, so a test over the WHOLE list cannot drift from the file.
 LISTED = sorted(sc.migration_ops.STATE_ONLY.items())
+
+# The two redesign-step-1 pairs, spelled out on purpose: this is the pair set the exemption test
+# below asserts, and spelling it out is what lets that test drop its old length pin without
+# weakening into "whatever the file says". Mirrors REDESIGN_S1 in tools/checks/test_checks.py.
+REDESIGN_S1 = {
+    "server/checklists/migrations/0002_household.py":
+        "91ff5e26cd076a932d7b95d434cc5a0293bf059e",
+    "server/homes/migrations/0003_retire_user_records_state.py":
+        "116f9c6587b74de6b3ed485de907199dc7a5ecf7",
+}
 
 
 def _one_migration(
@@ -189,13 +199,14 @@ def _one_migration(
 
 
 def test_the_state_only_list_holds_the_two_reviewed_migrations():
-    """The exemption is a reviewed file content, so the list is data a test can read. Both entries
-    are Django migration paths at a full 40-hex blob."""
-    assert len(LISTED) == 2
-    assert [p for p, _ in LISTED] == [
-        "server/checklists/migrations/0002_household.py",
-        "server/homes/migrations/0003_retire_user_records_state.py",
-    ]
+    """The exemption is a reviewed file content, so the list is data a test can read. The two
+    redesign-step-1 pairs must stay listed at exactly these blobs, and every entry must be a Django
+    migration path at a full 40-hex blob. Later entries are a reviewer's business, so this pins no
+    LENGTH: an operator who follows a STOP message and has a third migration reviewed and listed
+    should not get red CI for it. Same contract as tools/checks/test_checks.py's
+    test_the_reviewed_state_only_pairs_are_listed, which this used to contradict."""
+    for path, blob in REDESIGN_S1.items():
+        assert dict(LISTED).get(path) == blob, path
     for path, blob in LISTED:
         assert sc.MIGRATION_PATH.match(path), path
         assert sc.migration_ops.BLOB.match(blob), (path, blob)
@@ -290,7 +301,14 @@ def test_sql_that_destroys_nothing_ships():
 def test_the_name_match_runs_on_the_raw_source_of_an_unlisted_file():
     """What rounds 1 to 3 kept losing. The name match is the old regex over the source string, with
     no parse in front of it, so none of the regions an AST walk skipped can hide a name: a
-    docstring, a `bytes` constant, a dropped `reverse_sql` subtree, a file that does not parse."""
+    docstring, a `bytes` constant, a dropped `reverse_sql` subtree, a file that does not parse.
+
+    The "a name NFKC would compose away" case pins the RAW pass specifically. `_destructive_name`
+    matches the raw source first and the NFKC-normalised text second, and every other payload here
+    matches under both, so dropping the raw pass would leave them all green. NFKC composes a
+    trailing `l` plus U+0301 into a single `l-acute`, which destroys the literal `DeleteModel` the
+    regex looks for: raw matches, normalised does not. That is what makes this rule never weaker
+    than the text gate it replaced, so a test has to hold it."""
     cases = {
         "a name in the module docstring only": '"""DeleteModel"""\nx = 1\n',
         "a name in a bytes constant": "x = b'DeleteModel'\n",
@@ -300,6 +318,12 @@ def test_the_name_match_runs_on_the_raw_source_of_an_unlisted_file():
         ),
         "a name in a file that does not parse": "class Migration(\nDeleteModel\n",
         "a name in a comment": "# DeleteModel\n",
+        "a name NFKC would compose away": (
+            "from django.db import migrations\n"
+            "OP = getattr(migrations, 'DeleteModel" + chr(0x0301) + "'[:-1])\n"
+            "class Migration(migrations.Migration):\n"
+            "    operations = [OP('X')]\n"
+        ),
     }
     for what, source in cases.items():
         problems = _one_migration(source)
