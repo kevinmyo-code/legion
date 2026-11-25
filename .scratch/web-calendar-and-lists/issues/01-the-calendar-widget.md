@@ -52,7 +52,7 @@ advanced by 1 day"*) and `lib/horizon.ts` on the web already had to solve it onc
 **Read `lib/horizon.ts` first and reuse its day bucketing.** Do not write a second date-bucketing
 function in a component; if the logic needs to grow, it grows in `lib/` where it is testable.
 
-A Canvas deadline is written as `04:59Z the next day` (11:59pm device-local) and is `allDay =
+A Canvas deadline is written as `04:59Z the next day` (an end-of-day local deadline) and is `allDay =
 0` with a true instant - those bucket correctly by ordinary conversion. It is the `allDay = 1`
 rows that need the UTC-recovery idiom.
 

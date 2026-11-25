@@ -33,18 +33,18 @@ From `research/planner-2026-09-01.json`, Canvas's own `due_at_utc`, converted to
 
 | `due_at_utc` | Local | Course | Item |
 |---|---|---|---|
-| `2026-09-14T04:59:00Z` | **Sun 2026-09-13 23:59** | STAT2300 | Chapter 2 Quiz |
-| `2026-09-14T04:59:59Z` | **Sun 2026-09-13 23:59** | BUSN2400 | Quiz 3: Ch 8-11 |
-| `2026-09-14T04:59:59Z` | **Sun 2026-09-13 23:59** | STAT2300 | Module 3: Assignment (WebAssign) |
-| `2026-09-14T04:59:59Z` | **Sun 2026-09-13 23:59** | CSCI3400 | Discussion-2-Incremental Advantage Delivery |
-| `2026-09-14T04:59:59Z` | **Sun 2026-09-13 23:59** | CSCI3400 | Module 2: Assignment 2 - Waterfall Model |
-| `2026-09-14T04:59:59Z` | **Sun 2026-09-13 23:59** | CSCI3400 | Software Engineering Quiz 2 - Ch 2 (submitted) |
-| `2026-09-14T04:59:59Z` | **Sun 2026-09-13 23:59** | CSCI2200 | Module1: Assignment |
+| `2026-09-14T04:59:00Z` | **Sun 2026-09-13, end of day** | STAT2300 | Chapter 2 Quiz |
+| `2026-09-14T04:59:59Z` | **Sun 2026-09-13, end of day** | BUSN2400 | Quiz 3: Ch 8-11 |
+| `2026-09-14T04:59:59Z` | **Sun 2026-09-13, end of day** | STAT2300 | Module 3: Assignment (WebAssign) |
+| `2026-09-14T04:59:59Z` | **Sun 2026-09-13, end of day** | CSCI3400 | Discussion-2-Incremental Advantage Delivery |
+| `2026-09-14T04:59:59Z` | **Sun 2026-09-13, end of day** | CSCI3400 | Module 2: Assignment 2 - Waterfall Model |
+| `2026-09-14T04:59:59Z` | **Sun 2026-09-13, end of day** | CSCI3400 | Software Engineering Quiz 2 - Ch 2 (submitted) |
+| `2026-09-14T04:59:59Z` | **Sun 2026-09-13, end of day** | CSCI2200 | Module1: Assignment |
 
 **Not one row in that file carries the date `2026-09-13`.** Every Sunday deadline is stored as
-Monday in UTC, because Canvas writes an 11:59pm local deadline as `04:59Z the next day`.
+Monday in UTC, because Canvas writes an end-of-day local deadline as `04:59Z the next day`.
 
-Also worth saying out loud: `2026-09-12T04:59:59Z` is **Friday 2026-09-11 23:59 local** - STAT2300's
+Also worth saying out loud: `2026-09-12T04:59:59Z` is **Friday 2026-09-11, end of day, local** - STAT2300's
 "Module 3: Discussion - What Are the Odds?" was due the night Kevin asked, and would read as
 Saturday under the same fault.
 

@@ -226,13 +226,13 @@ Adjacent data-integrity finding: `default` and `imported-mitsubishi-outlander-20
 
 | id | vehicleId | serviceName | mileage | date | cost |
 |---|---|---|---|---|---|
-| 1 | `12:34:56:11:22:33` | Oil Change | 90,331 | 2026-07-29 21:32:25 | **null** |
-| 2 | `12:34:56:11:22:33` | Oil Change | 90,374 | 2026-08-12 15:50:02 | **null** |
+| 1 | `12:34:56:11:22:33` | Oil Change | 90,331 | 2026-07-29 | **null** |
+| 2 | `12:34:56:11:22:33` | Oil Change | 90,374 | 2026-08-12 | **null** |
 
 Both on the right car. **`cost` is null on both**, as predicted - fleet spend has nothing to sum.
 
 **The two tables disagree by 109 miles, fourteen seconds apart.** Record 2 says the oil was done at
-90,374 at 15:50:02; the Oil Change anchor says 90,483, stamped 15:50:16. `logServiceDirect` writes
+90,374; the Oil Change anchor says 90,483, stamped fourteen seconds later. `logServiceDirect` writes
 both from the same `mileage` local, so **they cannot both have come from that call** - and the
 anchor's `lastDoneDate` is **null**, which `logServiceDirect` never leaves (it always sets `now`).
 Traced conclusion: a `log_past_service` backfill landed 14 seconds after the `log_service`,

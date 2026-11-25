@@ -34,7 +34,7 @@ Surfaced by ticket 01, which pulled the real database. The active vehicle row
   `applyServiceIntervals` seeded ten maintenance items from a prompt built out of those three
   fields, and `onboardPendingVehicles` (`VehicleController.kt:653-659`) skips a vehicle with a
   blank make or model. Those ten rows are still on disk with that timestamp.
-- On **2026-08-12 15:50:02** it had an odometer of about 90,374. It must have: `logServiceDirect`
+- On **2026-08-12** it had an odometer of about 90,374. It must have: `logServiceDirect`
   (`:179`) derives a `ServiceRecord`'s mileage from `currentMileage(vehicle)`, and the record it
   wrote that second says 90,374.
 
