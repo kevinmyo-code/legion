@@ -184,13 +184,22 @@ def _judge(source: str, path: str = "server/ledger/migrations/0006_a.py", blob: 
     return levels(migrations.check(ch))
 
 
-def test_the_state_only_list_is_two_reviewed_migrations():
-    assert [p for p, _ in LISTED] == [
-        "server/checklists/migrations/0002_household.py",
-        "server/homes/migrations/0003_retire_user_records_state.py",
-    ]
+REDESIGN_S1 = {
+    "server/checklists/migrations/0002_household.py":
+        "91ff5e26cd076a932d7b95d434cc5a0293bf059e",
+    "server/homes/migrations/0003_retire_user_records_state.py":
+        "116f9c6587b74de6b3ed485de907199dc7a5ecf7",
+}
+
+
+def test_the_reviewed_state_only_pairs_are_listed():
+    """The two redesign-step-1 pairs must stay listed at exactly these blobs. Later entries are a
+    reviewer's business, so this does not pin the list's LENGTH: an operator who follows a STOP
+    message and lists a third migration should not get red CI for it."""
+    for path, blob in REDESIGN_S1.items():
+        assert migration_ops.STATE_ONLY.get(path) == blob, path
     for path, blob in LISTED:
-        assert migrations.DJANGO.match(path), path
+        assert migrations.DJANGO.match(path), f"{path} is not a Django migration path"
         assert migration_ops.BLOB.match(blob), (path, blob)
 
 
@@ -278,12 +287,17 @@ def test_django_the_name_match_reads_the_raw_source_of_an_unlisted_file():
         ),
         "a name only in a comment": "# DeleteModel\n",
         "a name in a file that does not parse": "class Migration(\nDeleteModel\n",
+        # CPython NFKC-normalises identifiers before it compiles them, so this really is
+        # DeleteModel at run time. Round 3's walk caught it only because `ast` had normalised it;
+        # _destructive_name matches the normalised text as well so the text rule keeps it.
+        "an NFKC homoglyph identifier": (
+            "from django.db import migrations\n"
+            "class Migration(migrations.Migration):\n"
+            "    operations = [migrations.ⅮeleteModel('X')]\n"
+        ),
     }
     for what, source in cases.items():
         assert _judge(source) == [WARN], what
-        # And the SAME payload at a reviewed blob ships: that is what the listing is for, and why
-        # the blob binding has to be exact rather than a shape anyone can imitate.
-        assert _judge(source, *LISTED[0]) in ([], [WARN]), what
 
 
 def test_django_real_ddl_warns_however_it_is_dressed():

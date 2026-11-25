@@ -28,7 +28,8 @@ reviewed"**:
   sha it is presented with equals the listed one, all 40 hex characters. One changed byte is a
   different blob, so the exemption lapses and the file is judged like any other;
 - everything else gets the old text match, on the raw source, unchanged. There is no shape to fit
-  and nothing to analyse, so there is nothing to disguise a name past.
+  and no code to analyse, so none of the hiding places the three rounds found applies: they were all
+  places an AST walk does not look, and nothing walks any more.
 
 **Adding a line to that list is itself a RED change** (`tools/checks/*` is RED in
 `tools/blast_radius.py`), so a human reviewer grants every exemption in a reviewed diff, under
@@ -36,18 +37,28 @@ adversarial review, against the file's content at a named blob. That is the prop
 rounds were trying and failing to establish in code.
 
 **The name half is never weaker than what it replaced, by construction.** For any file that is not
-a listed (path, blob) pair, the rule IS `DESTRUCTIVE.search(source)` over the undecoded-once raw
-text: the same regex over the same string the old gate read. No parse runs before it, so a file
-that does not parse, a name hidden in a docstring, a name in a `bytes` constant and a name in a
-node no walk visits are all matched exactly as they were in 2026-11-23.
+a listed (path, blob) pair, the rule starts with `DESTRUCTIVE.search(source)` over the same decoded
+string the old gate read, with the same regex. No parse runs before it, so a file that does not
+parse, a name hidden in a docstring, a name in a `bytes` constant and a name in a node no walk
+visits are all matched exactly as they were in 2026-11-23. The NFKC-normalised text is matched after
+it (see `_destructive_name`), which only ever adds a STOP.
+
+**What the name half still does not catch**, so this paragraph is not mistaken for coverage: a name
+that is never spelled contiguously anywhere in the file, such as
+`getattr(migrations, 'Delete' + 'Model')('X')` or a name assembled at run time from a file or an
+imported helper. The text a regex would have to match is never written down. Every one of those
+passes the old text match too, so none is a regression, and no text rule can close them: that is the
+cost of judging text instead of code, accepted knowingly here in exchange for having no analyser to
+walk around. A reviewer listing a blob is the control that remains.
 
 **The SQL check is kept, and it is the one thing here that still reads the tree** (the inversion the
 redesign-s1 RED review found, 2026-11-24): a `RunSQL("DROP TABLE ...")` passed the old name match
-clean while a state-only migration was refused, which is the rule backwards. Every string the
-migration holds is read for SQL that destroys rows or a column: `DROP TABLE`, `DROP COLUMN`,
-`DROP CONSTRAINT`, `DROP SCHEMA`, `DROP DATABASE`, `DROP TYPE`, `DROP DOMAIN`,
-`DROP MATERIALIZED VIEW`, `TRUNCATE`, `DELETE FROM`. A type or a domain takes every dependent column
-with it when it is dropped, with or without `CASCADE`, which is why those two are here.
+clean while a state-only migration was refused, which is the rule backwards. Every `str` constant
+the walk reaches - that is, every one outside the three skips below - is read for SQL that destroys
+rows or a column: `DROP TABLE`, `DROP COLUMN`, `DROP CONSTRAINT`, `DROP SCHEMA`, `DROP DATABASE`,
+`DROP TYPE`, `DROP DOMAIN`, `DROP MATERIALIZED VIEW`, `TRUNCATE`, `DELETE FROM`. A type or a domain
+takes every dependent column with it when it is dropped, with or without `CASCADE`, which is why
+those two are here.
 
 **The SQL check runs on a listed file too**, so a line in the list can never excuse SQL: what a
 reviewer confirms by listing a blob is that the file's OPERATIONS are state-only, and the gate still
@@ -80,8 +91,11 @@ Three deliberate narrowings in the SQL rule, each measured against the tree rath
 - **`AlterField` stays destructive**, though it is the one name here that can be metadata-only. The
   operation restates the WHOLE field, so one file cannot show that only `help_text` changed: a type
   or a nullability change is spelled the same way. The consequence is real and recorded by the
-  smig-red review - a routine field change is a STOP, and its only way through is a reviewed line in
-  the list, which is the point. A wider hatch is Kevin's call, not this module's.
+  smig-red review: a routine field change is a STOP with no hatch. **The state-only list is NOT
+  that hatch.** It is for migrations that run no DDL at all, and an `AlterField` that reaches the
+  database is not one, however routine; a reviewer asked to list one refuses. A hatch for a real
+  `AlterField` is Kevin's call (round 1 sketched `--allow-destructive`, bound to his own ship
+  invocation rather than to a file an agent can write) and is deliberately not built here.
 
 Not covered by the SQL half, and deliberately not chased: SQL the module never spells out (a
 statement built at runtime by `+`, `%`, `.format`, `.join` or `bytes.decode`, a `bytes` literal, a
@@ -97,6 +111,7 @@ from __future__ import annotations
 
 import ast
 import re
+import unicodedata
 from pathlib import Path
 
 # The operations that drop or rewrite a column, a table or a constraint when they reach the database.
@@ -163,9 +178,9 @@ def database_destructive(source: str, path: str = "", blob: str = "") -> str | N
     a name is found, says why the exemption did not apply."""
     reviewed = bool(path) and bool(blob) and STATE_ONLY.get(path) == blob
     if not reviewed:
-        m = DESTRUCTIVE.search(source)
-        if m:
-            return f"{m.group(0)}{_why_not_exempt(path, blob)}"
+        name = _destructive_name(source)
+        if name:
+            return f"{name}{_why_not_exempt(path, blob)}"
     # The SQL check runs on a listed file too: listing a blob says the OPERATIONS are state-only,
     # and the gate still reads the file's strings itself. `reviewed` is only read for the message.
     try:
@@ -181,6 +196,21 @@ def database_destructive(source: str, path: str = "", blob: str = "") -> str | N
             listed = " (listed state-only, but the SQL it runs still counts)" if reviewed else ""
             return f"SQL running {sql}{listed}"
         stack.extend(_operation_children(node, bindings))
+    return None
+
+
+def _destructive_name(source: str) -> str | None:
+    """The destructive operation name this file spells out, or None.
+
+    The raw source is matched FIRST and with the unchanged regex, which is what makes this never
+    weaker than the gate it replaced. The NFKC-normalised text is then matched as well, because
+    CPython normalises identifiers before it compiles them: `migrations.ⅮeleteModel` really is
+    `DeleteModel` at run time, and round 3's AST walk caught that only because `ast` had already
+    normalised it. Matching both keeps that, and can only ever add a STOP."""
+    for text in (source, unicodedata.normalize("NFKC", source)):
+        m = DESTRUCTIVE.search(text)
+        if m:
+            return m.group(0)
     return None
 
 
@@ -234,8 +264,7 @@ def _bindings(tree: ast.AST) -> dict[str, str]:
 
     Empty when the file's imports cannot be read name for name - a `import *`, a relative import, a
     name bound to two different sources, or a name an assignment, a `def`, a `class` or an argument
-    also binds - so the `reverse_sql` skip, which is the one thing that asks where a name came from,
-    is withdrawn.
+    also binds - so every exemption that asks where a name came from is withdrawn.
 
     Two imports that bind one name to the SAME source are not ambiguous, and they are the norm:
     `import django.db.models.deletion` beside `import django.utils.timezone` binds `django` twice,

@@ -207,8 +207,10 @@ def test_a_state_only_migration_needs_a_reviewed_listing():
     says how a reviewer grants the exemption."""
     problems = _one_migration(STATE_ONLY)
     assert len(problems) == 1
-    assert "is not in tools/checks/state_only_migrations.txt" in problems[0]
-    assert "itself a RED change" in problems[0]
+    assert "not listed in tools/checks/state_only_migrations.txt" in problems[0]
+    # The STOP hands the operator the exact line to have reviewed, path and blob together.
+    assert "a RED review adds the line" in problems[0]
+    assert "'server/widgets/migrations/0003_state_only.py " + A + "'" in problems[0]
 
 
 def test_a_listed_state_only_migration_ships():
@@ -224,8 +226,8 @@ def test_one_changed_byte_voids_the_listing():
     edited = blob[:-1] + ("0" if blob[-1] != "0" else "1")
     problems = _one_migration(STATE_ONLY, path, edited)
     assert len(problems) == 1
-    assert f"lists {path} at blob {blob}" in problems[0]
-    assert f"but this is blob {edited}" in problems[0]
+    assert f"lists this path at blob {blob}" in problems[0]
+    assert f"not the {edited} being shipped" in problems[0]
 
 
 def test_a_listing_is_bound_to_its_own_path():
@@ -286,7 +288,7 @@ def test_sql_that_destroys_nothing_ships():
 
 
 def test_the_name_match_runs_on_the_raw_source_of_an_unlisted_file():
-    """What rounds 1 to 3 kept losing. The name match is the old regex over the undecoded text, with
+    """What rounds 1 to 3 kept losing. The name match is the old regex over the source string, with
     no parse in front of it, so none of the regions an AST walk skipped can hide a name: a
     docstring, a `bytes` constant, a dropped `reverse_sql` subtree, a file that does not parse."""
     cases = {
