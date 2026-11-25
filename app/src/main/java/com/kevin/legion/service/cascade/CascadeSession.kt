@@ -37,6 +37,8 @@ import com.kevin.legion.service.checkin.ClosingLines
 import com.kevin.legion.service.GeminiLiveSession
 import com.kevin.legion.service.LiveAudit
 import com.kevin.legion.service.LiveLatency
+import com.kevin.legion.service.MicLevel
+import com.kevin.legion.service.MicSignal
 import com.kevin.legion.service.LiveSessionController
 import com.kevin.legion.service.Farewells
 import com.kevin.legion.service.ListenCue
@@ -51,7 +53,9 @@ import com.kevin.legion.quiet.QuietMode
 import com.kevin.legion.service.conversationlog.ConversationLog
 import com.kevin.legion.service.turn.AudioRoute
 import com.kevin.legion.service.turn.BargeInGate
+import com.kevin.legion.service.turn.BluetoothMic
 import com.kevin.legion.service.turn.CallAudioMode
+import com.kevin.legion.service.turn.DeafMicFallback
 import com.kevin.legion.service.turn.EndOfTurnPolicy
 import com.kevin.legion.service.turn.MicReopen
 import com.kevin.legion.service.turn.TurnModels
@@ -280,9 +284,30 @@ internal class CascadeSession(
     /** A call or a silenced capture mid-conversation ([CallPause]); [callPaused] once it has fired. */
     private val callWatch = CallWatch(ctx, audioManager) { reason -> scope.launch(loop) { pauseForCall(reason) } }
     @Volatile private var callPaused = false
-    private var player: ReplyPlayer? = null
+    /** @Volatile because [readLevel] reads it from the mic thread, as it reads [backend]. */
+    @Volatile private var player: ReplyPlayer? = null
     private var callAudio: CallAudioMode? = null
     private var micJob: Job? = null
+
+    /**
+     * The deaf hands-free mic fallback: this capture's silence window, the conversation's one verdict,
+     * and the claim that holds the mic slot through the switch to the phone's own mic.
+     */
+    private val deafMic = DeafMicFallback()
+
+    /** When the capture's level was last logged ([readLevel]); about once a second. */
+    @Volatile private var peakLoggedAtMs = 0L
+
+    /**
+     * This conversation listens through a Bluetooth hands-free device. A plain flag, not
+     * [CallAudioMode.onBluetoothMic]: that one takes the mode's lock, and the mic thread reads this on
+     * every buffer, which is the one thread [CallAudioMode] documents as reading without it. Turned on
+     * only where the hands-free mic is entered, and off by [enterCallAudio] (the one door into call
+     * audio, a mid-conversation move to the earpiece included) and by the fallback itself, so a quiet
+     * room on the phone's own mic is never announced as a car that cannot hear him.
+     */
+    @Volatile private var onHandsFreeMic = false
+
     /** The mic claim, released as the claimant it was asked as (a ring's too). */
     private val micHold = MicArbiter.Hold(micClaimant)
     private var focus: AudioFocusRequest? = null
@@ -666,7 +691,8 @@ internal class CascadeSession(
         val openMs = System.currentTimeMillis() - started
         LiveLatency.log(LiveLatency.TAG, CascadeLines.open(openMs, probeMs, p, b.tts.streamsText, b.kind.token))
         // A check-in opens the mic only once its line has passed and played ([afterCheckInLine]).
-        if (listens && checkInStep == CheckInStep.NONE && micJob == null) startMic()
+        val micFree = micJob == null && !deafMic.switching
+        if (listens && checkInStep == CheckInStep.NONE && micFree) startMic()
         if (closing.get()) return
         if (opener != null) {
             speakOpener(opener)
@@ -1999,7 +2025,7 @@ internal class CascadeSession(
         }
         // The mic opens only now that the line passed and played; the cue plays while the reply still
         // counts as playback, so the mic never takes it as him.
-        if (listens && micJob == null) startMic()
+        if (listens && micJob == null && !deafMic.switching) startMic()
         val p = player
         if (p != null && backend?.tts?.sampleRate == ListenCue.SAMPLE_RATE) {
             p.awaitDrained()
@@ -2037,7 +2063,7 @@ internal class CascadeSession(
     private suspend fun closeCheckInUnanswered() {
         checkInStep = CheckInStep.DONE
         reportCheckIn(CheckInOutcome.NO_REPLY)
-        LiveLatency.log("LIVE_FOLLOWUP", "check_in no_reply")
+        LiveLatency.log("LIVE_FOLLOWUP", "check_in no_reply" + heardNothingLine())
         // Closed before the closer plays: nothing said from here on is taken as his turn.
         runCatching { micJob?.cancelAndJoin() }
         micJob = null
@@ -3286,6 +3312,20 @@ internal class CascadeSession(
         }
     }
 
+    /**
+     * A window that closed having heard no turn at all, with the route it listened on and the loudest
+     * sample it ever read since the last playback ended. The one measurement that tells a dead
+     * hands-free mic from a man who said nothing, and the gap 2026-11-24 could not close: three
+     * conversations in the car opened on the hands-free link, captured, heard nothing, and closed
+     * here, with no level logged anywhere. Empty once he has spoken, so an ordinary close stays one
+     * line. Numbers only.
+     */
+    private fun heardNothingLine(): String {
+        if (heardSinceOpen) return ""
+        val route = if (onHandsFreeMic) "hands_free" else "phone"
+        return " heard_nothing=true mic_route=$route mic_peak_open=${deafMic.peakSinceOpen}"
+    }
+
     private fun onFollowUpExpired() {
         if (closing.get()) return
         if (checkInStep == CheckInStep.LISTENING) {
@@ -3293,7 +3333,7 @@ internal class CascadeSession(
             return
         }
         scope.launch(loop) {
-            LiveLatency.log("LIVE_FOLLOWUP", "expired engine=${engineToken()}")
+            LiveLatency.log("LIVE_FOLLOWUP", "expired engine=${engineToken()}" + heardNothingLine())
             sayOwed()
             shutdown("follow_up")
             host.notice("Conversation closed")
@@ -3922,6 +3962,9 @@ internal class CascadeSession(
     // --- microphone ([CascadeMic], a trimmed copy of Live's micLoop) ---------------------------------
 
     private fun startMic(chime: Boolean = false) {
+        // A new capture, a new silence window: the first buffer stamps the open time, so the count
+        // never includes the route's own settle. The conversation's one verdict is not reset.
+        deafMic.reset()
         micJob = scope.launch(Dispatchers.IO) {
             // The car's hands-free link, when it was asked for, carries the route before capture.
             audioRoute.awaitBluetoothMic()
@@ -3960,6 +4003,10 @@ internal class CascadeSession(
      * Under [turnLock]: a backend swap, or the backlog's drain, never lands inside a feed.
      */
     private fun onMicBuffer(buf: ByteArray, n: Int) {
+        // The level first, before every other gate, so the screen's mic bar keeps moving through a
+        // mute and a call pause exactly as it did when the mic loop published it ([readLevel] knows
+        // not to judge a mic in those moments). True: this capture is being given up on.
+        if (readLevel(buf, n)) return
         // A call came: nothing more reaches any speech-to-text, from this buffer on ([pauseForCall]).
         if (callPaused) return
         // Muted: the capture stays open (reopening it mid-call is a click and a claim fight), and
@@ -3976,6 +4023,96 @@ internal class CascadeSession(
             val taker = turnTaker
             if (taker != null) taker.feed(buf, n, playbackActive) else backlog?.add(buf, n, playbackActive)
         }
+    }
+
+    /**
+     * One buffer's loudness: published for the screen's mic bar ([MicLevel]), logged about once a
+     * second, and fed to the hands-free deaf-mic window ([DeafMicFallback]). Returns true when this
+     * buffer belongs to a capture that is being given up on, so nothing deaf reaches a turn.
+     *
+     * A level is one number per read, never audio ([MicSignal]'s own note on why that is the only
+     * thing here safe to log at all), so `mic_peak=` carries nothing of what he said. It exists
+     * because the cascade logged no level: the mic that did not hear him in the car on 2026-11-24
+     * left no measurement behind, and [BluetoothMic.DEAF_MS] is a guess until one does.
+     *
+     * Nothing is judged in a moment he could not be heard in anyway: Alfred playing, Mute on, a call
+     * pause, or an open whose voice is not built yet (the fallback speaks and rebuilds the player, so
+     * it has nothing to act with before then, and its own switch must not race the open's last
+     * "nothing is capturing, open one" check).
+     */
+    private fun readLevel(buf: ByteArray, n: Int): Boolean {
+        val peak = MicSignal.peakAmplitude(buf, n)
+        MicLevel.publish(peak)
+        val nowMs = System.currentTimeMillis()
+        val judging = !playbackActive && !micMuted && !callPaused && backend != null && player != null
+        val deaf = deafMic.read(
+            bufferPeak = peak,
+            nowMs = nowMs,
+            judging = judging,
+            onHandsFreeMic = onHandsFreeMic,
+            inLiveCall = callLineUp.get(),
+        )
+        if (nowMs - peakLoggedAtMs >= PEAK_LOG_INTERVAL_MS) {
+            peakLoggedAtMs = nowMs
+            val route = if (onHandsFreeMic) "hands_free" else "phone"
+            LiveLatency.log(
+                LiveLatency.TAG,
+                "mic_peak=$peak mic_peak_open=${deafMic.peakSinceOpen} mic_route=$route",
+            )
+        }
+        if (deaf) scope.launch(loop) { fallBackToPhoneMic(deafMic.peakSinceOpen, deafMic.heldMs(nowMs)) }
+        // Once the switch is running, the dying capture's own last buffers stop here. The handful
+        // between the verdict and the switch starting still pass: silent, and no turn begins on them.
+        return deaf || deafMic.switching
+    }
+
+    /**
+     * The car's hands-free mic delivered nothing audible: the link goes, the phone's own mic opens in
+     * its place, and he is told OUT LOUD, because he is driving, will not read a notice, and only he
+     * can say the sentence again (CLAUDE.md section 7: the app says what did NOT happen). The line
+     * goes through [sayMissedLine], the same path every other short spoken line of code's own takes,
+     * so playback, barge-in and the follow-up window all treat it as the reply it is: the window is
+     * armed again at its drain, and he gets a whole one to start talking in.
+     *
+     * The conversation, its backend and its prompt all stay up; only the capture and the route are
+     * rebuilt, after the new route's own settle ([MicReopen.settleMs]). [DeafMicFallback.handOver]
+     * holds the mic slot for the whole switch, suspensions included, so the open path cannot open a
+     * second capture inside it. [startMic] hands [callWatch] the new capture's session id.
+     */
+    private suspend fun fallBackToPhoneMic(peak: Int, heldMs: Long) {
+        if (closing.get()) return
+        LiveLatency.log(
+            TurnTaker.BARGE_TAG,
+            "hands-free mic deaf peak=$peak held_ms=$heldMs: the phone's own mic takes over (cascade)",
+        )
+        // The window armed before he spoke is still counting, and it must not close the conversation
+        // while the switch and its spoken line are in flight. Stood down here; armed again below,
+        // whichever way this ends, so a silence after it still closes as the ruling says.
+        followUpEvent(FollowUpWindow.Event.TurnComplete)
+        var reopened = false
+        deafMic.handOver {
+            runCatching { micJob?.cancelAndJoin() }
+            // micJob is deliberately NOT nulled: it reads as this conversation's capture until
+            // [startMic] replaces it, and the hand-over claim covers the gap either way.
+            onHandsFreeMic = false
+            callAudio?.let { if (it.isActive) it.exit("hands-free mic deaf") }
+            callAudio = null
+            // The player was built on the voice-communication usage for a route that has just gone, so
+            // it is rebuilt here exactly as every exit from call audio does ([onBluetoothConnected],
+            // [enterEarpieceMidway]). Without it his next reply plays on a route nothing listens to.
+            player?.rebuild()
+            delay(MicReopen.settleMs(CallAudioMode.route(audioManager)))
+            // Seconds have passed on a shared loop: a close, a call or a check-in's own closer may
+            // have taken the conversation in the meantime, and none of them wants a mic back.
+            if (closing.get() || callPaused || checkInStep == CheckInStep.DONE) return@handOver
+            host.notice(DEAF_MIC_LINE)
+            // With no voice to say it with, the open chime is the only thing he can hear it by.
+            startMic(chime = backend == null || player == null)
+            reopened = true
+        }
+        // Outside the claim: the new capture is held, so an open path asking again may have it back.
+        // Said like any other reply, which is what arms his whole follow-up window at its drain.
+        if (reopened) sayMissedLine(DEAF_MIC_LINE) else backToListening()
     }
 
     /**
@@ -4067,11 +4204,15 @@ internal class CascadeSession(
         } else {
             // In the car: the car's own hands-free mic, as Live did (Kevin, 2026-11-10).
             callAudio = audioRoute.enterBluetoothMic(token)
+            onHandsFreeMic = callAudio != null
         }
         earpiece.follow(scope, loop, { callAudio }) { enterEarpieceMidway() }
     }
 
     private fun enterCallAudio(onEarpiece: Boolean, token: String) {
+        // The one door into call audio, including a mid-conversation move to the earpiece: whatever
+        // the capture was listening on before, from here it is the phone's own mic.
+        onHandsFreeMic = false
         val mode = CallAudioMode(audioManager)
         LiveLatency.log(TurnTaker.BARGE_TAG, "call audio ${mode.enter(onEarpiece)} (cascade, $token)")
         callAudio = mode
@@ -4212,9 +4353,19 @@ internal class CascadeSession(
         const val MISSED_LINE = ScriptedLines.MISSED
         const val VOICE_LOST_LINE = ScriptedLines.VOICE_LOST
 
+        /**
+         * Said and shown when the car's hands-free mic is given up on (2026-11-24). Short, because it
+         * is spoken while he is driving and it costs him the start of the window it re-arms; it names
+         * the car, so what he hears is not another "didn't catch that" he would answer the same way.
+         */
+        const val DEAF_MIC_LINE = "I can't hear you through the car. Listening on the phone's mic now."
+
         /** The open's "refusal" token when the engine is Cloud: no laptop was asked. */
         private const val CLOUD_ENGINE = "cloud_engine"
         private const val SCOPE_GRACE_MS = 2_000L
+
+        /** How often the capture's level is logged ([readLevel]); Live's own cadence. */
+        private const val PEAK_LOG_INTERVAL_MS = 1_000L
 
         private val ACK = AckLines()
 
