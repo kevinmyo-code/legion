@@ -45,10 +45,10 @@ def test_side_talk_is_ignored_and_keeps_nothing_but_a_count(
     # Nothing of its own is said, and nothing of theirs is kept. Since 2026-11-24 the
     # acknowledgement is said on every turn of theirs (Kevin: the same voice behavior as the
     # phone), and whether a sentence was for the assistant is the MODEL's answer, which only
-    # arrives after it. So "Yeah, one sec." may be heard over side talk; what this test protects
-    # is that nothing follows it and nothing is recorded.
+    # arrives after it. So one acknowledgement ("Mm.") is heard over side talk, and exactly one:
+    # what this test protects is that nothing follows it and nothing is recorded.
     assert _of(events, "sentence") == []
-    assert [f["tool"] for f in _of(events, "filler")] in ([], [""])
+    assert [f["tool"] for f in _of(events, "filler")] == [""]
     assert len(_of(events, "audio")) == len(_of(events, "filler"))
     done = _of(events, "done")[0]
     assert done["ignored"] == "not_addressed" and "words" not in done

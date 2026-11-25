@@ -463,20 +463,72 @@ def test_a_wait_line_counts_the_task_line_against_the_cap(
     assert len(_of(events, "filler")) <= wait_lines.MAX_PER_TURN
 
 
-def test_the_chain_stops_once_the_answer_is_ready(
+class SaysThenGoesQuiet(FakeModel):
+    """A fake whose first sentence is out early and whose round then streams nothing for `quiet`
+    seconds, so the chain ticks with a sentence of the answer already said. The second delta is
+    what makes the splitter hand the first sentence over: it holds a sentence until something
+    follows it (`runtime/loop.py`'s splitter: never less than a sentence)."""
+
+    def __init__(self, text: str, rest: str, quiet: float):
+        super().__init__([])
+        self.text = text
+        self.rest = rest
+        self.quiet = quiet
+
+    def stream(self, req):
+        self.requests.append(req)
+        yield m.PartEvent({"text": f"{self.text} {self.rest}"})
+        yield m.TextDelta(self.text)
+        yield m.TextDelta(f" {self.rest}")
+        time.sleep(self.quiet)
+        yield m.Usage(100, 0, 10, 110)
+        yield m.Finish("STOP")
+
+
+def _last_wait_at(events) -> int:
+    held = wait_lines.LINES
+    return max(
+        (
+            i
+            for i, f in enumerate(events)
+            if f[0] == "filler" and not f[1]["tool"] and f[1]["text"] in held
+        ),
+        default=-1,
+    )
+
+
+def test_the_chain_stops_once_the_answers_audio_is_ready(
     member, engine, monkeypatch, household_user, quick_chain
 ):
     conversation = _later(member, engine, monkeypatch, household_user)
     events = _turn(member, engine, conversation, SlowModel([say("You spent a little.")], [0.5]))
-    kinds = [k for k, _ in events]
-    held = wait_lines.LINES
-    waits = (
-        i
-        for i, f in enumerate(events)
-        if f[0] == "filler" and not f[1]["tool"] and f[1]["text"] in held
-    )
-    last_wait = max(waits, default=-1)
-    assert last_wait < kinds.index("sentence"), kinds
+    # The answer's own audio, which is every audio event that is not a filler's.
+    answer_at = next(i for i, (k, d) in enumerate(events) if k == "audio" and not d.get("filler"))
+    assert _last_wait_at(events) < answer_at, [k for k, _ in events]
+
+
+def test_a_sentence_whose_speech_has_not_come_back_does_not_end_the_chain(
+    member, engine, monkeypatch, household_user, quick_chain
+):
+    """The phone ends the chain on the answer's AUDIO, not its first text
+    (`CascadeSession.kt`: "the first text alone no longer ends them"), because a sentence whose
+    speech has not come back is still dead air to the person listening. Here the answer's words
+    arrive at once, the round then runs on in silence, and its speech takes longer than that."""
+    conversation = _later(member, engine, monkeypatch, household_user)
+    spoken = engine.speech.speak
+
+    def slow_speech(text, voice, stats):
+        # Longer than the model's silence below, so the sentence is out and its audio is not.
+        time.sleep(2.0)
+        yield from spoken(text, voice, stats)
+
+    engine.speech.speak = slow_speech
+    model = SaysThenGoesQuiet("You spent a little.", "About the usual.", quiet=1.0)
+    events = _turn(member, engine, conversation, model)
+    assert [s["text"] for s in _of(events, "sentence")][0] == "You spent a little."
+    first_sentence_at = next(i for i, (k, _d) in enumerate(events) if k == "sentence")
+    assert _waits(events), [k for k, _ in events]
+    assert _last_wait_at(events) > first_sentence_at, [k for k, _ in events]
 
 
 def test_a_fast_round_hears_no_wait_line(member, engine, monkeypatch, household_user):
@@ -529,6 +581,18 @@ def test_a_goodbye_turn_says_no_acknowledgement(member, engine, monkeypatch, hou
     assert _acks(events) == []
 
 
+def test_a_goodbye_turn_hears_no_holding_line_either(
+    member, engine, monkeypatch, household_user, quick_chain
+):
+    # The phone's skip binds the whole chain, not the acknowledgement alone (`fillerSkip` gates
+    # `scheduleWaitFillers`). A round this slow hears several holding lines on an ordinary turn.
+    conversation = _later(member, engine, monkeypatch, household_user)
+    model = SlowModel([say("Goodbye.")], [1.0])
+    events = _turn(member, engine, conversation, model, heard="bye")
+    assert _acks(events) == []
+    assert _waits(events) == []
+
+
 def test_a_barge_in_turn_says_no_acknowledgement(member, engine, monkeypatch, household_user):
     _warm(monkeypatch, engine, household_user)
     conversation = _conversation(member, engine)
@@ -555,3 +619,17 @@ def test_words_of_distress_say_no_acknowledgement(member, engine, monkeypatch, h
     assert crisis.detect(heard), "the phrase list moved: pick another of its phrases"
     events = _turn(member, engine, conversation, FakeModel([say("I hear you.")]), heard=heard)
     assert _acks(events) == []
+
+
+def test_words_of_distress_hear_no_holding_line_either(
+    member, engine, monkeypatch, household_user, quick_chain
+):
+    # The one that matters most: before the chain obeyed the skip, all five holding lines chained
+    # over a person in distress while the acknowledgement alone was held back.
+    conversation = _later(member, engine, monkeypatch, household_user)
+    heard = "i want to kill myself"
+    assert crisis.detect(heard), "the phrase list moved: pick another of its phrases"
+    model = SlowModel([say("I hear you.")], [1.0])
+    events = _turn(member, engine, conversation, model, heard=heard)
+    assert _acks(events) == []
+    assert _waits(events) == []
