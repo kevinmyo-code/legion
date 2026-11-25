@@ -72,8 +72,7 @@ class UnitTokenRenewal(
      */
     override fun step(sender: TokenCarrier) {
         val p = loaded()
-        val last = sentAt
-        if (p != null && sends < MAX_SENDS && (last == null || sender.nowMs() - last >= SEND_EVERY_MS)) {
+        if (p != null && dueToSend(sender.nowMs())) {
             sentAt = sender.nowMs()
             if (sender.handToken(p.token, p.vehicleId)) sends++
         }
@@ -82,6 +81,13 @@ class UnitTokenRenewal(
         if (job?.isActive == true) return
         askedAt = wallClock()
         job = scope.launch(io) { withTimeoutOrNull(ENGINE_TIMEOUT_MS) { ask() } }
+    }
+
+    /** A few tries per socket, spaced, then quiet until the next one. */
+    private fun dueToSend(nowMs: Long): Boolean {
+        if (sends >= MAX_SENDS) return false
+        val last = sentAt ?: return true
+        return nowMs - last >= SEND_EVERY_MS
     }
 
     /**

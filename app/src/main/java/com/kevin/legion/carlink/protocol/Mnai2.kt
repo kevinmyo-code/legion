@@ -88,7 +88,8 @@ object Mnai2 {
     const val MAX_VEHICLE = 64
     const val FINGERPRINT_LEN = 8
     /** The bytes an engine token can hold: printable ASCII, no space (section 5.1's alphabet). */
-    private val PRINTABLE = 0x21..0x7E
+    private const val PRINTABLE_FIRST = 0x21
+    private const val PRINTABLE_LAST = 0x7E
     private val zoneId = Regex("""[A-Za-z0-9_+\-/]{1,64}""")
 
     private const val FLAG_ACC = 1
@@ -211,5 +212,5 @@ object Mnai2 {
     fun fingerprint(token: String): ByteArray =
         LinkCrypto.sha256(ascii(token)).copyOf(FINGERPRINT_LEN)
 
-    private fun printable(token: String) = token.all { it.code in PRINTABLE }
+    private fun printable(token: String) = token.all { it.code in PRINTABLE_FIRST..PRINTABLE_LAST }
 }
