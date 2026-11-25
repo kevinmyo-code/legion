@@ -27,6 +27,7 @@ import com.kevin.legion.service.MediaNotificationListener
  * called Looper.prepare()". Everything is defensively try/caught so a transport
  * failure no-ops instead of crashing.
  */
+@Suppress("TooManyFunctions") // transport, the phone-scoped variants, and the read-back helpers
 object MusicController {
     private const val TAG = "MusicController"
 

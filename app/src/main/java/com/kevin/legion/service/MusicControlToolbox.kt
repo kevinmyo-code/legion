@@ -23,6 +23,7 @@ import org.json.JSONObject
  * and returns null for every other. Playing and the volume are [MusicToolbox]; library reads are
  * [MusicLibraryToolbox]. The declaration stays in `service/tools/`.
  */
+@Suppress("TooManyFunctions") // one handler per control_music action group, plus the read-back
 object MusicControlToolbox {
 
     /** Null when [name] is not one of these tools, so [LiveToolbox.dispatch] can fall through. */
