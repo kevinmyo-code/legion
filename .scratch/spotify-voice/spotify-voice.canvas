@@ -41,6 +41,26 @@
       "color": "4"
     },
     {
+      "id": "9af04fc4f0d8326b",
+      "type": "file",
+      "file": ".scratch/spotify-voice/issues/14-mood-and-genre-requests.md",
+      "x": 0,
+      "y": 600,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "dc91fb31c3c34d7b",
+      "type": "file",
+      "file": ".scratch/spotify-voice/issues/15-romanized-title-matching.md",
+      "x": 0,
+      "y": 750,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
       "id": "133bf1bfa7d4fa91",
       "type": "file",
       "file": ".scratch/spotify-voice/issues/04-queue.md",

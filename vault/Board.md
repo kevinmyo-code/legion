@@ -83,6 +83,8 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/recruiter-demo/map\|recruiter-demo]] | [[08-demo-videos\|08]] | content | Demo videos: phone, head unit, receipt scan |
 | [[.scratch/recruiter-demo/map\|recruiter-demo]] | [[09-resume-and-work-text\|09]] | content | Resume page and work text |
 | [[.scratch/recruiter-demo/map\|recruiter-demo]] | [[10-about-kevin-profile\|10]] | decision | about_kevin: recruiters ask about Kevin himself |
+| [[.scratch/spotify-voice/map\|spotify-voice]] | [[14-mood-and-genre-requests\|14]] | build | Build: a mood or genre request plays something, instead of landing on a coincidental title |
+| [[.scratch/spotify-voice/map\|spotify-voice]] | [[15-romanized-title-matching\|15]] | build | Build: a title said in romanized form matches the catalogue row written in its own script |
 | [[.scratch/two-clients/map\|two-clients]] | [[06-google-calendar-is-a-snapshot\|06]] | decision | Google Calendar rows are a snapshot from 2026-09-01, not a feed |
 | [[.scratch/voice-notes/map\|voice-notes]] | [[01-the-recorder-and-the-mic\|01]] | build | The recorder, and the fourth claim on the microphone |
 | [[.scratch/voice-notes/map\|voice-notes]] | [[02-the-store\|02]] | build | Where a voice note lives, on the phone and on the server |
@@ -548,7 +550,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/quant-viz/map\|quant-viz]] | 17 | 1 | [[.scratch/quant-viz/quant-viz.canvas\|open]] |
 | [[.scratch/recruiter-demo/map\|recruiter-demo]] | 14 | 14 | [[.scratch/recruiter-demo/recruiter-demo.canvas\|open]] |
 | [[.scratch/retro-games/map\|retro-games]] | 6 | 2 | [[.scratch/retro-games/retro-games.canvas\|open]] |
-| [[.scratch/spotify-voice/map\|spotify-voice]] | 13 | 1 | [[.scratch/spotify-voice/spotify-voice.canvas\|open]] |
+| [[.scratch/spotify-voice/map\|spotify-voice]] | 15 | 3 | [[.scratch/spotify-voice/spotify-voice.canvas\|open]] |
 | [[.scratch/two-clients/map\|two-clients]] | 6 | 6 | [[.scratch/two-clients/two-clients.canvas\|open]] |
 | [[.scratch/voice-browser/map\|voice-browser]] | 3 | 3 | [[.scratch/voice-browser/voice-browser.canvas\|open]] |
 | [[.scratch/voice-notes/map\|voice-notes]] | 4 | 4 | [[.scratch/voice-notes/voice-notes.canvas\|open]] |

@@ -85,16 +85,16 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 </style>
 <div class="wrap">
 <p class="stamp">LEGION &middot; pending work &middot; 20 Aug 2026</p>
-<h1>445 tickets open</h1>
+<h1>447 tickets open</h1>
 <p class="guidelink"><a href="voice.html">What LEGION can do by voice &rarr;</a> &middot; <a href="devlog.html">Dev log: what actually shipped &rarr;</a></p>
 <p class="lede">Across 63 maps. <b>13 of them are decisions</b>, not code &mdash; they need an answer from you before anyone can build. 116 are waiting on another ticket first. <b>245 are already built</b> and owe nothing but a run on the phone. 14 are parked (KIV) and sit at the bottom.</p>
 <div class="tot">
-<div class="stat"><span class="n">445</span><span class="stamp l">open</span></div>
-<div class="stat"><span class="n mint">70</span><span class="stamp l">ready now</span></div>
+<div class="stat"><span class="n">447</span><span class="stamp l">open</span></div>
+<div class="stat"><span class="n mint">72</span><span class="stamp l">ready now</span></div>
 <div class="stat"><span class="n mint">245</span><span class="stamp l">built</span></div>
 <div class="stat"><span class="n amber">116</span><span class="stamp l">blocked</span></div>
 <div class="stat"><span class="n amber">13</span><span class="stamp l">your call</span></div>
-<div class="stat"><span class="n mint">173</span><span class="stamp l">still to build</span></div>
+<div class="stat"><span class="n mint">175</span><span class="stamp l">still to build</span></div>
 <div class="stat"><span class="n ghost">14</span><span class="stamp l">KIV</span></div>
 </div>
 <div class="filters" role="group" aria-label="Filter tickets">
@@ -1044,6 +1044,19 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 <section class="map">
 <header class="mh">
 <span class="kind">effort</span>
+<h2>spotify-voice</h2>
+<span class="counts"><span class="k">3</span> open<span class="sep">&middot;</span><span class="k mint">2</span> ready<span class="sep">&middot;</span><span class="k dim">1</span> KIV<span class="sep">&middot;</span><span class="dim">of 15 tickets</span></span>
+<span class="bar"><i style="flex:2"></i><b style="flex:1"></b></span>
+</header>
+<ul class="tl">
+<li class="t is-build" data-type="build" data-state="ready"><span class="num">14</span><span class="body"><span class="tt">Build: a mood or genre request plays something, instead of landing on a coincidental title</span><span class="det">charted 2026-11-24; ruled a ticket of its own rather than part of that day&#x27;s music bug fixes</span></span><span class="chip c-build">build</span><span class="state">ready</span></li>
+<li class="t is-build" data-type="build" data-state="ready"><span class="num">15</span><span class="body"><span class="tt">Build: a title said in romanized form matches the catalogue row written in its own script</span><span class="det">charted 2026-11-24; ruled a ticket of its own rather than part of that day&#x27;s music bug fixes</span></span><span class="chip c-build">build</span><span class="state">ready</span></li>
+<li class="t is-kiv" data-type="kiv" data-state="kiv"><span class="num">11</span><span class="body"><span class="tt">The recommendation engine LEGION has to build itself</span><span class="det">KIV 2026-08-20 (Kevin). Least important thing on the map; parked until the built Spotify surface has actually been driven.</span></span><span class="chip c-kiv">KIV</span><span class="state">parked</span></li>
+</ul>
+</section>
+<section class="map">
+<header class="mh">
+<span class="kind">effort</span>
 <h2>voice-browser</h2>
 <span class="counts"><span class="k">3</span> open<span class="sep">&middot;</span><span class="k mint">0</span> ready<span class="sep">&middot;</span><span class="k mint">2</span> built<span class="sep">&middot;</span><span class="k amber">1</span> blocked<span class="sep">&middot;</span><span class="dim">of 3 tickets</span></span>
 <span class="bar"><i style="flex:2"></i><b style="flex:1"></b></span>
@@ -1168,17 +1181,6 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 </header>
 <ul class="tl">
 <li class="t is-built" data-type="built" data-state="built"><span class="num">17</span><span class="body"><span class="tt">Two shipped visualisations vanished in a later rebuild, and nothing noticed</span><span class="det">2026-08-21 - guard built; the two charts themselves are still missing</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
-</ul>
-</section>
-<section class="map">
-<header class="mh">
-<span class="kind">effort</span>
-<h2>spotify-voice</h2>
-<span class="counts"><span class="k">1</span> open<span class="sep">&middot;</span><span class="k mint">0</span> ready<span class="sep">&middot;</span><span class="k dim">1</span> KIV<span class="sep">&middot;</span><span class="dim">of 13 tickets</span></span>
-<span class="bar"><i style="flex:0"></i><b style="flex:1"></b></span>
-</header>
-<ul class="tl">
-<li class="t is-kiv" data-type="kiv" data-state="kiv"><span class="num">11</span><span class="body"><span class="tt">The recommendation engine LEGION has to build itself</span><span class="det">KIV 2026-08-20 (Kevin). Least important thing on the map; parked until the built Spotify surface has actually been driven.</span></span><span class="chip c-kiv">KIV</span><span class="state">parked</span></li>
 </ul>
 </section>
 <p class="foot">Built from the ticket frontmatter in <code>.scratch/*/issues/</code>. A map leaves this page when its last ticket resolves &mdash; <code>cyberdeck-ui</code>, <code>fleet-maintenance</code>, <code>mission-control</code>, <code>legion-shape</code>, <code>notes-lists-calendar</code> and <code>import-sync-duplication</code> already have.</p>
