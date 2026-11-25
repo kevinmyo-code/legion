@@ -75,7 +75,7 @@ internal object LiveSurface {
                 Action(
                     "log_service", "log_service",
                     "a scheduled maintenance item just done: oil change, rotation, brakes " +
-                        "(service, cost, mileage if he stated a reading)",
+                        "(service, cost, mileage)",
                 ),
                 Action(
                     "log_past_service", "log_past_service",
@@ -130,7 +130,13 @@ internal object LiveSurface {
                 // `mileage` with no description at all, and the whole point of the parameter is the
                 // one rule a model has to follow: only a reading he said. Shared with
                 // log_past_service's own `mileage`, where the same rule holds.
-                "mileage" to "An odometer reading he stated himself. Omit it if he did not say one; never an estimate.",
+                //
+                // Both this and log_service's action hint above are deliberately terse: the hints
+                // name what a tool takes and this note carries the rule, so "mileage" in the hint
+                // needs no gloss of its own. 58 chars were trimmed here when the budget in
+                // `LiveSetupPayloadSizeTest` went 7 over on dev's own tool-text growth, with all
+                // three rules kept: his own stated reading, never an estimate, omitted when absent.
+                "mileage" to "A reading he stated, never an estimate; omit if none.",
             ),
         ),
         ActionTool(
