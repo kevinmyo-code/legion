@@ -223,8 +223,9 @@ class SpotifyMatchTest {
     @Test
     fun `surplus words that are filler or the catalogue's own decoration still accept`() {
         val c = track("Paper Lanterns", "Hana Reed", "spotify:track:hr")
-        assertEquals("spotify:track:hr", SpotifyMatch.pick(listOf(c), "the paper lanterns song", null)?.optString("uri"))
-        assertEquals("spotify:track:hr", SpotifyMatch.pick(listOf(c), "paper lanterns hana reed", null)?.optString("uri"))
+        fun uriFor(q: String) = SpotifyMatch.pick(listOf(c), q, null)?.optString("uri")
+        assertEquals("spotify:track:hr", uriFor("the paper lanterns song"))
+        assertEquals("spotify:track:hr", uriFor("paper lanterns hana reed"))
         // "- Live" is stripped from the candidate title before comparison, so it would otherwise
         // read as a surplus word the request invented.
         val live = track("Paper Lanterns - Live", "Hana Reed", "spotify:track:lv")
@@ -252,6 +253,32 @@ class SpotifyMatchTest {
     }
 
     @Test
+    fun `one token cannot be both the artist and the title`() {
+        // "queen" names the artist and nothing else, so there is no title it could have matched.
+        // Accepting here would let any one-word artist name play that artist's best-known track.
+        val c = track("Killer Queen", "Queen", "spotify:track:kq")
+        assertNull(SpotifyMatch.pick(listOf(c), "queen", null))
+        // Two words, one the artist and one a real title word, is different evidence.
+        assertEquals("spotify:track:kq", SpotifyMatch.pick(listOf(c), "killer queen", null)?.optString("uri"))
+    }
+
+    @Test
+    fun `a query that is only the artist leaves no title remainder`() {
+        assertNull(SpotifyMatch.artistEvidence("hana reed", listOf("Hana Reed")))
+        assertNull(SpotifyMatch.artistEvidence("the hana reed song", listOf("Hana Reed")))
+        assertEquals("paper lanterns", SpotifyMatch.artistEvidence("paper lanterns hana reed", listOf("Hana Reed")))
+        // No candidate artist appears in the query at all: no agreement to report.
+        assertNull(SpotifyMatch.artistEvidence("paper lanterns", listOf("Hana Reed")))
+    }
+
+    @Test
+    fun `an artist name in both arguments is not a cross-script title match`() {
+        val top = track("紙燈籠", "Hana Reed", "spotify:track:cjk")
+        // The model put the artist in `query` too, so `query` carries no title.
+        assertNull(SpotifyMatch.pick(listOf(top), "Hana Reed", "Hana Reed"))
+    }
+
+    @Test
     fun `an artist name on its own never accepts that artist's foreign-script track as the song`() {
         val top = track("紙燈籠", "Hana Reed", "spotify:track:cjk")
         // Nothing is left of the query once the artist's words come out, so there is no title to
@@ -262,7 +289,10 @@ class SpotifyMatchTest {
     @Test
     fun `the cross-script rule also runs when the model did fill the artist argument`() {
         val top = track("紙燈籠", "Hana Reed", "spotify:track:cjk")
-        assertEquals("spotify:track:cjk", SpotifyMatch.pick(listOf(top), "paper lanterns", "Hana Reed")?.optString("uri"))
+        assertEquals(
+            "spotify:track:cjk",
+            SpotifyMatch.pick(listOf(top), "paper lanterns", "Hana Reed")?.optString("uri"),
+        )
         // Same two scripts, wrong artist: the title still proves nothing on its own.
         val notHers = track("紙燈籠", "Another Name", "spotify:track:an")
         assertNull(SpotifyMatch.pick(listOf(notHers), "paper lanterns", "Hana Reed"))

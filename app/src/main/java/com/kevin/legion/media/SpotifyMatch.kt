@@ -162,6 +162,7 @@ internal object SpotifyMatch {
      * token is a mis-said title word rather than surplus ("keep your head up" against "Keep Ya
      * Head Up"), and rejecting on it would break requests that work today.
      */
+    @Suppress("ReturnCount") // guard clauses, one worded exit each
     internal fun containmentLeftovers(candidateTitle: String, wantedTitle: String): List<String>? {
         val c = tokens(normalizeCandidateTitle(candidateTitle))
         val w = tokens(normalize(wantedTitle))
@@ -297,23 +298,47 @@ internal object SpotifyMatch {
      * foreign-script track and play it as the song he asked for.
      */
     private fun crossScriptAccepts(candidateTitle: String, wantedTitle: String, isTopHit: Boolean): Boolean =
-        isTopHit && wantedTitle.isNotBlank() && noSharedScript(candidateTitle, wantedTitle)
+        isTopHit && noSharedScript(candidateTitle, wantedTitle)
 
     /**
-     * What is left of [query] once some candidate artist's own words are taken out of it - the
-     * title half of a request that put both in one string. Blank when the query was only the
-     * artist, which is what stops [crossScriptAccepts] from firing on one.
+     * The title half of [query] once one of [artistNames]'s own words are taken out of it, or null
+     * when nothing but filler is left.
+     *
+     * Null is the load-bearing case. A request that is ONLY an artist's name has no title in it, so
+     * there is no title for any rule here to have matched, and without this a query of "<artist>"
+     * would take that artist's top foreign-script track as the song asked for. It is also why one
+     * token cannot do two jobs: a single word that names the artist cannot simultaneously be
+     * evidence of the artist and the title ("queen" must not accept "Killer Queen" by Queen).
      */
-    internal fun titleRemainder(query: String, candidateArtists: List<String>): String {
+    internal fun titleRemainder(query: String, artistNames: List<String>): String? {
+        val q = tokens(normalize(query))
+        for (a in artistNames) {
+            val at = tokens(normalize(a))
+            val i = indexOfSequence(q, at)
+            if (i < 0) continue
+            return (q.take(i) + q.drop(i + at.size)).filterNot { it in FILLER }
+                .joinToString(" ").takeIf { it.isNotBlank() }
+        }
+        return q.filterNot { it in FILLER }.joinToString(" ").takeIf { it.isNotBlank() }
+    }
+
+    /**
+     * Artist agreement derived from the query itself, returning the title remainder it leaves.
+     *
+     * Null means no agreement: either no candidate artist's whole name sits inside the query, or
+     * one does and consumes the entire query, which proves nothing about a title. The model leaves
+     * `artist` unset in practice, so this is the only artist evidence most calls ever have.
+     */
+    internal fun artistEvidence(query: String, candidateArtists: List<String>): String? {
         val q = tokens(normalize(query))
         for (a in candidateArtists) {
-            val at = indexOfSequence(q, tokens(normalize(a)))
-            if (at >= 0) {
-                val artistSize = tokens(normalize(a)).size
-                return (q.take(at) + q.drop(at + artistSize)).filterNot { it in FILLER }.joinToString(" ")
-            }
+            val at = tokens(normalize(a))
+            val i = indexOfSequence(q, at)
+            if (i < 0) continue
+            val rest = (q.take(i) + q.drop(i + at.size)).filterNot { it in FILLER }
+            if (rest.isNotEmpty()) return rest.joinToString(" ")
         }
-        return query
+        return null
     }
 
     @Suppress("ReturnCount") // guard clauses, one worded exit each
@@ -323,17 +348,20 @@ internal object SpotifyMatch {
         if (reading.artist != null) {
             if (!artistMatches(artists, reading.artist)) return false
             if (titleMatches(name, reading.title, artistConfirmed = true)) return true
-            return crossScriptAccepts(name, reading.title, isTopHit)
+            // The remainder guard applies here too: a model that put the artist's name in `query`
+            // as well leaves no title behind, and must not get that artist's top hit as the song.
+            val left = titleRemainder(reading.title, artists + reading.artist) ?: return false
+            return crossScriptAccepts(name, left, isTopHit)
         }
         // No artist argument: the query is everything known, so artist agreement is derived from
         // the query's own words rather than waited for. The model left `artist` unset on every
         // one of the four calls that went wrong on 2026-11-24, so nothing here may depend on it.
-        val artistInQuery = artistMatches(artists, reading.title)
-        if (titleMatches(name, reading.title, artistConfirmed = artistInQuery)) {
+        val remainder = artistEvidence(reading.title, artists)
+        if (titleMatches(name, reading.title, artistConfirmed = remainder != null)) {
             val leftovers = containmentLeftovers(name, reading.title) ?: return true
             return leftovers.isEmpty() || leftoversExplained(leftovers, artists, name)
         }
-        return artistInQuery && crossScriptAccepts(name, titleRemainder(reading.title, artists), isTopHit)
+        return remainder != null && crossScriptAccepts(name, remainder, isTopHit)
     }
 
     /**
