@@ -184,6 +184,12 @@ def _slow_lookup_turn(client, engine, monkeypatch, user):
     return _events(_post(client, audio=PCM, conversation_id=conversation))
 
 
+def _tasks(events) -> list[str]:
+    """The TASK lines, by tool. Since 2026-11-24 an acknowledgement is a `filler` event too and
+    comes first on every turn of theirs (`fillers.ack_skip`), and it carries no tool."""
+    return [f["tool"] for f in _of(events, "filler") if f["tool"]]
+
+
 def test_an_ordinary_visit_with_a_delayed_lookup_line_gets_no_time_or_cost_anywhere(
     visitor, visitor_user, engine, monkeypatch
 ):
@@ -191,8 +197,9 @@ def test_an_ordinary_visit_with_a_delayed_lookup_line_gets_no_time_or_cost_anywh
     events = _slow_lookup_turn(visitor, engine, monkeypatch, visitor_user)
     kinds = [k for k, _ in events]
     # The line itself is still said (the speed fix is for every visitor) ...
-    assert [f["tool"] for f in _of(events, "filler")] == ["next_service"]
-    assert kinds.index("tool") < kinds.index("filler")
+    assert _tasks(events) == ["next_service"]
+    at = next(i for i, (k, d) in enumerate(events) if k == "filler" and d["tool"] == "next_service")
+    assert kinds.index("tool") < at
     assert "waiting" not in kinds
     # ... but no event of any kind carries a time or the turn's cost.
     for kind, data in events:
@@ -205,7 +212,7 @@ def test_the_tester_visit_with_a_delayed_lookup_line_keeps_its_tool_time(
 ):
     make_visit(visitor_user, unmetered=True)
     events = _slow_lookup_turn(visitor, engine, monkeypatch, visitor_user)
-    assert [f["tool"] for f in _of(events, "filler")] == ["next_service"]
+    assert _tasks(events) == ["next_service"]
     assert isinstance(_of(events, "tool")[0]["ms"], int)
     done = _of(events, "done")[0]
     assert [name for name, _ms in done["tools_ms"]] == ["next_service"]
