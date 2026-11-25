@@ -254,6 +254,14 @@ class SpotifyMatchTest {
         fun uriFor(c: JSONObject, q: String) = SpotifyMatch.pick(listOf(c), q, null)?.optString("uri")
         val hall = track("Maneater", "Daryl Hall & John Oates", "spotify:track:ho")
         assertEquals("spotify:track:ho", uriFor(hall, "maneater daryl hall and john oates"))
+        // The shorter catalogue spelling, which is the one his "and" has to bridge.
+        val duo = track("Maneater", "Hall & Oates", "spotify:track:hoshort")
+        assertEquals("spotify:track:hoshort", uriFor(duo, "maneater hall and oates"))
+        // NOT covered, and deliberately: half of a longer catalogue name ("hall and oates"
+        // against "Daryl Hall & John Oates") leaves a one-word title and no artist run, so it is
+        // rejected - as it was at base. Matching an artist's words with gaps in them is how the
+        // wrong artist's song of the same name got played in the first place (P5).
+        assertNull(uriFor(hall, "maneater hall and oates"))
         val ewf = track("September", "Earth, Wind & Fire", "spotify:track:ewf")
         assertEquals("spotify:track:ewf", uriFor(ewf, "september earth wind and fire"))
         val mumford = track("Little Lion Man", "Mumford & Sons", "spotify:track:ms")
@@ -274,6 +282,20 @@ class SpotifyMatchTest {
     }
 
     @Test
+    fun `an artist written only as a joining word is not found in every query`() {
+        // Skipping a connective is not evidence. "X" is a real band name and how XXXTentacion
+        // gets said, so an artist of nothing but joiners must not match an artist it is not.
+        assertFalse(SpotifyMatch.artistMatches(listOf("Future"), "X"))
+        assertFalse(SpotifyMatch.artistMatches(listOf("X"), "Future"))
+        // And it must not hand the wrong artist's track to a request that named someone else.
+        val wrong = track("Mask Off", "X", "spotify:track:x")
+        assertNull(SpotifyMatch.pick(listOf(wrong), "mask off by future", null))
+        // The artist really called X still matches itself.
+        assertTrue(SpotifyMatch.artistMatches(listOf("X"), "x"))
+        assertEquals("spotify:track:x", SpotifyMatch.pick(listOf(wrong), "mask off by x", null)?.optString("uri"))
+    }
+
+    @Test
     fun `normalize folds what a request and a catalogue spell differently`() {
         assertEquals("beyonce", SpotifyMatch.normalize("Beyoncé"))
         assertEquals("motley crue", SpotifyMatch.normalize("Mötley Crüe"))
@@ -283,6 +305,10 @@ class SpotifyMatchTest {
         assertEquals("jay z", SpotifyMatch.normalize("Jay-Z"))
         assertEquals("dont stop", SpotifyMatch.normalize("Don't Stop"))
         assertEquals("mrs robinson", SpotifyMatch.normalize("Mrs. Robinson"))
+        // A symbol only stands for a letter when it touches one. `***` as a title would be a
+        // wildcard matching every three-letter word there is.
+        assertEquals("100 bill", SpotifyMatch.normalize("100\$ Bill"))
+        assertEquals("", SpotifyMatch.normalize("\$\$\$"))
     }
 
     @Test
