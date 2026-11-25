@@ -74,6 +74,39 @@ class PairingRunnerTest {
         assertTrue(conns.all { it.closed })
     }
 
+    /**
+     * 2026-11-24, break 1: the phone mints the unit's engine sign-in when the stage reaches
+     * `DigitsShown`, and that is a network call. The handover frame is built by
+     * [PairingClient.onMessage] the instant `code_ok` arrives, so the mint must be finished before
+     * this loop takes that message - the stage callback is awaited for exactly that reason.
+     * `CarLinkController` used to launch the mint into the background, which was harmless only
+     * while it was a stub returning null without suspending; a real mint there can land after the
+     * frame it belongs in has already gone, handing the unit no token while the phone stores its id
+     * and believes the hand-over carried one.
+     */
+    @Test fun `a suspending stage callback finishes before the next message is taken`() = runBlocking {
+        val order = mutableListOf<String>()
+        val conn = object : PairingConnection {
+            val reader = Frames.FrameReader()
+            var n = 0
+            override suspend fun send(frame: ByteArray) { reader.feed(frame) }
+            override suspend fun receive(timeoutMs: Long): Received {
+                order += "receive"
+                return if (n++ == 0) Received.Message(ack) else Received.Closed
+            }
+            override fun close() = Unit
+        }
+        val runner = PairingRunner({ _, _ -> conn }, { 300L }, {}) { stage ->
+            if (stage is PairingStage.DigitsShown) {
+                order += "mint start"
+                repeat(3) { yield() } // what a real HTTP call does: it suspends
+                order += "mint done"
+            }
+        }
+        runner.run(client(), "10.0.0.1", 17300)
+        assertEquals(listOf("receive", "mint start", "mint done", "receive"), order)
+    }
+
     @Test fun `cancelling while the digits are shown sends abort cancelled`() = runBlocking {
         val shown = CompletableDeferred<Unit>()
         val conn = object : PairingConnection {

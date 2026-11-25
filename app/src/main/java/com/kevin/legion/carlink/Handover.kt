@@ -17,20 +17,14 @@ class UnitToken(val id: String, val token: String, val expires: String?) {
  * - [rotate]: `POST /api/auth/head-units/<id>/rotate` (a member action from the phone; the new token
  *   goes to the unit over the link);
  * - [revoke]: `DELETE /api/auth/head-units/<id>`.
- * A token lives 30 days and never past 90 days from pairing (the engine enforces both). Not deployed
- * yet: production uses [UnitTokenNotYetAvailable].
+ * A token lives 30 days and never past 90 days from pairing (the engine enforces both).
+ * [com.kevin.legion.backend.engine.DjangoUnitTokenSource] is the one implementation; every method
+ * answers null or false rather than throwing, so a mint the engine refuses never fails the pairing.
  */
 interface UnitTokenSource {
     suspend fun mint(name: String, vehicleId: String?): UnitToken?
     suspend fun rotate(id: String): UnitToken?
     suspend fun revoke(id: String): Boolean
-}
-
-/** Until the engine endpoint is deployed: nothing is minted, so nothing is handed over or revoked. */
-class UnitTokenNotYetAvailable : UnitTokenSource {
-    override suspend fun mint(name: String, vehicleId: String?): UnitToken? = null
-    override suspend fun rotate(id: String): UnitToken? = null
-    override suspend fun revoke(id: String): Boolean = false
 }
 
 /** One of the household's cars, for "which car is this head unit in" (the engine binds ONE). */

@@ -83,7 +83,7 @@ class CarLinkControllerTest {
         store = store,
         transport = { h, p -> connects++; transport.connect(h, p) },
         handover = HandoverPlan(
-            HandoverSources({ keyReads++; null }, { keyReads++; null }, { null }), UnitTokenNotYetAvailable(),
+            HandoverSources({ keyReads++; null }, { keyReads++; null }, { null }), NoUnitTokens(),
         ) {},
         newSender = { ring, onEvent, sendFixes, mode ->
             if (senders > 0) port = BlockingPort()
@@ -181,7 +181,7 @@ class CarLinkControllerTest {
         val box = FakeKeystoreStandIn().apply { failOpens = 3 }
         val c = CarLinkController(
             CarLinkStore(box, file) {}, { _, _ -> null },
-            HandoverPlan(HandoverSources({ null }, { null }, { null }), UnitTokenNotYetAvailable()) {},
+            HandoverPlan(HandoverSources({ null }, { null }, { null }), NoUnitTokens()) {},
             { _, _, _, _ -> error("a broken pairing must not start a sender") }, scope, Dispatchers.IO, { 300L }, {},
         )
         c.start()
@@ -206,7 +206,7 @@ class CarLinkControllerTest {
         }
         val c = CarLinkController(
             store, { _, _ -> null },
-            HandoverPlan(HandoverSources({ null }, { null }, { null }), UnitTokenNotYetAvailable()) {},
+            HandoverPlan(HandoverSources({ null }, { null }, { null }), NoUnitTokens()) {},
             { ring, onEvent, sendFixes, mode ->
                 CarLinkSender(
                     Mnai2Feed(ring, { ByteArray(16) }, lan::contains, { null }, onEvent), throwing,
@@ -432,7 +432,7 @@ class CarLinkControllerTest {
         assertTrue(store.write(key, null))
         val c = CarLinkController(
             store, { _, _ -> null },
-            HandoverPlan(HandoverSources({ null }, { null }, { null }), UnitTokenNotYetAvailable()) {},
+            HandoverPlan(HandoverSources({ null }, { null }, { null }), NoUnitTokens()) {},
             { _, _, _, _ -> throw java.net.BindException("Address already in use") },
             scope, Dispatchers.IO, { 300L }, {},
         )
