@@ -144,6 +144,39 @@ def test_image_change_must_equal_the_pins_file_for_file_and_blob_for_blob():
     ]
 
 
+def test_a_deleted_image_file_ships_only_on_a_deletion_pin():
+    """redesign-s1 deletes five server files, and `changed[path]` is None for a deletion while
+    `parse_pins` only takes a 40-hex blob, so every one of them STOPped as `changed but not
+    pinned` and the ship could not be expressed at all."""
+    D = sc.DELETED_PIN
+    # The deletion the ship named is the deletion it gets.
+    assert sc.image_problems({"server/homes/records.py": None}, {"server/homes/records.py": D}) == []
+    # A deletion pin on a file that is still there is a lie about the image: STOP.
+    assert sc.image_problems({"server/x.py": A}, {"server/x.py": D}) == [
+        "server/x.py is blob %s, pinned deleted" % A
+    ]
+    # An unpinned deletion is still unpinned.
+    assert sc.image_problems({"server/x.py": None}, {}) == ["changed but not pinned: server/x.py"]
+    # A deletion pin on a path this ship does not touch is still pinned-but-not-changed.
+    assert sc.image_problems({}, {"server/x.py": D}) == ["pinned but not changed: server/x.py"]
+    # The pin is a blob to `parse_pins`, so it survives the workflow's `path:blob` input unchanged.
+    assert sc.parse_pins(f"server/homes/records.py {D}\n") == {"server/homes/records.py": D}
+
+
+def test_the_deletion_pin_buys_a_migration_nothing():
+    """`parse_pins` is shared with --migrations, so the sentinel must stay a plain blob there: a
+    deleted migration is still 'not added', and one pinned to the sentinel still fails the
+    caller's blob comparison (cmd_scope), which has no sentinel."""
+    path = "server/widgets/migrations/0002_more.py"
+    assert sc.migration_problems([("D", path)], {}, set(), {}, {}) == [
+        f"schema file {path} is D, not added"
+    ]
+    # Added and pinned to the sentinel: migration_problems only checks the path is pinned, and the
+    # blob comparison that refuses it lives in cmd_scope against the file's real blob at FIX.
+    assert sc.migration_problems([("A", path)], {path: sc.DELETED_PIN}, set(), {path: "ops = []\n"},
+                                 {path: A}) == []
+
+
 def test_frozen_files_never_change():
     assert sc.frozen_problems(["server/agents/x.py"]) == []
     assert sc.frozen_problems(["server/requirements.txt", "server/Dockerfile"]) == [

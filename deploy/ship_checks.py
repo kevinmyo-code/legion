@@ -98,12 +98,20 @@ MIGRATION_PATH = re.compile(r"^server/([^/]+)/migrations/(\d{4}_[A-Za-z0-9_]+)\.
 MIGRATION_PATHSPEC = ":(glob)server/**/migrations/**"
 SHA = re.compile(r"^[0-9a-f]{40}$")
 BLOB = re.compile(r"^[0-9a-f]{40}$")
+# Git's null object id: no file ever hashes to it, so it is free to mean "deleted at FIX" as an
+# image pin. `git diff --raw --no-abbrev` already prints it as the new blob of a deleted file.
+DELETED_PIN = "0" * 40
 NAME = re.compile(r"^[A-Z][A-Z0-9_]*$")
 
 
 # ---------------------------------------------------------------------------------------- pure rules
 def parse_pins(text: str) -> dict[str, str]:
-    """`<path> <blob>` per line (blank lines and # comments ignored) -> {path: blob}."""
+    """`<path> <blob>` per line (blank lines and # comments ignored) -> {path: blob}.
+
+    An image pin of `DELETED_PIN` (git's null object id) pins the file as DELETED at FIX. It is
+    still a 40-hex blob here so the ship workflow's `path:blob` input, its character check and its
+    sed all carry it unchanged; `image_problems` is the only reader that treats it specially, so a
+    migration pinned to it is refused there like any other blob that is not the file's."""
     out: dict[str, str] = {}
     for raw in text.splitlines():
         line = raw.strip()
@@ -120,15 +128,25 @@ def parse_pins(text: str) -> dict[str, str]:
 
 def image_problems(changed: dict[str, str | None], pinned: dict[str, str]) -> list[str]:
     """`changed`: every image-path file that differs LIVE_CODE..FIX -> its blob at FIX (None = deleted).
-    It must be exactly the pinned set, file for file and blob for blob."""
+    It must be exactly the pinned set, file for file and blob for blob, with `DELETED_PIN` the one
+    pin a deleted file can satisfy: a file still present at FIX never satisfies it, a deletion that
+    is pinned to a real blob is still refused, and an unpinned deletion is still `changed but not
+    pinned`. Before it, a deletion under IMAGE_PATHS could not be expressed and stopped every
+    ship that removed a server file."""
     problems = []
     for path in sorted(set(changed) - set(pinned)):
         problems.append(f"changed but not pinned: {path}")
     for path in sorted(set(pinned) - set(changed)):
         problems.append(f"pinned but not changed: {path}")
     for path in sorted(set(changed) & set(pinned)):
-        if changed[path] != pinned[path]:
-            problems.append(f"{path} is blob {changed[path] or 'deleted'}, pinned {pinned[path]}")
+        want_deleted = pinned[path] == DELETED_PIN
+        if (changed[path] is None) != want_deleted or (
+            not want_deleted and changed[path] != pinned[path]
+        ):
+            problems.append(
+                f"{path} is blob {changed[path] or 'deleted'}, "
+                f"pinned {'deleted' if want_deleted else pinned[path]}"
+            )
     return problems
 
 
@@ -387,7 +405,11 @@ def main(argv: list[str] | None = None) -> int:
     s = sub.add_parser("scope")
     s.add_argument("--fix", required=True)
     s.add_argument("--live-code", required=True)
-    s.add_argument("--image-files", required=True, help="file of '<path> <blob>' lines")
+    s.add_argument(
+        "--image-files",
+        required=True,
+        help="file of '<path> <blob>' lines; the blob 40 zeros pins the path as deleted at FIX",
+    )
     s.add_argument(
         "--migrations", default="", help="file of '<path> <blob>' lines for the added schema files"
     )
