@@ -4,7 +4,7 @@ ticket: "09"
 title: "Build: HTML delivery, a researched page from the Alienware opened on the phone"
 type: build
 status: built
-status-detail: "Built 2026-11-03 on integrate/claude-session-on (Kevin: \"add the html delivery before we test so we can test everything at once\"). Engine, worker, phone and web desk tests green. Owes: the engine deploy and the Atlanta run on the A25 (ticket 07, step 9)."
+status-detail: "Built 2026-11-03 on integrate/claude-session-on (Kevin: \"add the html delivery before we test so we can test everything at once\"). Engine, worker, phone and web desk tests green. Owes: the engine deploy and the itinerary run on the A25 (ticket 07, step 9)."
 blockers: ["03", "04", "05"]
 blocked-by: ["[[03-engine-app]]", "[[04-worker]]", "[[05-phone]]"]
 open-blockers: 3
