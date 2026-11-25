@@ -1,6 +1,7 @@
 package com.kevin.legion.carlink
 
 import com.kevin.legion.carlink.protocol.HandoverBody
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * A sign-in the engine minted FOR the head unit (5.1): `{id, token, expires}`, shown once. Never the
@@ -64,11 +65,23 @@ class HandoverPlan(
     @Volatile private var minted: UnitToken? = null
     @Volatile private var vehicle: String? = null
 
-    /** Mints the unit's sign-in for the car [vehicleId] (null = none chosen), once per pairing. */
+    /**
+     * Mints the unit's sign-in for the car [vehicleId] (null = none chosen), once per pairing.
+     *
+     * **Bounded, because the pairing waits for it.** The caller awaits this inside the pairing
+     * conversation (`PairingRunner.onStage` at `DigitsShown`), which is what keeps the token from
+     * landing after the frame it belongs in - and the unit drops the whole stage after
+     * `PairingSession.STAGE_LIFETIME_MS`, 2 minutes, while the person is still reading six digits
+     * off the car screen. A mint on a weak signal costs the HTTP client's connect plus read
+     * timeouts, so without a bound a slow engine would spend the person's window rather than its
+     * own. Past [MINT_TIMEOUT_MS] the pairing goes on with no token: a link with no engine sign-in
+     * is worth far more than a failed pairing, and a later re-pair mints one.
+     */
     suspend fun prepare(vehicleId: String?) {
         vehicle = vehicleId
         if (minted != null) return
-        minted = tokens.mint(UNIT_NAME, vehicleId)?.also { redact(it.token) }
+        minted = withTimeoutOrNull(MINT_TIMEOUT_MS) { tokens.mint(UNIT_NAME, vehicleId) }
+            ?.also { redact(it.token) }
     }
 
     fun body(): HandoverBody {
@@ -113,5 +126,12 @@ class HandoverPlan(
     companion object {
         /** 5.1's device name, listed as "Head unit" in the phone's device list. */
         const val UNIT_NAME = "Head unit"
+
+        /**
+         * How long [prepare] may spend minting before the pairing goes on without a token. Well
+         * inside the unit's 2-minute stage lifetime and the phone's own 135 s digits wait, and
+         * comfortably over one HTTP round trip on a hotspot.
+         */
+        const val MINT_TIMEOUT_MS = 20_000L
     }
 }

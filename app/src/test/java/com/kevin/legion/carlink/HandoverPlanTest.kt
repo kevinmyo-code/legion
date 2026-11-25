@@ -135,6 +135,28 @@ class HandoverPlanTest {
         assertFalse(none.revoke("hu-1"))
     }
 
+    /**
+     * The pairing awaits the mint, and the unit drops the stage after 2 minutes while the person is
+     * still reading digits off the car screen, so a mint that never answers must cost the token and
+     * not the pairing. `runTest` runs on a virtual clock, so this takes no real time.
+     */
+    @Test fun `a mint that never answers is given up on and the pairing goes on with no token`() =
+        kotlinx.coroutines.test.runTest {
+            val hangs = object : UnitTokenSource {
+                override suspend fun mint(name: String, vehicleId: String?): UnitToken? {
+                    kotlinx.coroutines.awaitCancellation()
+                }
+                override suspend fun rotate(id: String): UnitToken? = null
+                override suspend fun revoke(id: String): Boolean = false
+            }
+            val slow = HandoverPlan(HandoverSources({ null }, { null }, { "Test phone" }), hangs) {}
+            slow.prepare("vehicle-id-for-tests")
+            assertNull(slow.body().engineToken)
+            assertNull(slow.mintedId())
+            // The car the person chose is still named, so the hand-over is not silently emptied.
+            assertEquals("vehicle-id-for-tests", slow.body().engineVehicleId)
+        }
+
     @Test fun `the chosen car goes as engine_vehicle_id, and no car means no field`() = runBlocking {
         assertNull(fields(plan.body().toJson())["engine_vehicle_id"])
         plan.prepare("vehicle-id-for-tests")
