@@ -345,7 +345,8 @@ def test_a_re_stated_anchor_is_the_newest_row_even_though_its_row_is_old(
     )
     today = dt.date.today()
     # Anchored a year ago, then logged today with no reading.
-    _service(auth_client, "a1", vehicle, "oil change", dt.date(2025, 1, 10), 71_200, kind="ASSERTED")
+    old = dt.date(2025, 1, 10)
+    _service(auth_client, "a1", vehicle, "oil change", old, 71_200, kind="ASSERTED")
     _service(auth_client, "s1", vehicle, "oil change", today, None)
     anchor = schedule_status(
         Viewer(user=household_user), Vehicle.objects.get(household=household_a)
