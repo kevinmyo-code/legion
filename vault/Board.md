@@ -125,6 +125,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/alfred-ota/map\|alfred-ota]] | [[01-alfred-pack-format-and-endpoint\|01]] | build | Alfred pack: format and engine endpoint |
 | [[.scratch/alfred-ota/map\|alfred-ota]] | [[04-version-and-publisher\|04]] | build | versionCode, private bucket, releases, publisher |
 | [[.scratch/alfred-ota/map\|alfred-ota]] | [[09-head-unit-updater\|09]] | build | Head unit updater: check, download, verify, tap to install |
+| [[.scratch/android-auto/map\|android-auto]] | [[17-deaf-on-the-cars-bluetooth-mic\|17]] | bug | Alfred hears nothing at all through the car's Bluetooth mic |
 | [[.scratch/arch-diagrams/map\|arch-diagrams]] | [[01-show-diagram\|01]] | build | show_diagram: the diagram catalogue, the tool and the web card |
 | [[.scratch/arch-diagrams/map\|arch-diagrams]] | [[02-demo-modals\|02]] | build | Diagrams and the resume open over the page; diagrams first; no second greeting |
 | [[.scratch/architecture/map\|architecture]] | [[01-room-kapt-to-ksp\|01]] | build | Room moves from kapt to KSP |
@@ -492,7 +493,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/alfred-greets/map\|alfred-greets]] | 5 | 5 | [[.scratch/alfred-greets/alfred-greets.canvas\|open]] |
 | [[.scratch/alfred-ota/map\|alfred-ota]] | 9 | 9 | [[.scratch/alfred-ota/alfred-ota.canvas\|open]] |
 | [[.scratch/ambient-listening/map\|ambient-listening]] | 7 | 0 | [[.scratch/ambient-listening/ambient-listening.canvas\|open]] |
-| [[.scratch/android-auto/map\|android-auto]] | 16 | 0 | [[.scratch/android-auto/android-auto.canvas\|open]] |
+| [[.scratch/android-auto/map\|android-auto]] | 18 | 1 | [[.scratch/android-auto/android-auto.canvas\|open]] |
 | [[.scratch/arch-diagrams/map\|arch-diagrams]] | 2 | 2 | [[.scratch/arch-diagrams/arch-diagrams.canvas\|open]] |
 | [[.scratch/architecture/map\|architecture]] | 6 | 6 | [[.scratch/architecture/architecture.canvas\|open]] |
 | [[.scratch/aspect-advisors/map\|aspect-advisors]] | 21 | 0 | [[.scratch/aspect-advisors/aspect-advisors.canvas\|open]] |
