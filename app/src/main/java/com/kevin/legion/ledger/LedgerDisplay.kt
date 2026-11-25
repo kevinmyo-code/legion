@@ -27,7 +27,7 @@ private val CHECKCARD_PREFIX = Regex("""CHECKCARD \d{4} """)
 /**
  * `DES:` / `INDN:` - ACH/NACHA batch descriptor tokens (payroll, GIRO, Zelle).
  * Unlike [CHECKCARD_PREFIX] these are not anchored to the start of the string
- * - BofA's ACH lines read `PAYROLL DES:DIRECT DEP ID:9928471 INDN:K MYO`, so
+ * - BofA's ACH lines read `PAYROLL DES:DIRECT DEP ID:5510329 INDN:K DOE`, so
  * the tokens sit mid-string. The ticket 08 resolution still calls them
  * "prefixes" because each one prefixes its own sub-field (the descriptor,
  * the individual name); stripping the label and leaving the value it
