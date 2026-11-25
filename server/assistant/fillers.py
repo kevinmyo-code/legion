@@ -167,9 +167,24 @@ FAREWELLS = (
     "farewell", "peace out", "take care", "have a good night", "have a good one",
 )  # fmt: skip
 
-# Courtesy at either end, which the phone takes off before judging a goodbye
-# (`Farewells.withoutCourtesy`), so "thanks, bye" and "okay bye" are goodbyes.
-_COURTESY = frozenset({"thanks", "thank", "you", "please", "ok", "okay", "alright", "right"})
+# The courtesy the phone takes off either end before judging a goodbye, as PHRASES, which is what
+# `Farewells.withoutCourtesy` strips: `LEADS` (`FILLER_LEADS` + `ASSENT_LEADS`) and `THANKS` may
+# open a turn, `THANKS` and `TAILS` may close it. All four lists are pinned to `Farewells.kt` by
+# `test_assistant_wait_lines.py`. A flat set of single words was wrong in both directions: "see
+# you" lost its "you" and stopped being a goodbye, while nothing stripped "appreciate it".
+_FILLER_LEADS = (
+    "ok", "okay", "alright", "all right", "well", "oh", "so", "hey", "um", "uh", "right",
+    "okay then", "ok then", "please",
+)  # fmt: skip
+_ASSENT_LEADS = (
+    "yeah", "yes", "great", "cool", "perfect", "awesome", "lovely", "sounds good", "got it",
+)  # fmt: skip
+_LEADS = _FILLER_LEADS + _ASSENT_LEADS
+_THANKS = (
+    "thanks", "thank you", "thanks a lot", "thank you very much", "thanks so much", "cheers",
+    "appreciate it", "many thanks",
+)  # fmt: skip
+_TAILS = ("for now", "then", "now", "again", "mate", "buddy", "please")
 
 _NOT_WORD = re.compile(r"[^a-z0-9]+")
 
@@ -179,32 +194,76 @@ def _normalised(words: str | None) -> list[str]:
     return _NOT_WORD.sub(" ", (words or "").lower()).split()
 
 
-def is_farewell(words: str | None) -> bool:
-    """The whole turn is a goodbye and nothing else (the phone's `Farewells.madeOf`): one or more
-    farewell phrases, with courtesy allowed at either end. Pure."""
-    said = _normalised(words)
-    while said and said[0] in _COURTESY:
-        said = said[1:]
-    while said and said[-1] in _COURTESY:
-        said = said[:-1]
-    if not said:
-        # Courtesy and nothing else ("Thanks!"), or silence: not a goodbye. Without this an empty
-        # list fell out of the loop below as True and every "Thanks!" turn lost its backchannel.
-        return False
-    # Longest phrase first, so "bye bye" is one phrase and not "bye" twice.
-    phrases = sorted(FAREWELLS, key=lambda p: -len(p.split()))
-    while said:
+def _phrase_words(phrases) -> tuple[tuple[str, ...], ...]:
+    """The phone's `Farewells.phraseWords`: each phrase as words, longest first, so "thanks a lot"
+    is taken whole before "thanks"."""
+    return tuple(sorted((tuple(p.split()) for p in phrases), key=len, reverse=True))
+
+
+_LEAD_WORDS = _phrase_words(_LEADS + _THANKS)
+_TAIL_WORDS = _phrase_words(_THANKS + _TAILS)
+_FAREWELL_WORDS = _phrase_words(FAREWELLS)
+
+
+def _without_courtesy(said: list[str], companion_name: str) -> list[str]:
+    """The phone's `Farewells.withoutCourtesy`: the companion's name at either end, a lead-in or
+    thanks before, thanks or a tail after, taken off repeatedly until nothing more comes. Never the
+    whole turn: a courtesy phrase alone ("Thanks!") stays a turn of its own, which is why only a
+    phrase SHORTER than what is left may be stripped."""
+    name = _normalised(companion_name)
+    while True:
+        before = said
+        if name and said[: len(name)] == name:
+            said = said[len(name) :]
+        if name and len(said) >= len(name) and said[-len(name) :] == name:
+            said = said[: -len(name)]
+        lead = next(
+            (p for p in _LEAD_WORDS if len(p) < len(said) and tuple(said[: len(p)]) == p), None
+        )
+        if lead is not None:
+            said = said[len(lead) :]
+        tail = next(
+            (p for p in _TAIL_WORDS if len(p) < len(said) and tuple(said[-len(p) :]) == p), None
+        )
+        if tail is not None:
+            said = said[: -len(tail)]
+        if said == before or not said:
+            return said
+
+
+def _made_of(said: list[str], phrases: tuple[tuple[str, ...], ...]) -> bool:
+    """The phone's `Farewells.madeOf`: `said` is one or more of `phrases` back to back and nothing
+    else, over EVERY segmentation ("bye bye bye" is a goodbye, "bye bye birdie" is not). A greedy
+    longest-first loop cannot backtrack and so is strictly weaker on overlapping phrases."""
+    reachable = [False] * (len(said) + 1)
+    reachable[0] = True
+    for at in range(len(said)):
+        if not reachable[at]:
+            continue
         for phrase in phrases:
-            parts = phrase.split()
-            if said[: len(parts)] == parts:
-                said = said[len(parts) :]
-                break
-        else:
-            return False
-    return True
+            if tuple(said[at : at + len(phrase)]) == phrase:
+                reachable[at + len(phrase)] = True
+    return reachable[len(said)]
 
 
-def ack_skip(*, from_user: bool, over_reply: bool, words: str, crisis: bool, goodbye: bool):
+def is_farewell(words: str | None, companion_name: str = "") -> bool:
+    """The whole turn is a goodbye and nothing else, the phone's rule exactly
+    (`WakePhrases.isSleepPhrase`: `withoutCourtesy` then a non-empty `madeOf`). Pure."""
+    said = _without_courtesy(_normalised(words), companion_name)
+    # Courtesy and nothing else ("Thanks!"), the name alone, or silence: not a goodbye. The phone
+    # makes the same non-empty check before `madeOf`, which reads an empty turn as made of nothing.
+    return bool(said) and _made_of(said, _FAREWELL_WORDS)
+
+
+def ack_skip(
+    *,
+    from_user: bool,
+    over_reply: bool,
+    words: str,
+    crisis: bool,
+    goodbye: bool,
+    companion_name: str = "",
+):
     """Why this turn says no acknowledgement, or None to say one.
 
     The phone's rule (`app/.../service/cascade/Backchannel.kt`, `decide` then `wordsSkip`), in its
@@ -230,7 +289,7 @@ def ack_skip(*, from_user: bool, over_reply: bool, words: str, crisis: bool, goo
         return "noise"
     if crisis:
         return "crisis"
-    if goodbye or is_farewell(words):
+    if goodbye or is_farewell(words, companion_name):
         return "goodbye"
     return None
 
