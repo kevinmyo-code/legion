@@ -22,7 +22,12 @@ import java.util.Locale
  *   a voice whose track is not 24 kHz (the chime is made at that rate); a second time for one close.
  */
 internal object CloseCue {
-    private val PLAYS = setOf(
+    /**
+     * The closes that are the end of a conversation he was in. Read by [decide] for the chime and by
+     * [RewakeCarry.keeps] for the next conversation's carried context, so the two can never disagree
+     * about which closes end a conversation. A failed voice is not in it: he did not ask for that one.
+     */
+    val PLAYS = setOf(
         "stopped", "sleep_phrase", "follow_up", "dismissed", "noise", "missed_twice", "check_in_no_reply",
         "check_in_answered", "new conversation",
         // Hang up on the call screen (2026-11-24). It is the end of a conversation he was in, and on
@@ -30,14 +35,6 @@ internal object CloseCue {
         "hung_up",
     )
     private const val VOICE_FAILED = "voice_failed_"
-
-    /**
-     * Whether [reason] is the end of a conversation he was in, which is what [PLAYS] lists. The one
-     * definition of that, so the chime and the next conversation's carried context
-     * ([RewakeCarry.keeps]) can never disagree about which closes are the end of a conversation.
-     * A failed voice is not one: it is a close he did not ask for.
-     */
-    fun endsHisConversation(reason: String): Boolean = reason in PLAYS
 
     /** Waiting for the chime to drain never holds the close longer than this. */
     const val HARD_CAP_MS = 1_200L
@@ -57,7 +54,7 @@ internal object CloseCue {
         rateMatches: Boolean,
     ): Skip? {
         if (alreadyPlayed) return Skip.PLAYED
-        if (!endsHisConversation(reason) && !reason.startsWith(VOICE_FAILED)) return Skip.NOT_A_CLOSE
+        if (reason !in PLAYS && !reason.startsWith(VOICE_FAILED)) return Skip.NOT_A_CLOSE
         if (!audioOpened) return Skip.NO_AUDIO
         if (!rateMatches) return Skip.RATE
         if (onCall) return Skip.ON_CALL
