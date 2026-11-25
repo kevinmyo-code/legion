@@ -14073,15 +14073,6 @@ export interface operations {
                     "application/json": components["schemas"]["HeadUnit"][];
                 };
             };
-            /** @description Head-unit sign-in is off. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Detail"];
-                };
-            };
         };
     };
     api_auth_head_units_create: {
@@ -14117,15 +14108,6 @@ export interface operations {
                 };
             };
             403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Detail"];
-                };
-            };
-            /** @description Head-unit sign-in is off. */
-            404: {
                 headers: {
                     [name: string]: unknown;
                 };

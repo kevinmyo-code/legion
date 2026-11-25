@@ -57,7 +57,6 @@ SWITCHES = (
     "LEGION_AGENTS_TURN",
     "LEGION_AGENTS_STREAM_STT",
     "LEGION_AGENTS_STT_HEDGE",
-    "LEGION_HEADUNIT_SIGNIN",
 )
 # Also unset on every ship (not switches: settings this deploy path must never carry).
 ALSO_UNSET = ("LEGION_SKIP_MIGRATE", "LEGION_WEB_EARLY_TRANSCRIPTS", "LEGION_WEB_AUDIO_FIRST_ROUND")

@@ -1138,12 +1138,6 @@ paths:
                   $ref: '#/components/schemas/HeadUnit'
           description: The calling member's own live head units, newest first. No
             token.
-        '404':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Detail'
-          description: Head-unit sign-in is off.
     post:
       operationId: api_auth_head_units_create
       tags:
@@ -1182,12 +1176,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: ''
-        '404':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Detail'
-          description: Head-unit sign-in is off.
         '429':
           content:
             application/json:
