@@ -17,9 +17,16 @@ package com.kevin.midnightai.service
  *    a certain failure; it spends no budget either, because being out of signal for a while must
  *    not use up the alert's chances (`LiveSessionController.isOnline`, the same test the talk tap
  *    makes).
- *  - **A line gets [maxRequests] asks per episode, then holds until the engine comes back on.** The
- *    code is still untold, so the next ignition raises it again - it is deferred, not dropped, and
- *    the Logbook CODES tab shows it on screen the whole time either way.
+ *  - **A line gets [maxRequests] asks per episode, then holds until the engine comes back on**
+ *    ([onEngineState]), which re-arms it for the next drive while the unit stays powered.
+ *
+ * **What holding costs, said exactly.** Within the process the code is still untold, so an engine
+ * restart raises it again. Across a process - and the ignition cuts power to the unit, so every
+ * ignition cycle is a new process - a stored code is the first scan's BASELINE and is not announced
+ * at all, held back or not: that is [AnnouncedCodes]' pre-existing rule, which this does not change.
+ * What the driver has then is the Logbook CODES tab, which shows it on screen the whole time, and
+ * `get_codes` when he asks. The opener mentions stored codes only when the dongle is already linked
+ * 1.5 seconds into the service, which is not the usual case.
  *
  * An ask that was GATED (mute, a call, onboarding unfinished) spends nothing either: the caller
  * only reports back what really left for the session controller. A fifteen-minute phone call must
@@ -34,6 +41,10 @@ package com.kevin.midnightai.service
  */
 internal class AlertRetryBudget(private val maxRequests: Int = MAX_REQUESTS) {
     private val spent = mutableMapOf<String, Int>()
+
+    // Starts "not running" so the first scan of a drive already linked to a running engine counts
+    // as an edge: a budget nothing has spent yet, cleared, is the same budget.
+    private var engineRunning = false
 
     /**
      * Which of [keys] may be asked for now: none at all when [online] is false, otherwise those
@@ -58,14 +69,21 @@ internal class AlertRetryBudget(private val maxRequests: Int = MAX_REQUESTS) {
     }
 
     /**
-     * The engine just came on: every held line may be asked for again. This is the "next ignition
-     * or drive start" the bound promises, read from `TelemetryRecorder.isEngineRunning` (RPM over
-     * zero) rather than GPS, because the unit's own GPS is dead and a phone-fed fix is not an
-     * ignition.
+     * The engine's state this scan. On the off -> on edge every held line may be asked for again:
+     * that is the "next drive start" the bound promises.
+     *
+     * The edge is tracked here rather than in the scan loop so it is tested. [running] is read from
+     * `TelemetryRecorder.isEngineRunning` AND the dongle being linked, not from GPS: the unit's own
+     * GPS is dead and a phone-fed fix is not an ignition. Counting an unlinked dongle as "not
+     * running" is what makes the edge reachable at all - the recorder leaves its flag set when the
+     * link drops, so without it the only edge would be an engine stopped and restarted with the
+     * unit powered and the dongle linked across a five-minute scan.
      */
     @Synchronized
-    fun onEngineStart() {
-        spent.clear()
+    fun onEngineState(running: Boolean) {
+        val wasRunning = engineRunning
+        engineRunning = running
+        if (running && !wasRunning) spent.clear()
     }
 
     companion object {

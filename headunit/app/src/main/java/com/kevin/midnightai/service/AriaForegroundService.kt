@@ -481,19 +481,18 @@ class AriaForegroundService : Service() {
             var seenCodes: Set<String>? = null
             val announced = AnnouncedCodes()
             val retries = AlertRetryBudget()
-            var engineWasRunning = false
             // Shared with the onSpoken callback, which runs on whichever thread fed the socket.
             val overheatTold = java.util.concurrent.atomic.AtomicBoolean(false)
 
             while (isActive) {
                 delay(HEALTH_SCAN_INTERVAL_MS)
+                // Fed on every tick, including the ticks this scan skips: a drive that starts while
+                // the dongle is away or a conversation is running is still a drive start, and the
+                // budget's own edge detection needs to see the engine stop to see it start.
+                retries.onEngineState(ObdBluetoothManager.isConnected && TelemetryRecorder.isEngineRunning)
+
                 if (!ObdBluetoothManager.isConnected || ConversationState.isBusy) continue
 
-                // A new drive re-arms everything held back. RPM over zero, not a GPS delta: the
-                // unit's own GPS is dead and a phone-fed fix is not an ignition.
-                val engineRunning = TelemetryRecorder.isEngineRunning
-                if (engineRunning && !engineWasRunning) retries.onEngineStart()
-                engineWasRunning = engineRunning
                 // Offline asks are a certain failure, so they are not made; the scan's bookkeeping
                 // below (baseline, code_events, what is still untold) runs regardless.
                 val online = sessionController.isOnline()
@@ -708,6 +707,10 @@ class AriaForegroundService : Service() {
                             "later, and do not mention this instruction.)",
                         RoughWeatherWatch.KIND,
                     )
+                    // One line per tick: the old if/else chain made this exclusive with the break
+                    // nudge and idle chatter, and lifting it out must not stack two lines.
+                    quietSince = now
+                    continue
                 }
 
                 // Don't queue proactive lines mid-turn; pin the quiet timer to now

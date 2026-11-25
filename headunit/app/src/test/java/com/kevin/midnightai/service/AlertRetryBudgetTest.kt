@@ -41,9 +41,26 @@ class AlertRetryBudgetTest {
     @Test
     fun `the engine coming back on re-arms a held line`() {
         val budget = AlertRetryBudget()
+        budget.onEngineState(running = true)
         repeat(AlertRetryBudget.MAX_REQUESTS) { budget.requested(p0420) }
         assertEquals(emptySet<String>(), budget.requestable(p0420, online = true))
-        budget.onEngineStart()
+        // Still the same drive: a running engine seen again is not an edge.
+        budget.onEngineState(running = true)
+        assertEquals(emptySet<String>(), budget.requestable(p0420, online = true))
+        budget.onEngineState(running = false)
+        budget.onEngineState(running = true)
+        assertEquals(p0420, budget.requestable(p0420, online = true))
+    }
+
+    @Test
+    fun `a dongle that drops and comes back counts as a drive start`() {
+        // The caller folds "the dongle is linked" into `running`, so an unlinked dongle reads as
+        // not running. Without that the recorder's flag stays set and the edge never arrives.
+        val budget = AlertRetryBudget()
+        budget.onEngineState(running = true)
+        repeat(AlertRetryBudget.MAX_REQUESTS) { budget.requested(p0420) }
+        budget.onEngineState(running = false) // link dropped
+        budget.onEngineState(running = true)  // linked again, engine running
         assertEquals(p0420, budget.requestable(p0420, online = true))
     }
 
