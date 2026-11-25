@@ -87,8 +87,12 @@ internal object SpotifyMatch {
      * "suicideboys". Mapped to `*`, which [tokensMatch] already reads as "any letter here", rather
      * than dropped (leaving `aap`) or spaced (leaving `a ap`) - neither of which the request's own
      * spelling can ever match.
+     *
+     * Only where the symbol TOUCHES a letter, so it is standing in for one. A price (`100$ Bill`)
+     * or a title of nothing but symbols keeps its old reading: `***` would be a wildcard that
+     * matches every three-letter word there is.
      */
-    private val LETTER_SYMBOL = Regex("""[$@]""")
+    private val LETTER_SYMBOL = Regex("""(?<=\p{L})[$@]|[$@](?=\p{L})""")
 
     /**
      * Lowercase, diacritics folded (`Beyoncé` -> `beyonce`), letter-standing symbols turned into
@@ -159,6 +163,11 @@ internal object SpotifyMatch {
      * Where [short] sits inside [long] as one run with connectives on either side skipped, as a
      * range over [long]'s own indices, or null when it does not. The range is what a caller takes
      * back out of its list, so it covers the joiners the run swallowed too.
+     *
+     * At least one token must really match. Skipping a connective is not evidence, so an artist
+     * written as nothing BUT connectives (`X`, a real band name and how `XXXTentacion` gets said)
+     * would otherwise be "found" in every query at an empty range and confirm every candidate.
+     * A spoken "x" still matches a catalogue "X", because [tokensMatch] is tried first.
      */
     // NestedBlockDepth: one walk, one when; splitting it hides the two cursors.
     // ReturnCount: the empty guard, the hit and the miss, one worded exit each.
@@ -168,16 +177,17 @@ internal object SpotifyMatch {
         for (start in long.indices) {
             var i = start
             var j = 0
+            var matched = 0
             while (i < long.size && j < short.size) {
                 when {
-                    tokensMatch(long[i], short[j]) -> { i++; j++ }
+                    tokensMatch(long[i], short[j]) -> { i++; j++; matched++ }
                     long[i] in CONNECTIVES -> i++
                     short[j] in CONNECTIVES -> j++
                     else -> break
                 }
             }
             while (j < short.size && short[j] in CONNECTIVES) j++
-            if (j == short.size) return start until i
+            if (j == short.size && matched > 0) return start until i
         }
         return null
     }
