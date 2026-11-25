@@ -3906,8 +3906,16 @@ internal class CascadeSession(
     private fun readLevel(buf: ByteArray, n: Int): Boolean {
         val peak = MicSignal.peakAmplitude(buf, n)
         MicLevel.publish(peak)
-        if (peak > capturePeak) capturePeak = peak
         val nowMs = System.currentTimeMillis()
+        // While Alfred plays, a hands-free unit's own echo canceller may hold its mic down to nearly
+        // nothing, and that is a working mic doing its job. So the window counts only from the end of
+        // the last playback, and the loudest sample is the loudest one he had a chance to make.
+        if (playbackActive) {
+            captureOpenedAtMs = 0L
+            capturePeak = 0
+            return false
+        }
+        if (peak > capturePeak) capturePeak = peak
         if (captureOpenedAtMs == 0L) captureOpenedAtMs = nowMs
         if (nowMs - peakLoggedAtMs >= PEAK_LOG_INTERVAL_MS) {
             peakLoggedAtMs = nowMs

@@ -109,6 +109,9 @@ class EarpieceWiringTest {
         assertTrue("the screen's bar reads it too", level.contains("MicLevel.publish(peak)"))
         assertTrue("the whole window's loudest sample, not one buffer's", level.contains("if (peak > capturePeak)"))
         assertTrue("the decision is BluetoothMic's", level.contains("BluetoothMic.fallBack("))
+        // A car's own echo canceller holds its mic down while Alfred plays: that is not a deaf mic.
+        val held = level.indexOf("if (playbackActive)")
+        assertTrue("playback restarts the window", held in 0 until level.indexOf("BluetoothMic.fallBack("))
         assertTrue("only on the hands-free mic", level.contains("onBluetoothMic = callAudio?.onBluetoothMic == true"))
     }
 
