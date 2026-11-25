@@ -144,8 +144,10 @@ class FleetAnchorParityTest {
         // remembered figure as an ASSERTED anchor, and an OBSERVED event with no mileage (an
         // OBSERVED row may not carry a figure derived from the live estimate). `explainedBy` is
         // false between them - the anchor states a mileage the event does not - so the ASSERTED
-        // row survives, and the phone picks it by `updatedAt`. The engine picks it too: `_stated_at`
-        // ranks an assertion by when it was written and a backdated observation by its event day.
+        // row survives, and the phone picks it by `updatedAt`. The engine picks it too: it ranks
+        // an assertion by when it was written and this event row by the day it records
+        // (`_days_an_anchor_was_stated_for`). The next case is the same pair dated TODAY, which is
+        // where round 3 diverged.
         val rows = listOf(
             asserted(id = 5, name = "oil change", mileage = 42_000, date = apr20, statedAt = today),
             observed(id = 6, name = "oil change", mileage = null, date = apr20),
@@ -158,6 +160,31 @@ class FleetAnchorParityTest {
         assertEquals(42_000 to apr20, FleetRecordBridge.projectAnchorLegacy(rows))
         assertFalse(
             "a driver-stated anchor still times the item",
+            needsMileageReading(
+                itemFrom("oil change", rows, intervalMiles = 5_000, intervalMonths = null),
+            ),
+        )
+    }
+
+    @Test
+    fun `the same-day miles-ago backfill keeps its anchor too, which is where round 3 diverged`() {
+        // Round 3's blocker, phone side. The pair above dated TODAY, written in the order
+        // `logPastServiceDirect` writes it: `setAnchor` first (awaited), then `insertObserved`.
+        // Here the day makes no difference at all - `insertObserved` stamps `updatedAt = date`,
+        // midnight of the stated day, and `parseIsoDate` refuses a future one, so the assertion's
+        // wall clock is above it for EVERY day the phone will accept. The engine ranked this event
+        // row by its arrival inside a two-day window of the write and took it instead, so the
+        // brief called the service untimed while this side had it due at 47,000. Engine:
+        // `test_a_miles_ago_backfill_leaves_the_asserted_anchor_standing`, now run on three days.
+        val thisMorning = today + 9 * 3_600_000L
+        val rows = listOf(
+            asserted(id = 14, name = "oil change", mileage = 42_000, date = today, statedAt = thisMorning),
+            observed(id = 15, name = "oil change", mileage = null, date = today),
+        )
+
+        assertEquals(42_000 to today, FleetRecordBridge.projectAnchorLegacy(rows))
+        assertFalse(
+            "a driver-stated anchor still times the item, today included",
             needsMileageReading(
                 itemFrom("oil change", rows, intervalMiles = 5_000, intervalMonths = null),
             ),
