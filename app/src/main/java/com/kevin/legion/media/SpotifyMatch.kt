@@ -91,8 +91,13 @@ internal object SpotifyMatch {
      * Only where the symbol TOUCHES a letter, so it is standing in for one. A price (`100$ Bill`)
      * or a title of nothing but symbols keeps its old reading: `***` would be a wildcard that
      * matches every three-letter word there is.
+     *
+     * A RUN of them is one wildcard per character, because a catalogue writes `Joey Bada$$` for
+     * "badass": two letters said, two symbols printed. Collapsing the run to a single `*` would
+     * leave `bada*`, five characters against the request's six, and [tokensMatch] compares equal
+     * lengths - so the right artist would be a different word.
      */
-    private val LETTER_SYMBOL = Regex("""(?<=\p{L})[$@]|[$@](?=\p{L})""")
+    private val LETTER_SYMBOL = Regex("""(?<=\p{L})[$@]+|[$@]+(?=\p{L})""")
 
     /**
      * Lowercase, diacritics folded (`Beyoncé` -> `beyonce`), letter-standing symbols turned into
@@ -106,7 +111,8 @@ internal object SpotifyMatch {
      */
     fun normalize(s: String): String {
         val folded = COMBINING.replace(Normalizer.normalize(s.lowercase(), Normalizer.Form.NFD), "")
-        val letters = LETTER_SYMBOL.replace(APOSTROPHES.replace(folded.replace('&', ' '), ""), "*")
+        val stripped = APOSTROPHES.replace(folded.replace('&', ' '), "")
+        val letters = LETTER_SYMBOL.replace(stripped) { "*".repeat(it.value.length) }
         return NON_WORD.replace(letters, " ").let { SPACES.replace(it, " ").trim() }
     }
 
@@ -119,16 +125,51 @@ internal object SpotifyMatch {
         return normalize(noFeat)
     }
 
+    /**
+     * [normalize] after shedding the decoration a SPOKEN request adds to a title.
+     *
+     * The mirror of [normalizeCandidateTitle]'s `feat.` strip, and only that one. The brackets and
+     * the `- Remastered` dash suffix stay a catalogue's decorations: nobody says them, and a dash
+     * in a request is part of what he asked for. Without this the strip ran on one side only, so
+     * "mask off feat kendrick" scored against the whole phrase while the catalogue's own
+     * "Mask Off (feat. Kendrick Lamar)" had already shed its tail, and the right song was refused
+     * (music-fix-1124 review round 2, finding 1: the asymmetry, not a missing word).
+     *
+     * **Scoring only.** [containmentLeftovers] keeps the unstripped request on purpose, so a name
+     * inside a `feat.` tail is still judged rather than discarded; its doc has the case.
+     */
+    fun normalizeWantedTitle(title: String): String = normalize(FEAT_TAIL.replace(title.lowercase(), ""))
+
     private fun fold(token: String): String = token.replace("ck", "kk").replace('c', 'k')
+
+    /**
+     * The possessive a request says and a catalogue never prints: "hana reeds paper lanterns" for
+     * `Paper Lanterns` by `Hana Reed`. [normalize] has already dropped the apostrophe, so by the
+     * time a token is compared there is nothing left to tell `reed's` from a plural `reeds`, and
+     * the only lever is the trailing `s` itself (music-fix-1124 review round 2, finding 1).
+     *
+     * Deliberately ONE character off, and only a trailing `s` on the longer side: everything else
+     * about the two tokens must already match under [tokensMatch]'s own rule. `bike` and `bake` are
+     * still different words, and so are `head` and `heard`.
+     */
+    private fun withoutPossessive(longer: String, shorter: String): Pair<String, String>? =
+        if (longer.length == shorter.length + 1 && longer.endsWith("s")) longer.dropLast(1) to shorter else null
 
     @Suppress("ReturnCount") // guard clauses, one worded exit each
     internal fun tokensMatch(a: String, b: String): Boolean {
         if (a == b) return true
         val x = fold(a)
         val y = fold(b)
-        if (x.length != y.length) return false
-        return x.indices.all { x[it] == y[it] || x[it] == '*' || y[it] == '*' }
+        if (x.length != y.length) {
+            val trimmed = withoutPossessive(x, y) ?: withoutPossessive(y, x) ?: return false
+            return charsMatch(trimmed.first, trimmed.second)
+        }
+        return charsMatch(x, y)
     }
+
+    /** Equal length assumed: every position equal, or a `*` censor mark on either side. */
+    private fun charsMatch(x: String, y: String): Boolean =
+        x.indices.all { x[it] == y[it] || x[it] == '*' || y[it] == '*' }
 
     private fun tokens(normalized: String): List<String> =
         if (normalized.isEmpty()) emptyList() else normalized.split(' ')
@@ -198,7 +239,7 @@ internal object SpotifyMatch {
     @Suppress("ReturnCount") // guard clauses, one worded exit each
     fun titleMatches(candidateTitle: String, wantedTitle: String, artistConfirmed: Boolean = false): Boolean {
         val c = tokens(normalizeCandidateTitle(candidateTitle))
-        val w = tokens(normalize(wantedTitle))
+        val w = tokens(normalizeWantedTitle(wantedTitle))
         if (c.isEmpty() || w.isEmpty()) return false
         if (sequencesEqual(c, w)) return true
         val (short, long) = if (c.size <= w.size) c to w else w to c
@@ -217,15 +258,24 @@ internal object SpotifyMatch {
     }
 
     fun titleIsExact(candidateTitle: String, wantedTitle: String): Boolean =
-        sequencesEqual(tokens(normalizeCandidateTitle(candidateTitle)), tokens(normalize(wantedTitle)))
+        sequencesEqual(tokens(normalizeCandidateTitle(candidateTitle)), tokens(normalizeWantedTitle(wantedTitle)))
 
     /**
      * Words a spoken request puts around a title. They are never evidence of a different artist,
      * so a leftover that is only filler ("play the mask off song") must not reject a hit.
+     *
+     * The command verb and the credit words came in on the music-fix-1124 round-2 review's finding
+     * 1, which measured the gap: a right-song, right-artist request was refused because the surplus
+     * word it carried was `play`, `now`, `from`, `feat`, `ft` or `featuring`. `play_music`'s own
+     * `query` description asks the model for "his words", so echoing the utterance verb-and-all is
+     * what the declaration invites, and the review ranked `play` / `now` the likeliest of the set.
+     * The credit words are in here as well as stripped by [normalizeWantedTitle], because a request
+     * can name a feature without a tail after it ("the mask off featuring one").
      */
     private val FILLER = setOf(
         "song", "songs", "track", "tune", "music", "version", "please", "the", "a", "an",
         "by", "on", "for", "me", "some", "that", "it", "spotify",
+        "play", "now", "from", "feat", "ft", "featuring",
     )
 
     /**
@@ -243,6 +293,12 @@ internal object SpotifyMatch {
     @Suppress("ReturnCount") // guard clauses, one worded exit each
     internal fun containmentLeftovers(candidateTitle: String, wantedTitle: String): List<String>? {
         val c = tokens(normalizeCandidateTitle(candidateTitle))
+        // The UNSTRIPPED request, deliberately: [normalizeWantedTitle] sheds a `feat. X` tail for
+        // SCORING, and if it ran here the words in that tail would never be judged at all. That
+        // would undo P5 - "paper lanterns feat north sail" would score as a bare "paper lanterns"
+        // and play Hana Reed's song for a featured artist she does not have. The surplus is the one
+        // thing this function exists to look at, so it sees every word the request carried; `feat`
+        // itself is dropped below as filler, and the NAME after it still has to be explained.
         val w = tokens(normalize(wantedTitle))
         if (c.isEmpty() || w.isEmpty() || c.size >= w.size) return null
         val at = indexOfSequence(w, c)
