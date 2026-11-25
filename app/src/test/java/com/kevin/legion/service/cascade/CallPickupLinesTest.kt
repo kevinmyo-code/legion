@@ -72,6 +72,36 @@ class CallPickupLinesTest {
         assertEquals("every line is offered again", CallPickup.POOL.size, offered.size)
     }
 
+    /**
+     * Review F6. A rename used to lose the named lines for good, not until warm: keeping a line's
+     * audio at all is membership of the voice's keep set, and the static set holds the pool only
+     * under the register's own name, so a renamed line was never kept and the pool stayed narrowed
+     * to the three lines that say no name. The renamed pool is handed to the voice instead, and
+     * warmed on the ordinary filler schedule, so one conversation restores the whole pool.
+     */
+    @Test
+    fun `a renamed persona's lines are handed to the voice, so one render restores the pool`() {
+        val renamed = CallPickup.renamedKeep("Jarvis", default)
+        assertEquals("every line, under the new name", CallPickup.POOL.size, renamed.size)
+        assertTrue("in the form the voice is asked for", renamed.all { it == SpokenText.forSpeech(it) })
+        assertTrue("and none of them says the old name", renamed.none { it.contains(default) })
+        // What the session hands the voice is exactly what the pickup then probes for.
+        val inHandAfterOneRender: (String) -> Boolean = { SpokenText.forSpeech(it) in renamed }
+        val offered = CallPickup.offered("Jarvis", default, inHandAfterOneRender)
+        assertEquals("the full pool is offered again", CallPickup.POOL.size, offered.size)
+        assertTrue("including the named ones", offered.any { it.named })
+    }
+
+    @Test
+    fun `the register's own name needs nothing extra, its lines are already kept`() {
+        assertTrue(CallPickup.renamedKeep(default, default).isEmpty())
+        assertTrue("case does not make a rename", CallPickup.renamedKeep("alfred", default).isEmpty())
+        // The static set is what holds them, so an unrenamed install pays nothing for this.
+        for (line in CallPickup.warmable(default)) {
+            assertTrue("$line is kept", SpokenText.forSpeech(line) in ScriptedLines.KEEP)
+        }
+    }
+
     @Test
     fun `a time-of-day line is offered in its window and never outside it`() {
         val windowed = CallPickup.POOL.filter { it.window != null }

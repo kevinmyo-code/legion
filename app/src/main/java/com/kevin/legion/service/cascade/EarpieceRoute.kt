@@ -100,9 +100,9 @@ internal class EarpieceRoute(
         }
         scope.launch(loop + work) {
             // drop(1): the current value is whatever an EARLIER conversation asked for, never this one's.
-            VoiceOutput.routeChanges.drop(1).collect { wanted ->
-                if (wanted == null) return@collect
-                askRoute(wanted)
+            VoiceOutput.routeChanges.drop(1).collect { ask ->
+                if (ask == null) return@collect
+                askRoute(ask.earpiece)
                 reapply(callAudio, enterCallAudio)
             }
         }
@@ -158,7 +158,17 @@ internal class EarpieceRoute(
             Log.i(TAG, "proximity lock ${if (proximity != null) "held" else "unsupported"}")
         }
         val inCallAudio = mode != null && mode.isActive && !mode.onBluetoothMic
-        VoiceOutput.publish(LiveOutput(onEarpiece = on, refused = wanted && inCallAudio && !on))
+        // The outlet rides the same readback: the in-call Speaker control needs to know a headset has
+        // the route, and the one place that already knows is here.
+        VoiceOutput.publish(
+            LiveOutput(
+                onEarpiece = on,
+                refused = wanted && inCallAudio && !on,
+                // Not on the earpiece means the route decides: a headset, a phone call, else the
+                // loudspeaker. Never "earpiece wanted", which is what a refused ask would claim.
+                outlet = if (on) VoiceOutlet.EARPIECE else outlet(call = false),
+            ),
+        )
     }
 
     /** Every exit: the follower, its device jobs, the watch and the proximity lock go. Idempotent. */

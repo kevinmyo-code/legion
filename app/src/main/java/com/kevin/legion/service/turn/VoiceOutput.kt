@@ -22,7 +22,15 @@ internal enum class Opening { APP_TAP, WAKE_WORD, LINE, OTHER_TAP, TEST }
  * What an open conversation's audio actually does, from the platform's readback: on the earpiece, or
  * [refused] (the earpiece was asked for inside call audio and the phone did not route to it).
  */
-internal data class LiveOutput(val onEarpiece: Boolean, val refused: Boolean)
+internal data class LiveOutput(val onEarpiece: Boolean, val refused: Boolean, val outlet: VoiceOutlet)
+
+/**
+ * One ask from the in-call Speaker / Earpiece control. [serial] carries no meaning beyond being
+ * different every time: without it a [kotlinx.coroutines.flow.StateFlow] of the bare boolean would
+ * drop the second identical ask, so pressing Speaker on one call and then Speaker on the next would
+ * reach the second conversation not at all.
+ */
+internal data class RouteAsk(val earpiece: Boolean, val serial: Long)
 
 /** The pure decisions behind the earpiece: no Android types, so every case is a unit test. */
 internal object VoiceOutputRule {
@@ -91,14 +99,15 @@ internal object VoiceOutputRule {
 internal object VoiceOutput {
     private const val LEGACY_PREFS = "voice_output"
 
-    private val asks = MutableStateFlow<Boolean?>(null)
+    private val asks = MutableStateFlow<RouteAsk?>(null)
+    private val serial = java.util.concurrent.atomic.AtomicLong(0)
 
     /** Asks the open conversation to move its route: true the earpiece, false the loudspeaker. */
-    val routeChanges: StateFlow<Boolean?> = asks.asStateFlow()
+    val routeChanges: StateFlow<RouteAsk?> = asks.asStateFlow()
 
     /** The in-call control: a conversation collecting [routeChanges] moves without restarting. */
     fun askRoute(earpiece: Boolean) {
-        asks.value = earpiece
+        asks.value = RouteAsk(earpiece, serial.incrementAndGet())
     }
 
     private val liveState = MutableStateFlow<LiveOutput?>(null)
@@ -110,13 +119,12 @@ internal object VoiceOutput {
         liveState.value = output
     }
 
-    /** Drops the retired SPEAKER / CALL preference. Idempotent, so it runs at every start. */
+    /**
+     * Drops the retired SPEAKER / CALL preference. Idempotent, so it runs at every start. No API
+     * guard: `deleteSharedPreferences` came in API 24 and `minSdk` is 24.
+     */
     fun forgetSavedChoice(context: Context) {
-        runCatching {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                context.applicationContext.deleteSharedPreferences(LEGACY_PREFS)
-            }
-        }
+        runCatching { context.applicationContext.deleteSharedPreferences(LEGACY_PREFS) }
     }
 
     /** True when the phone has an earpiece to route to (false on a tablet). */

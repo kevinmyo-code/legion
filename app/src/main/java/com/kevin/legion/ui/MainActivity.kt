@@ -1441,6 +1441,10 @@ private fun LegionShell(
         }
         com.kevin.legion.ui.claudesession.ClaudeTaskModalHost(onOpenAll = openClaudeScreen, suppressed = isDrivingMode)
 
+        // A call to Alfred (2026-11-24) takes the whole screen for its duration, as a dialer does:
+        // over every route, under the ring bar, and drawn only while a call is up ([CallLine]).
+        SoftTheme { com.kevin.legion.ui.call.InCallOverlay() }
+
         // While anything rings (an alarm, a timer, an emergency alert), Stop is on top of every screen.
         val ringBarAt = Modifier.align(Alignment.TopCenter)
         SoftTheme { com.kevin.legion.ui.clock.RingStopBar(ringBarAt) }

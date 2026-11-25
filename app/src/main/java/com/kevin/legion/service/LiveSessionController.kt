@@ -1,5 +1,6 @@
 package com.kevin.legion.service
 
+import com.kevin.legion.service.turn.VoiceOutput
 import com.kevin.legion.service.turn.VoiceTurnSettings
 import com.kevin.legion.service.local.VoskLocalCommandGate
 import com.kevin.legion.service.local.LocalSpeaker
@@ -850,8 +851,27 @@ class LiveSessionController(context: Context) {
             }
             return
         }
+        // The Call button over a conversation already running moves it to his ear, and never ends it
+        // (review F2): the button's words promise he answers at the ear, and the old output toggle in
+        // that slot did move a live conversation. The orb is still the way to interrupt or end.
+        if (call) { c.onCallButton(); return }
         // The session says which it did ("Listening", or "Ended the chat").
         c.onTap()
+    }
+
+    /** The in-call Mute control: his mic stays open, nothing it hears starts a turn. */
+    fun onCallMute(on: Boolean) {
+        cascade?.setMuted(on)
+    }
+
+    /** The in-call Speaker / Earpiece control: the open conversation moves without restarting. */
+    fun onCallRoute(earpiece: Boolean) {
+        VoiceOutput.askRoute(earpiece)
+    }
+
+    /** The in-call Hang up: the call ends with its closing tone, as a conversation he stopped does. */
+    fun onHangUp() {
+        cascade?.close("hung_up")
     }
 
     /**

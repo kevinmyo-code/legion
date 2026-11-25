@@ -26,6 +26,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.kevin.legion.R
+import com.kevin.legion.ai.CompanionProfile
 import com.kevin.legion.service.TelephonyController
 import com.kevin.legion.service.turn.AudioRoute
 import com.kevin.legion.service.turn.CallAudioMode
@@ -48,19 +49,21 @@ internal object CallButtonRule {
      * call still behaves as a call (it is just not hands-held), so it says which and stays pressable;
      * a real phone call means hands off, as everything else in the voice path does.
      */
-    fun face(hasEarpiece: Boolean, route: AudioRoute, inCall: Boolean): CallButtonUi? = when {
+    fun face(name: String, hasEarpiece: Boolean, route: AudioRoute, inCall: Boolean): CallButtonUi? = when {
         !hasEarpiece -> null
-        inCall -> CallButtonUi("Call", enabled = false, detail = ON_A_CALL)
-        route == AudioRoute.BLUETOOTH -> CallButtonUi("Call on headset", enabled = true, detail = BLUETOOTH)
-        route == AudioRoute.WIRED_HEADSET -> CallButtonUi("Call on headphones", enabled = true, detail = WIRED)
-        else -> CallButtonUi("Call", enabled = true, detail = EARPIECE)
+        inCall -> CallButtonUi("Call", enabled = false, detail = "On a phone call. Call $name after it")
+        route == AudioRoute.BLUETOOTH -> CallButtonUi(
+            "Call on headset",
+            enabled = true,
+            detail = "Call $name on the connected headset. He cannot be interrupted mid-sentence over Bluetooth",
+        )
+        route == AudioRoute.WIRED_HEADSET -> CallButtonUi(
+            "Call on headphones",
+            enabled = true,
+            detail = "Call $name on the connected headphones",
+        )
+        else -> CallButtonUi("Call", enabled = true, detail = "Call $name. He answers at your ear, like a phone call")
     }
-
-    private const val EARPIECE = "Call Alfred. He answers at your ear, like a phone call"
-    private const val BLUETOOTH =
-        "Call Alfred on the connected headset. He cannot be interrupted mid-sentence over Bluetooth"
-    private const val WIRED = "Call Alfred on the connected headphones"
-    private const val ON_A_CALL = "On a phone call. Call Alfred after it"
 }
 
 /**
@@ -102,7 +105,14 @@ internal fun rememberCallButton(key: Any?): CallButtonUi? {
         onDispose { runCatching { audio.unregisterAudioDeviceCallback(watch) } }
     }
     val tick = devices.intValue
-    return remember(tick, key) {
-        CallButtonRule.face(VoiceOutput.hasEarpiece(audio), CallAudioMode.route(audio), TelephonyController.isInCall)
+    // The persona's own name, never a literal (CLAUDE.md sec 1): what TalkBack reads is his name.
+    val name = remember { CompanionProfile.name(context) }
+    return remember(tick, key, name) {
+        CallButtonRule.face(
+            name,
+            VoiceOutput.hasEarpiece(audio),
+            CallAudioMode.route(audio),
+            TelephonyController.isInCall,
+        )
     }
 }

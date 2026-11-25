@@ -64,6 +64,24 @@ internal object CallPickup {
     fun warmable(name: String): List<String> = POOL.map { fill(it.text, name) }
 
     /**
+     * The pool as the voice must hold it for a persona that has been RENAMED, in spoken form (what
+     * reaches the voice), and empty for the register's own name, whose lines are already in
+     * [ScriptedLines.KEEP].
+     *
+     * Without this a rename loses the named lines for good, not until warm (review F6): keeping a
+     * line's audio at all is `text in keepLines` ([GeminiTts]), so a renamed line is never kept, so
+     * [offered] never sees it in hand, so the pool stays narrowed to the three lines that say no
+     * name. The session hands this to the voice at construction and warms it on the ordinary filler
+     * schedule, so one conversation after a rename restores the whole pool.
+     */
+    fun renamedKeep(name: String, defaultName: String): Set<String> =
+        if (name.equals(defaultName, ignoreCase = true)) {
+            emptySet()
+        } else {
+            warmable(name).map { SpokenText.forSpeech(it) }.toSet()
+        }
+
+    /**
      * The line to say, with the pool's state remembered. [name] is the persona's live name
      * ([com.kevin.legion.ai.CompanionProfile.name]), [defaultName] the register's own
      * ([com.kevin.legion.ai.Personas]), [inHand] whether the voice can say a line at once from audio

@@ -39,12 +39,18 @@ import org.robolectric.annotation.GraphicsMode
 @Config(qualifiers = "w412dp-h915dp")
 class TypesetCallButtonTest {
 
+    /** The persona's name as the button reads it: made up, never a literal in the code under test. */
+    private val persona = "Alfred"
+
     @get:Rule
     val rule = createAndroidComposeRule<ComponentActivity>()
 
-    private val earpiece = CallButtonRule.face(hasEarpiece = true, route = AudioRoute.PHONE_SPEAKER, inCall = false)!!
-    private val onHeadset = CallButtonRule.face(hasEarpiece = true, route = AudioRoute.BLUETOOTH, inCall = false)!!
-    private val duringCall = CallButtonRule.face(hasEarpiece = true, route = AudioRoute.PHONE_SPEAKER, inCall = true)!!
+    private fun face(route: AudioRoute, inCall: Boolean = false) =
+        CallButtonRule.face(persona, hasEarpiece = true, route = route, inCall = inCall)!!
+
+    private val earpiece = face(AudioRoute.PHONE_SPEAKER)
+    private val onHeadset = face(AudioRoute.BLUETOOTH)
+    private val duringCall = face(AudioRoute.PHONE_SPEAKER, inCall = true)
 
     private fun show(call: CallButtonUi?, actions: TypesetHomeActions, cards: List<ConversationCard> = emptyList()) {
         rule.mainClock.autoAdvance = false
@@ -105,7 +111,7 @@ class TypesetCallButtonTest {
 
     @Test
     fun `no earpiece, no button`() {
-        assertNull("nothing to hold to an ear", CallButtonRule.face(false, AudioRoute.PHONE_SPEAKER, false))
+        assertNull("nothing to hold to an ear", CallButtonRule.face(persona, false, AudioRoute.PHONE_SPEAKER, false))
         show(null, TypesetHomeActions())
         rule.onNodeWithText("Call").assertDoesNotExist()
         rule.onAllNodesWithContentDescription("Talk to Alfred").onFirst().assertExists()
@@ -128,7 +134,7 @@ class TypesetCallButtonTest {
 
     /** The longest label, on the page: the button's touch target and the orb's do not intersect. */
     private fun assertApart(cards: List<ConversationCard> = emptyList()) {
-        val longest = CallButtonRule.face(hasEarpiece = true, route = AudioRoute.WIRED_HEADSET, inCall = false)!!
+        val longest = face(AudioRoute.WIRED_HEADSET)
         show(longest, TypesetHomeActions(), cards)
         val orb = placed(hasContentDescription("Talk to Alfred")).boundsInRoot
         val button = placed(hasContentDescription(longest.detail)).boundsInRoot

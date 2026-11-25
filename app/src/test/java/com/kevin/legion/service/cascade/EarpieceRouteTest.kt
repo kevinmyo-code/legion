@@ -8,6 +8,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.kevin.legion.service.turn.CallAudioMode
 import com.kevin.legion.service.turn.LiveOutput
 import com.kevin.legion.service.turn.Opening
+import com.kevin.legion.service.turn.VoiceOutlet
 import com.kevin.legion.service.turn.VoiceOutput
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -98,7 +99,8 @@ class EarpieceRouteTest {
         assertTrue(mode.onEarpiece)
         assertEquals(0, enterAsked)
         assertTrue(lockHeld())
-        assertEquals(LiveOutput(onEarpiece = true, refused = false), VoiceOutput.live.value)
+        val onEar = LiveOutput(onEarpiece = true, refused = false, outlet = VoiceOutlet.EARPIECE)
+        assertEquals(onEar, VoiceOutput.live.value)
         mode.exit("test")
     }
 
@@ -108,7 +110,8 @@ class EarpieceRouteTest {
         route.reapply({ mode }, enter)
         assertFalse(mode.onEarpiece)
         assertFalse(lockHeld())
-        assertEquals(LiveOutput(onEarpiece = false, refused = true), VoiceOutput.live.value)
+        val refused = LiveOutput(onEarpiece = false, refused = true, outlet = VoiceOutlet.LOUDSPEAKER)
+        assertEquals(refused, VoiceOutput.live.value)
         mode.exit("test")
     }
 

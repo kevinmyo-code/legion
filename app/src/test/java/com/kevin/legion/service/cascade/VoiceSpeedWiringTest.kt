@@ -25,6 +25,12 @@ class VoiceSpeedWiringTest {
         val openNow = bodyOf(s, "openNow")
         val micNow = openNow.indexOf("openMicNow()")
         assertTrue("a tap opens the mic in openNow", micNow >= 0)
+        // Review F4: the guard is the whole of "a call answers before it listens". Delete it and
+        // every opening gets the tap's earcon in front of the pickup line, with nothing else failing.
+        assertTrue(
+            "the mic at the tap is the chime opening's alone",
+            openNow.contains("if (listens && opening == OpeningRule.Opening.CHIME) openMicNow()"),
+        )
         assertTrue("before the turn models", micNow < openNow.indexOf("TurnModels.awaitReady("))
         assertTrue("before the voice service", micNow < openNow.indexOf("openBackend("))
         // The chime branch returns before the greeting plan is awaited or any line is spoken.

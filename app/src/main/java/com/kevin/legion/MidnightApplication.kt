@@ -31,6 +31,7 @@ import com.kevin.legion.navigation.resolve.SuggestionSource
 import com.kevin.legion.navigation.voice.NavCueSpeaker
 import com.kevin.legion.navigation.voice.NavVoiceTools
 import com.kevin.legion.service.ProactivePreferences
+import com.kevin.legion.service.turn.VoiceOutput
 import com.mapbox.common.MapboxOptions
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -249,7 +250,7 @@ class MidnightApplication : Application() {
         // The retired SPEAKER / CALL choice (2026-11-24, the Call button): the earpiece is a per-call
         // intent now, so a phone that saved CALL must not send plain orb taps to the earpiece. Dropping
         // the file is idempotent and costs one check per start.
-        com.kevin.legion.service.turn.VoiceOutput.forgetSavedChoice(this)
+        VoiceOutput.forgetSavedChoice(this)
         // The phone's own logs on the engine (2026-11-09, Kevin: "Send everything from the phone to
         // the engine so we can audit without adb"). First after the key it redacts, so its crash
         // handler and its logcat reader are live before anything else here can fail. Gated off
