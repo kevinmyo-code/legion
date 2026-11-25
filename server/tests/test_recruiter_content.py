@@ -15,11 +15,13 @@ from django.core.cache import cache
 from django.core.management import CommandError, call_command
 from rest_framework.test import APIClient
 
-from demo.content import CONTENT_SCHEMA, problems, public_content
+from demo.content import CONTENT_SCHEMA, MODEL_NAME, problems, public_content
 from demo.content_views import NO_CONTENT, NOT_A_READER, NOT_A_VISIT, NOT_SIGNED_IN
 from demo.models import DemoCode, RecruiterContent
+from household.demo import demo_household_name
 from household.models import Household, HouseholdMember, User
 from household.permissions import RECRUITER_VISIT_OVER
+from household.tenancy import BOOTSTRAP_ID_ENV
 from tests.conftest import _client_for
 
 pytestmark = pytest.mark.django_db
@@ -318,6 +320,54 @@ def test_an_owner_may_preview(token_a, tmp_path):
     load_fake(tmp_path)
     assert token_a.get("/api/demo/content").status_code == 200
     assert token_a.get("/api/demo/asset/resume").status_code == 200
+
+
+def test_the_engine_owner_still_previews_in_the_DEPLOYED_shape(token_a, tmp_path, monkeypatch):
+    """The preview the new fence must not take away, in the shape the live
+    engine actually has: no `LEGION_BOOTSTRAP_HOUSEHOLD_ID`, the demo's one
+    shared seeded household beside Kevin's, and per-visit copies on top.
+
+    `is_engine_owner` answers through `resolve_default_household`, so a
+    resolver that counted either demo shape as a family's would answer None
+    here and turn all three routes 403 - the engine's own owner locked out of
+    his own page by the fence meant to narrow it to him. The test above runs
+    with the bootstrap id set and so cannot see that; this one deletes it
+    first, which is the whole point of the pair.
+    """
+    monkeypatch.delenv(BOOTSTRAP_ID_ENV, raising=False)
+    Household.objects.create(name=demo_household_name())
+    Household.objects.create(name="Demo visit zz", is_demo_visit=True)
+    load_fake(tmp_path)
+
+    for path in ("/api/demo/content", "/api/demo/asset/report", "/api/demo/asset/resume"):
+        assert token_a.get(path).status_code == 200, path
+
+
+def test_an_owner_of_a_SECOND_household_may_not_preview(token_b, tmp_path):
+    """The preview is the ENGINE household's owner's, not any owner's
+    (2026-11-24, `household.permissions.is_engine_owner`).
+
+    `token_b` owns household B (ADR 0045: one engine holds more than one
+    family, and Kevin's parents' is coming). The page carries no household of
+    its own - it is one person's resume, report and clips - so an unqualified
+    owner check handed a second family's owner the resume PDF and the report
+    HTML. They get the plain member's refusal now, and the file's bytes never
+    appear in the body.
+    """
+    load_fake(tmp_path)
+    paths = (
+        "/api/demo/content",
+        "/api/demo/asset/report",
+        "/api/demo/asset/resume",
+        # The third route the class guards. Its file is not loaded here, so on
+        # the old check this answered 404 rather than 403 - still proof the
+        # fence let them past it.
+        f"/api/demo/media/{MODEL_NAME}",
+    )
+    for path in paths:
+        refused = token_b.get(path)
+        assert refused.status_code == 403 and refused.data == {"detail": NOT_A_READER}, path
+        assert FAKE_PDF not in refused.content and FAKE_REPORT not in refused.content, path
 
 
 def test_a_plain_member_and_a_stranger_are_refused(plain_member, tmp_path):
