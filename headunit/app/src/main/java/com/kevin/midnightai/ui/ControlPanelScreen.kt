@@ -175,7 +175,10 @@ private enum class Section {
 
 @Composable
 fun ControlPanel(
-    onRequestRuntimePermissions: () -> Unit,
+    // Returns the words for what did not happen, or null when Android took the request: the
+    // permission launch goes through ExternalDoor, and the row that taps it is the one place those
+    // words have a screen to land on.
+    onRequestRuntimePermissions: () -> String?,
     startInSetup: Boolean = false,
     // Lands straight on Phones & audio > Phones (Cruise's phone-link chip tap
     // target, 2026-09-27). Same shape as startInSetup; the three shortcuts are
@@ -1175,7 +1178,7 @@ private fun AboutYouSection(context: Context, onBack: () -> Unit) {
 // on ON_RESUME) and everything else (preferences).
 
 @Composable
-private fun SystemPermissionsSection(context: Context, onRequestRuntimePermissions: () -> Unit, onBack: () -> Unit) {
+private fun SystemPermissionsSection(context: Context, onRequestRuntimePermissions: () -> String?, onBack: () -> Unit) {
     var refresh by remember { mutableIntStateOf(0) }
 
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -1200,23 +1203,30 @@ private fun SystemPermissionsSection(context: Context, onRequestRuntimePermissio
     }
     val mediaGranted = remember(refresh) { NowPlayingController.hasAccess(context) }
 
-    var trouble by remember { mutableStateOf<String?>(null) }
+    // One holder per row: a successful retry of either must not wipe the other's line, which is
+    // still true until its own tap says otherwise.
+    var micTrouble by remember { mutableStateOf<String?>(null) }
+    var mediaTrouble by remember { mutableStateOf<String?>(null) }
 
     SectionScaffold("Permissions", onBack) {
         GrantRow(
             label = "Microphone & location",
             granted = micGranted,
             actionLabel = "Grant",
-            onAction = onRequestRuntimePermissions,
+            onAction = { micTrouble = onRequestRuntimePermissions() },
         )
+        micTrouble?.let {
+            Spacer(Modifier.height(8.dp))
+            Text(it, style = RowSubtitle, color = AriaColors.NeonCyan)
+        }
         GrantRow(
             label = "Media access (now-playing & music control)",
             granted = mediaGranted,
             actionLabel = "Enable",
             // The second copy of this intent used to live here, unguarded. One door, one caller.
-            onAction = { trouble = openNotificationAccessSettings(context) },
+            onAction = { mediaTrouble = openNotificationAccessSettings(context) },
         )
-        trouble?.let {
+        mediaTrouble?.let {
             Spacer(Modifier.height(8.dp))
             Text(it, style = RowSubtitle, color = AriaColors.NeonCyan)
         }
