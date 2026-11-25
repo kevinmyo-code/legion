@@ -83,20 +83,6 @@ internal object SpotifyMatch {
     private val COMBINING = Regex("""\p{Mn}+""")
 
     /**
-     * A possessive `'s`, which carries no information about which name was said: "hana reed's paper
-     * lanterns" is a request for `Paper Lanterns` by `Hana Reed`.
-     *
-     * Dropped whole, on BOTH sides, and before [APOSTROPHES] takes the apostrophe away - after that
-     * there is nothing left to tell `reed's` from a plural `reeds`. **Only an apostrophe-`s`.** An
-     * earlier round folded any trailing `s` on any token and collided real artists: `Queen` with
-     * `Queens Of The Stone Age` and `Wing` with `Wings`, so "little sister by queen" played a QOTSA
-     * track called `Sister` (blind review, 2026-11-25, finding 2). A catalogue that prints `Queens`
-     * has no apostrophe, so this rule cannot reach it. The cost is that a request transcribed
-     * without the apostrophe is not folded, which is the narrower half of the trade.
-     */
-    private val POSSESSIVE = Regex("""['’`´]s(?=\s|$)""")
-
-    /**
      * Symbols a catalogue writes where a letter is said: `A$AP` for "asap", `$uicideboy$` for
      * "suicideboys". Mapped to `*`, which [tokensMatch] already reads as "any letter here", rather
      * than dropped (leaving `aap`) or spaced (leaving `a ap`) - neither of which the request's own
@@ -122,10 +108,19 @@ internal object SpotifyMatch {
      * point: a gap between how he says a name and how Spotify prints it must not decide anything.
      * Folding runs BEFORE [NON_WORD], because a combining mark left in place becomes a space and
      * splits the word in half.
+     *
+     * **An apostrophe-`s` folds to a plain `s`, it is not dropped.** Dropping it broke the common
+     * case to chase a rare one: `What's Up` became `what up` while the request "whats up" stayed
+     * `whats up`, so the two no longer matched, and `Destiny's Child` stopped matching
+     * "destinys child" (blind review round 2, 2026-11-25, finding A). Folding leaves both sides
+     * `whats`, which is what the catalogue and a transcript agree on. It gives up telling `reed's`
+     * from a plural `reeds`, so a possessive request no longer finds a singular artist - a refusal
+     * with closest hits, not a wrong play - and it keeps `Queen` and `Queens Of The Stone Age`
+     * apart, which is the collision that matters.
      */
     fun normalize(s: String): String {
         val folded = COMBINING.replace(Normalizer.normalize(s.lowercase(), Normalizer.Form.NFD), "")
-        val stripped = APOSTROPHES.replace(POSSESSIVE.replace(folded.replace('&', ' '), ""), "")
+        val stripped = APOSTROPHES.replace(folded.replace('&', ' '), "")
         val letters = LETTER_SYMBOL.replace(stripped) { "*".repeat(it.value.length) }
         return NON_WORD.replace(letters, " ").let { SPACES.replace(it, " ").trim() }
     }
@@ -149,7 +144,7 @@ internal object SpotifyMatch {
      * "Mask Off (feat. Kendrick Lamar)" had already shed its tail, and the right song was refused
      * (music-fix-1124 review round 2, finding 1: the asymmetry, not a missing word).
      *
-     * **Scoring only, and what it sheds is judged by [shedTailWords].** Stripping the tail for
+     * **Scoring only, and what it sheds is judged by [unstrippedSurplus].** Stripping the tail for
      * scoring alone handed a stranger the song: when the candidate's own title is the LONGER side,
      * [containmentLeftovers] has no sub-run to measure, returns null, and [accepts] read that null
      * as "nothing to explain". So "paper lanterns feat north sail" played `Paper Lanterns Tonight`
@@ -160,18 +155,29 @@ internal object SpotifyMatch {
     fun normalizeWantedTitle(title: String): String = normalize(FEAT_TAIL.replace(title.lowercase(), ""))
 
     /**
-     * The words [normalizeWantedTitle] shed, filler dropped: the body of a `feat. X` tail without
-     * the joining word that introduced it.
+     * Every word the UNSTRIPPED request carried that this candidate's title does not cover, filler
+     * dropped. Empty when the request had no tail to shed, because then nothing was hidden from
+     * [containmentLeftovers] and the ordinary rules already measured the whole request.
      *
-     * The joiner is dropped because it is the request's own grammar, not a claim about anybody:
-     * keeping it would refuse "stay with me" for `Stay With Me`, since `with` names no artist. What
-     * is left is a claim - a featured name - and [accepts] makes the candidate account for it.
+     * This is the guard for the whole strip, not just its tail. An earlier round judged only the
+     * tail's own body, which is empty when the tail is pure filler, and then a `null` containment
+     * still read as "nothing to explain": "come away with me" shed `with me`, scored its two
+     * remaining words inside `Come Away Death`, and played a stranger that the base refused (blind
+     * review round 2, 2026-11-25, finding B). Measured against the whole request, the surplus is
+     * `with`, which `Come Away Death` cannot account for and `Come Away With Me` can.
+     *
+     * Per token against a pool, so a word the title really carries is consumed once and a repeat is
+     * still surplus. Only the request's own words are judged; a title word the request did not say
+     * is the containment branch's business and stays as it was.
      */
-    internal fun shedTailWords(wantedTitle: String): List<String> {
-        val lower = wantedTitle.lowercase()
-        // Group 1 is the joining word, so the body starts just after it.
-        val joiner = FEAT_TAIL.find(lower)?.groups?.get(1) ?: return emptyList()
-        return tokens(normalize(lower.substring(joiner.range.last + 1))).filterNot { it in FILLER }
+    internal fun unstrippedSurplus(candidateTitle: String, wantedTitle: String): List<String> {
+        if (!FEAT_TAIL.containsMatchIn(wantedTitle.lowercase())) return emptyList()
+        val pool = tokens(normalizeCandidateTitle(candidateTitle)).toMutableList()
+        return tokens(normalize(wantedTitle)).filter { w ->
+            val at = pool.indexOfFirst { tokensMatch(it, w) }
+            if (at >= 0) pool.removeAt(at)
+            at < 0
+        }.filterNot { it in FILLER }
     }
 
     private fun fold(token: String): String = token.replace("ck", "kk").replace('c', 'k')
@@ -519,11 +525,12 @@ internal object SpotifyMatch {
         // one of the four calls that went wrong on 2026-11-24, so nothing here may depend on it.
         val remainder = artistEvidence(reading.title, artists)
         if (titleMatches(name, reading.title, artistConfirmed = remainder != null)) {
-            // A `feat. X` tail was shed for scoring, so X is surplus this candidate must account
-            // for. Checked before the containment branch because that branch cannot see it: when
-            // the candidate's title is the longer side there is no sub-run to measure.
-            val shed = shedTailWords(reading.title)
-            if (shed.isNotEmpty() && !leftoversExplained(shed, artists, name)) return false
+            // A tail was shed for scoring, so every word the whole request carried must still be
+            // accounted for. Checked before the containment branch because that branch cannot see
+            // them: when the candidate's title is the longer side there is no sub-run to measure,
+            // and its null must not read as "nothing to explain".
+            val surplus = unstrippedSurplus(name, reading.title)
+            if (surplus.isNotEmpty() && !leftoversExplained(surplus, artists, name)) return false
             val leftovers = containmentLeftovers(name, reading.title) ?: return true
             return leftovers.isEmpty() || leftoversExplained(leftovers, artists, name)
         }

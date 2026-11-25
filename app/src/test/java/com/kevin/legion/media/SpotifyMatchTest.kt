@@ -432,19 +432,30 @@ class SpotifyMatchTest {
     }
 
     @Test
-    fun `a possessive apostrophe-s carries no information and is dropped on both sides`() {
-        assertEquals("hana reed paper lanterns", SpotifyMatch.normalize("Hana Reed's Paper Lanterns"))
-        assertEquals("hana reed paper lanterns", SpotifyMatch.normalize("Hana Reed’s Paper Lanterns"))
-        // Both sides, so a title that really carries one still compares equal to itself.
-        assertEquals("jolene song", SpotifyMatch.normalize("Jolene's Song"))
-        // Not every apostrophe: only an apostrophe-s at the end of a word.
+    fun `an apostrophe-s folds to a plain s, so a contraction title still matches`() {
+        // Blind review round 2 finding A: dropping the `s` outright broke the common case. A
+        // transcript says "whats up" and the catalogue prints "What's Up"; both must read alike.
+        assertEquals("whats up", SpotifyMatch.normalize("What's Up"))
+        assertEquals("whats up", SpotifyMatch.normalize("whats up"))
+        assertEquals("destinys child", SpotifyMatch.normalize("Destiny's Child"))
+        assertEquals("hana reeds paper lanterns", SpotifyMatch.normalize("Hana Reed's Paper Lanterns"))
+        assertEquals("hana reeds paper lanterns", SpotifyMatch.normalize("Hana Reed’s Paper Lanterns"))
         assertEquals("dont stop", SpotifyMatch.normalize("Don't Stop"))
-        assertEquals("sheslike", SpotifyMatch.normalize("She'slike"))
-        val c = track("Paper Lanterns", "Hana Reed", "spotify:track:pl")
+        assertTrue(SpotifyMatch.titleMatches("What's Up", "whats up"))
+        assertTrue(SpotifyMatch.artistMatches(listOf("Destiny's Child"), "destinys child"))
+        assertTrue(SpotifyMatch.artistMatches(listOf("Dexys Midnight Runners"), "dexy's midnight runners"))
         assertEquals(
-            "spotify:track:pl",
-            SpotifyMatch.pick(listOf(c), "hana reed's paper lanterns", null)?.optString("uri"),
+            "spotify:track:wu",
+            SpotifyMatch.pick(listOf(track("What's Up", "4 Non Blondes", "spotify:track:wu")), "whats up", null)
+                ?.optString("uri"),
         )
+        assertEquals(
+            "spotify:track:lg",
+            SpotifyMatch.pick(listOf(track("Let's Go", "Calvin Harris", "spotify:track:lg")), "lets go", null)
+                ?.optString("uri"),
+        )
+        // The other direction: folding to an `s` is not a licence to ignore one.
+        assertFalse(SpotifyMatch.artistMatches(listOf("Queen"), "Queen's"))
     }
 
     @Test
@@ -507,6 +518,45 @@ class SpotifyMatchTest {
             "spotify:track:swm",
             SpotifyMatch.pick(listOf(stay), "stay with me", null)?.optString("uri"),
         )
+    }
+
+    @Test
+    fun `a tail of nothing but filler still has to be accounted for`() {
+        // Blind review round 2 finding B: the tail's own body is empty here ("me" is filler), so
+        // judging only the body left nothing to check, and a null containment read as "nothing to
+        // explain". The whole request said "with", and this candidate cannot account for it.
+        val stranger = track("Come Away Death", "Gravel Choir", "spotify:track:cad")
+        assertNull(SpotifyMatch.pick(listOf(stranger), "come away with me", null))
+        assertNull(SpotifyMatch.pick(listOf(stranger), "come away with it", null))
+        assertNull(
+            SpotifyMatch.pick(
+                listOf(track("Come Away Death Tonight", "Gravel Choir", "spotify:track:cadt")),
+                "come away with me",
+                null,
+            ),
+        )
+        // The other direction: the catalogue's own title carries the word, so it still plays.
+        val right = track("Come Away With Me", "Norah Jones", "spotify:track:cawm")
+        assertEquals(
+            "spotify:track:cawm",
+            SpotifyMatch.pick(listOf(right), "come away with me", null)?.optString("uri"),
+        )
+        assertEquals(
+            "spotify:track:wl",
+            SpotifyMatch.pick(
+                listOf(track("What's Love Got To Do With It", "Tina Turner", "spotify:track:wl")),
+                "whats love got to do with it",
+                null,
+            )?.optString("uri"),
+        )
+        // The surplus is measured against the WHOLE request, and only when a tail was shed. It is
+        // the same word for both candidates; what differs is whether the candidate can explain it.
+        assertEquals(listOf("with"), SpotifyMatch.unstrippedSurplus("Come Away Death", "come away with me"))
+        assertEquals(listOf("with"), SpotifyMatch.unstrippedSurplus("Come Away With Me", "come away with me"))
+        assertFalse(SpotifyMatch.leftoversExplained(listOf("with"), listOf("Gravel Choir"), "Come Away Death"))
+        assertTrue(SpotifyMatch.leftoversExplained(listOf("with"), listOf("Norah Jones"), "Come Away With Me"))
+        // No tail in the request, nothing was hidden, so this guard stays out of the way.
+        assertEquals(emptyList<String>(), SpotifyMatch.unstrippedSurplus("Come Away Death", "come away"))
     }
 
     @Test
