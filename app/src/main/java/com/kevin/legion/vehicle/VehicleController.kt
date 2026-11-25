@@ -280,7 +280,7 @@ object VehicleController {
         pinWaitingItems: Boolean = true,
     ): WriteOutcome {
         if (!odometerReadingPlausible(miles))
-            return WriteOutcome(false, "That reading doesn't look right — odometer should be between 100 and 999,999 miles.")
+            return WriteOutcome(false, "That reading doesn't look right - odometer should be between 100 and 999,999 miles.")
         val vehicle = vehicleFor(context, vehicleId)
         val now = System.currentTimeMillis()
 
