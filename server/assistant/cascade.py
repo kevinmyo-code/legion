@@ -1183,7 +1183,9 @@ def _answer(
         from_user=True,
         over_reply=turn_input.barge_in,
         words=words,
-        crisis=False,
+        # The phone says nothing light over words of distress (`Backchannel.kt` wordsSkip CRISIS),
+        # and nothing here handles a crisis before this point, so the check belongs here.
+        crisis=crisis.detect(words),
         goodbye=is_stop_utterance(words),
     )
     if speak and ack_skip is None:
