@@ -3,6 +3,21 @@ package com.kevin.legion.media
 import org.json.JSONObject
 
 /**
+ * One near-miss a rejection named, with the URI that makes it actionable.
+ *
+ * The URI is the point (music-suggestions-1124 P3). A rejection's own instruction to the model
+ * is to ask which of these was meant - and the rejection used to carry display strings only,
+ * so a "yes, that one" had nothing to hand back to `play_music`. Its only route was to
+ * re-search by a name it would have to reproduce exactly, in the catalogue's own spelling.
+ * Every other music result that names a playable row already carries its URI; this was the
+ * inconsistency, not a policy.
+ */
+data class ClosestHit(val name: String, val artist: String?, val uri: String?) {
+    /** "Title by Artist", for the spoken line. */
+    val label: String get() = if (artist != null) "$name by $artist" else name
+}
+
+/**
  * The acceptance check between what was ASKED for and what Spotify's search handed back.
  *
  * Exists because `search()` used to take the most popular of ten hits with no check against the
@@ -222,12 +237,15 @@ internal object SpotifyMatch {
 
     // ---------------------------------------------------------------- picking
 
-    /** The top hits (Spotify's order) as "Title by Artist", for naming what a rejection saw. */
-    fun describe(candidates: List<JSONObject>): List<String> =
+    /** The top hits in Spotify's own order, for naming what a rejection saw. */
+    fun describe(candidates: List<JSONObject>): List<ClosestHit> =
         candidates.take(CLOSEST_COUNT).mapNotNull { c ->
             val name = c.optString("name").takeIf { it.isNotBlank() } ?: return@mapNotNull null
-            val by = artistsOf(c).firstOrNull()?.takeIf { it.isNotBlank() }
-            if (by != null) "$name by $by" else name
+            ClosestHit(
+                name = name,
+                artist = artistsOf(c).firstOrNull()?.takeIf { it.isNotBlank() },
+                uri = c.optString("uri").takeIf { it.isNotBlank() },
+            )
         }
 
     private fun artistsOf(c: JSONObject): List<String> =
