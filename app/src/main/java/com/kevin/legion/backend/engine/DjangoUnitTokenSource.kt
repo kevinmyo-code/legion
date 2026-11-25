@@ -64,11 +64,12 @@ class DjangoUnitTokenSource(private val http: EngineHttp) : UnitTokenSource {
 
     override suspend fun revoke(id: String): Boolean {
         val result = http.delete("$HEAD_UNITS/${id.encodeURLPathPart()}")
-        if (result.isSuccess) return true
         val failure = (result.exceptionOrNull() as? EngineHttpException)?.failure
-        if (failure is EngineFailure.Refused && failure.status == NOT_FOUND) return true
-        Log.w(TAG, "revoke refused: ${status(failure)}")
-        return false
+        // A 404 counts as gone: "no live head unit of yours has that id" is the outcome Forget
+        // asked about, and answering false would make a Forget that worked look failed.
+        val gone = result.isSuccess || (failure is EngineFailure.Refused && failure.status == NOT_FOUND)
+        if (!gone) Log.w(TAG, "revoke refused: ${status(failure)}")
+        return gone
     }
 
     /** The one place a `{id, token, expires}` reply becomes a [UnitToken], or null and a log line. */
