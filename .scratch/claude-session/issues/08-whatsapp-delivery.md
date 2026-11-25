@@ -4,7 +4,7 @@ ticket: "08"
 title: "Build: WhatsApp delivery of task files to Kevin's own number"
 type: build
 status: dropped
-status-detail: "Kevin 2026-11-01: \"whatsapp is abit hard then, gmail is much easier yeah, lets keep gmail then\". Delivery is `deliver: email_self` via send_mail.py (tickets 03/04). Kept for the record."
+status-detail: "Dropped 2026-11-01: Kevin kept Gmail rather than WhatsApp, the harder path. Delivery is `deliver: email_self` via send_mail.py (tickets 03/04). Kept for the record."
 blockers: ["03", "04"]
 blocked-by: ["[[03-engine-app]]", "[[04-worker]]"]
 open-blockers: 2

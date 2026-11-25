@@ -4,7 +4,7 @@ ticket: "14"
 title: "Ledger rows reach the phone: categorised at insert, mirrored whole, deletions honoured"
 type: build
 status: built
-status-detail: "Decision resolved 2026-09-28 (Kevin: \"yes 2\"): category overrides table, built 2026-09-29 on feat/ledger-category-overrides with the Transfers not-spending flag. Not merged, not deployed. Owed: deploy (server BEFORE the APK), the live apply_category_rules backfill (dry run first), and the phone checks below."
+status-detail: "Decision resolved 2026-09-28 (Kevin chose option 2): category overrides table, built 2026-09-29 on feat/ledger-category-overrides with the Transfers not-spending flag. Not merged, not deployed. Owed: deploy (server BEFORE the APK), the live apply_category_rules backfill (dry run first), and the phone checks below."
 blockers: ["06", "13"]
 blocked-by: ["[[06-drive-statements-watcher]]", "[[13-bofa-activity-csv-server-side]]"]
 tags: [ticket]
@@ -86,7 +86,7 @@ one because the brief put it here.
 
 ### Added 2026-09-29: Transfers is not spending
 
-Kevin, 2026-09-29: "ignore zelle for spending. its just transfer between here and there."
+Kevin ruled 2026-09-29 that Zelle transfers do not count as spending.
 `categories.excluded_from_spend` (server migration `0008`, Room v71 `excludedFromSpend`) is the one
 definition. Every phone spend figure leaves those rows out and says so in words ("N transactions in
 Transfers (USD X) excluded from spend"; HOME: "Excludes USD X in Transfers"). `Transfers` is seeded

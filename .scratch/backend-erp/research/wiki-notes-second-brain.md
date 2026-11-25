@@ -66,7 +66,7 @@ Sources:
 
 ## 2. Landscape triage: signal vs slop
 
-Kevin's prior: "mostly ai influencer hype/slop." Correct as a base rate. The triage test that
+Kevin's prior was that most of this landscape is hype rather than signal. Correct as a base rate. The triage test that
 actually separates them: **who does the gardening.** Pre-AI PKM (PARA, Zettelkasten, BASB)
 died for most people because the human had to do the linking, tagging, and reorganizing - the
 "second job" problem, documented across the Zettelkasten forums and PKM blogs for years

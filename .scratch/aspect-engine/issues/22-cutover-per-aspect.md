@@ -40,7 +40,7 @@ Resolved 2026-08-24, all five cutovers in one arc, each senior-reviewed and devi
 | 2 Pantry | APPROVE + atomicity test round | 3+26, anchor fields live on the seeded phone |
 | 3 Ledger | BLOCK (catch-up first-launch race) -> guid-set fix | 161+7, provenance 1:1 |
 | 4 Fleet | BLOCK (anchor cross-row pairing) -> single-row rule | 5+52+5, drift dead by construction |
-| 5 Home flip | APPROVE (stale docs fixed at merge) | Cold start clean; **Kevin: "i like it."** |
+| 5 Home flip | APPROVE (stale docs fixed at merge) | Cold start clean; **Kevin approved it.** |
 
 Every blocking finding was a real bug caught by reading code adversarially; every fix verified on
 the phone by pulling the database, never assumed. 569 active engine records; one write door;

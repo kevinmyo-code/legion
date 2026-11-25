@@ -4,7 +4,7 @@ ticket: "15"
 title: "Rent counts in the month it pays for: a late-month Housing charge moves to the next month"
 type: build
 status: built
-status-detail: "Decided 2026-09-29 (Kevin: \"b\"), built the same day on feat/rent-month: compile and unit suite green. Phone only, a reading rule; no Room or server change. Owed: Kevin sees September's Money tile include the 2026-08-31 rent, with its sentence, on the A25."
+status-detail: "Decided 2026-09-29 (Kevin chose option b), built the same day on feat/rent-month: compile and unit suite green. Phone only, a reading rule; no Room or server change. Owed: Kevin sees September's Money tile include the 2026-08-31 rent, with its sentence, on the A25."
 blockers: ["14"]
 blocked-by: ["[[14-ledger-rows-reach-the-phone]]"]
 tags: [ticket]

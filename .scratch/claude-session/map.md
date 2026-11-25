@@ -19,7 +19,7 @@ Replaces the same-day `.scratch/clerk/` chart; the name "clerk" is retired.
 
 ## Destination
 
-Kevin, in the car: "use Claude on my Alienware to look for the AW4 wiring PDF in my downloads".
+From the car, Kevin asks Alfred to have the Alienware's Claude session look for the AW4 wiring PDF in his downloads.
 Alfred sends it and says in words whether the Alienware is on. On the Alienware one long-lived main
 Claude session, the same shape as Kevin's own chat window here, takes the message, hands the work to
 a helper subagent, and stays free for the next message. The answer comes back in Alfred's voice:
