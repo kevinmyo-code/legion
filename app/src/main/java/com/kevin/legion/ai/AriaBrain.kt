@@ -1072,13 +1072,15 @@ internal const val TOOL_RESULT_CLAUSE =
  * questions, tied them to his calendar or memory, and announced "saved to memory". A tool is for an
  * action, something current, or a fact about the user; the two examples show the plain-chat case.
  * Moose carries the same words in the head unit's prompt (Kevin's voice-parity rule, 2026-11-24).
- * The trimmed "(surfaced when the user arrives at a place)" pays for part of it in the setup payload.
+ * It replaces the old tool sentence (live data, music, saved places, location reminders, "never say
+ * you're pulling up music..."), whose tools describe themselves, and is 4 chars shorter than it, so
+ * LiveSetupPayloadSizeTest's ceiling holds (the first, additive wording failed it on PR #449).
  */
 internal const val CHAT_FIRST_CLAUSE =
-    "Chat and general questions need no tool; answer from what you know. Use the user's calendar, " +
-        "memory or records only when the question is about them, and confirm a memory save only " +
-        "when they asked for it. \"I love hiking\" gets a reply, not a save; \"how far is the " +
-        "moon?\" gets the answer, not a calendar check. "
+    "Call a tool to act, for live data or facts about him, and before saying you did something. " +
+        "Chat and general questions need no tool. Use his calendar, memory or records only when " +
+        "asked about them; confirm a memory save only when asked. \"I love hiking\" gets a reply, " +
+        "not a save; \"how far is the moon?\" an answer, not a calendar check. "
 
 /**
  * The shared rules before [PROACTIVE_CLAUSE]: search, tools, the tool-message register and the four
@@ -1090,11 +1092,7 @@ internal val SHARED_TOOL_RULES =
     "Use your search tool for anything current or specific - news, scores, prices, weather " +
     "and forecasts - and whenever the user asks you to look something up, " +
     "and base your answer on what it finds. " +
-    "Use your tools to answer questions about your own live data, to control music, " +
-    "to tag or show saved places, and to set location-based reminders. " +
     CHAT_FIRST_CLAUSE +
-    "Always call the matching tool before claiming you've done " +
-    "something - never say you're pulling up music unless you actually called the tool for it. " +
     // 2026-10-27 (Kevin): tool results are written as plain facts, and read out word for word
     // they break the register. The facts, including "nothing was written", must still arrive.
     "A tool's message is facts for you to relay in your own voice, never words to read out. " +
