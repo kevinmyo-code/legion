@@ -93,7 +93,7 @@ Read-only throughout. No `uninstall`, no `pm clear`, no writes to the device.
 **Kevin's Jeep has no identity and no odometer, and seven of its ten maintenance items are
 invisible on screen.** The single fact that breaks the most downstream behaviour:
 
-> `currentMileage` for the Jeep evaluates to **0**, while its service anchors sit at **118,483** (odometer values in this section are invented, offsets preserved for the public record).
+> `currentMileage` for the Jeep evaluates to **0**, while its service anchors sit at **90,483** (odometer values in this section are invented, offsets preserved for the public record).
 
 Every mileage-based due calculation on the car is computing against an odometer of zero.
 
@@ -194,11 +194,11 @@ Computed from the traced data through the traced code (`buildDueRows` then `toDu
 
 | row | value | sub-line |
 |---|---|---|
-| Oil Change | **`in 121,450 miles`** | `every 3,000 mi - last at 118,483` |
+| Oil Change | **`in 93,450 miles`** | `every 3,000 mi - last at 90,483` |
 | Brake Pads | `-` | `no interval on file` |
 | Brake Fluid | `-` | `no interval on file` |
 
-`3,000 - (0 - 118,483)` = 121,483, floored to a multiple of 50. **The oil is reported due in
+`3,000 - (0 - 90,483)` = 93,483, floored to a multiple of 50. **The oil is reported due in
 over a hundred thousand miles.** Kevin's "the drilldown is not what I want" is a considerable
 understatement.
 
@@ -226,13 +226,13 @@ Adjacent data-integrity finding: `default` and `imported-mitsubishi-outlander-20
 
 | id | vehicleId | serviceName | mileage | date | cost |
 |---|---|---|---|---|---|
-| 1 | `12:34:56:11:22:33` | Oil Change | 118,331 | 2026-07-29 21:32:25 | **null** |
-| 2 | `12:34:56:11:22:33` | Oil Change | 118,374 | 2026-08-12 15:50:02 | **null** |
+| 1 | `12:34:56:11:22:33` | Oil Change | 90,331 | 2026-07-29 21:32:25 | **null** |
+| 2 | `12:34:56:11:22:33` | Oil Change | 90,374 | 2026-08-12 15:50:02 | **null** |
 
 Both on the right car. **`cost` is null on both**, as predicted - fleet spend has nothing to sum.
 
 **The two tables disagree by 109 miles, fourteen seconds apart.** Record 2 says the oil was done at
-118,374 at 15:50:02; the Oil Change anchor says 118,483, stamped 15:50:16. `logServiceDirect` writes
+90,374 at 15:50:02; the Oil Change anchor says 90,483, stamped 15:50:16. `logServiceDirect` writes
 both from the same `mileage` local, so **they cannot both have come from that call** - and the
 anchor's `lastDoneDate` is **null**, which `logServiceDirect` never leaves (it always sets `now`).
 Traced conclusion: a `log_past_service` backfill landed 14 seconds after the `log_service`,
@@ -243,7 +243,7 @@ silently overwrites a precise record's anchor with a remembered approximation.**
 
 **How the Jeep's row lost its identity and odometer.** On 2026-07-18 it had a year/make/model - it
 must have, because `applyServiceIntervals` seeded ten items from a prompt built out of those fields,
-and `onboardPendingVehicles` skips blank make/model. On 2026-08-12 it had an odometer near 118,374,
+and `onboardPendingVehicles` skips blank make/model. On 2026-08-12 it had an odometer near 90,374,
 because `logServiceDirect` derived that record's mileage from `currentMileage`. Today all five
 fields are empty or zero and `onboarded` is back to 0.
 
@@ -269,7 +269,7 @@ use is a data-loss defect that will undo any fix this map ships. Charted as tick
 | 04 (car label) | Cause **narrowed**: not resolution order, an **empty identity** whose decode already exists in `vehicle_specs`. Wrong-active-car eliminated. Adds: write the decode back |
 | 12 (recall button) | **Worse than charted.** `confirmed = 1` so the gate passes and NHTSA gets empty params - it will confidently report no recalls. Blocked on the identity fix, not just on 04 |
 | 08 (name matching) | Promoted from risk to **repair**: the `Brake Fluid` / `Brake Pads` orphans exist, plus a backfill that overwrote a precise anchor and nulled its date |
-| 09 (drilldown) | Confirmed with numbers: **7 of 10 items invisible**, oil due in 121,450 miles |
+| 09 (drilldown) | Confirmed with numbers: **7 of 10 items invisible**, oil due in 93,450 miles |
 | 10 (odometer) | **The estimator has never accumulated on this car.** Manual entry is not an improvement, it is the only mechanism that will work at all |
 | 06 (seeded guesses) | 3,000 confirmed as a single row; **`neverDone` has never been used once** in 54 rows; duplicate-concept rows show re-seeding is actively corrupting the schedule |
 | 11 (cost) | `cost` null on both rows, confirmed |
@@ -282,10 +282,10 @@ use is a data-loss defect that will undo any fix this map ships. Charted as tick
 - `traced` (read off source): migrations 16 to 19 touch no vehicle table; `correctVehicle`,
   `registerDirect`, `setOdometer`, `logServiceDirect`, `isUnknown`, `isDue`, `buildDueRows`,
   `toDueRow`, `formatRemaining`.
-- `reasoned`: the three rendered drilldown rows and the `in 121,450 miles` figure are **computed**
+- `reasoned`: the three rendered drilldown rows and the `in 93,450 miles` figure are **computed**
   from traced data through traced code. **Not yet seen on screen.** Confirming them against the
   running app is the one check this ticket owes.
-- `reasoned`: that a `log_past_service` backfill produced the 118,483 / null-date anchor. The
+- `reasoned`: that a `log_past_service` backfill produced the 90,483 / null-date anchor. The
   fingerprint fits exactly (only that path writes an anchor without a date) but no log confirms it.
 - `reasoned`: that the Jeep had a valid identity on 2026-07-18 and a valid odometer on 2026-08-12.
   Inferred from what the seeding and logging code paths require, not from a stored history.

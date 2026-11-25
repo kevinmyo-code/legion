@@ -24,7 +24,7 @@ LLM produced it**, from a prompt that explicitly asks for the *severe / heavy-du
 ```
 `VehicleController.kt:739-757`, parsed by `parseIntervals` (`:759-781`).
 
-It then renders on screen as `"every 3,000 mi - last at 132,400"` (`ui/fleet/FleetRows.kt:145`),
+It then renders on screen as `"every 3,000 mi - last at 104,400"` (`ui/fleet/FleetRows.kt:145`),
 in exactly the same typography as a number Kevin typed himself. **The app currently cannot tell
 Kevin which of its numbers it made up.**
 
@@ -93,7 +93,7 @@ two Kevin's phone is actually in, using ticket 01's data.
 
 | Surface | What it does with an interval |
 |---|---|
-| `ui/fleet/FleetRows.kt` | renders the sub-line `"every 3,000 mi - last at 118,483"` |
+| `ui/fleet/FleetRows.kt` | renders the sub-line `"every 3,000 mi - last at 90,483"` |
 | `vehicle/VehicleController.kt` | `nextService` / `formatRemaining` - **spoken** |
 | `vehicle/CarToolbelt.kt` | `maintenanceSchedule` formatter - fed to sub-agents |
 | `vehicle/MaintenanceAgent.kt` | **pre-seeded into the agent's prompt** |

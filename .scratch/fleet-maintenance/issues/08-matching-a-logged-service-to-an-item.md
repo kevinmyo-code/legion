@@ -80,7 +80,7 @@ together - the bug class here is precisely one where one table looks right on it
 The `ServiceRecord` is always written - work done is a fact regardless of what the schedule knows.
 The new schedule row is then **announced**, never created silently:
 
-> "Logged the transmission flush at 227,900. Nothing on your schedule matched, so I've added
+> "Logged the transmission flush at 199,900. Nothing on your schedule matched, so I've added
 > Transmission Flush as an item - it has no interval yet, tell me one when you want it tracked."
 
 **That announcement is the entire fix.** Kevin's `Brake Fluid` and `Brake Pads` rows (ticket 01)
@@ -119,8 +119,8 @@ survivable.
 remembered approximation does not belong in the precise ledger. Keep that.
 
 But ticket 01 found it doing harm: on 2026-08-12 at 15:50:02 a `log_service` wrote a record at
-118,374 **and** the Oil Change anchor; fourteen seconds later a backfill **overwrote that anchor to
-118,483 and nulled its date.** A remembered figure silently beat a precise one.
+90,374 **and** the Oil Change anchor; fourteen seconds later a backfill **overwrote that anchor to
+90,483 and nulled its date.** A remembered figure silently beat a precise one.
 
 **Rule: a backfill may not overwrite an anchor that a `ServiceRecord` supports without saying so.**
 If a precise record exists at or after the backfill's date, the backfill reports the conflict and
@@ -139,6 +139,6 @@ leaves the anchor alone. Same shape as the VIN write-back's conflict rule, for t
 
 - `traced`: `canonicalizeServiceName`'s comparison and titlecase fallback; `logServiceDirect` /
   `logPastServiceDirect`'s split; that only the latter writes an anchor without a date.
-- `on-device`: the 118,374 vs 118,483 anchor conflict and its fourteen-second gap, from the
+- `on-device`: the 90,374 vs 90,483 anchor conflict and its fourteen-second gap, from the
   2026-08-15 pull.
 - **Not built.**

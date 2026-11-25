@@ -99,7 +99,7 @@ establishes whether it ever has.
 
 **Decision (Kevin).** Any mileage not taken from his own last typed reading says so, every time:
 
-> `about 227,900 mi - estimated, last confirmed 3 days ago`
+> `about 199,900 mi - estimated, last confirmed 3 days ago`
 
 No threshold to tune, no window where a drifting number renders bare. §4 rule 5 applied without a
 loophole, and ticket 03 supplies the reason it needs one: **the estimate runs ~5-15% low, always in

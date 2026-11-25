@@ -20,8 +20,8 @@ it"* and *"i already logged oil change on the jeep"*.
 
 | Source | Mileage | Date |
 |---|---|---|
-| `service_records` id=2, Jeep, Oil Change, `deleted=0` | 227,374 | **2026-08-12** |
-| `maintenance_items` anchor, Jeep, Oil Change | 227,483 | **NULL** |
+| `service_records` id=2, Jeep, Oil Change, `deleted=0` | 199,374 | **2026-08-12** |
+| `maintenance_items` anchor, Jeep, Oil Change | 199,483 | **NULL** |
 
 The record exists with a real date. The assistant still answers "no record", so this is a READ
 defect over intact data, not lost data.
@@ -38,7 +38,7 @@ the oil change on a screen while telling him by voice that it has no record of i
 (~:1700) sets `lastDoneDate = null` when a mileage is supplied without one, and vice versa. Its
 doc's reasoning is sound in isolation - do not pair a fresh mileage with a stale date from a
 DIFFERENT event - but the effect here is that a later mileage-only "mark done" wiped a date that a
-real logged service had established. The anchor at 227,483 with no date is that write.
+real logged service had established. The anchor at 199,483 with no date is that write.
 
 ## Build
 
@@ -46,8 +46,8 @@ real logged service had established. The anchor at 227,483 with no date is that 
    recent non-deleted `service_records` row for that vehicle and service, and say so with the date
    it carries. Where the two disagree, prefer the anchor's mileage and the record's date only when
    they plausibly describe the same event, and **when they cannot be reconciled, say both rather
-   than silently picking one** - "last logged at 227,374 mi on 12 Aug; the maintenance clock was
-   later set to 227,483 mi" is honest; a merged fiction is not.
+   than silently picking one** - "last logged at 199,374 mi on 12 Aug; the maintenance clock was
+   later set to 199,483 mi" is honest; a merged fiction is not.
 2. **Never render UNKNOWN while a record exists.** That specific sentence is the user-visible bug.
    A test must assert: given a service record and a dateless anchor, the composed answer names the
    date.
@@ -65,4 +65,4 @@ real logged service had established. The anchor at 227,483 with no date is that 
 - Tests: dateless anchor + existing record renders the date; mileage-only write preserves a
   record-derived date; unreconcilable pair states both facts.
 - **On the phone, with Kevin's real data**: ask "when did I do the oil change on the jeep" and get
-  12 Aug 2026 at 227,374 miles.
+  12 Aug 2026 at 199,374 miles.

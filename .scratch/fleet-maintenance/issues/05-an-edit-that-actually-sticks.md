@@ -133,7 +133,7 @@ decides the rule; 06 supplies the mechanism. **Resolve 06 before either is built
 **2. Voice and screen both, and voice reads the value back.**
 
 A read-back cannot be produced if the write did not land. `"Oil change is now every 7,500 miles,
-last done at 118,483"` requires re-reading the row after writing it. **This is exactly how Kevin's
+last done at 90,483"` requires re-reading the row after writing it. **This is exactly how Kevin's
 original attempt should have failed**, out loud, instead of reporting success and changing nothing.
 
 Needs a `set_maintenance_interval` Live tool (there is none today - the only live interval writer

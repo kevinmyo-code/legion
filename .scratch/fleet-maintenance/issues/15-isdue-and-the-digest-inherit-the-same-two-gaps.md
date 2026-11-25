@@ -21,7 +21,7 @@ in passing - changing them means changing a contract several unrelated callers d
 
 ### 1. `VehicleController.isDue` has no odometer-unset guard
 
-Ticket 09 fixed the "due in 121,450 miles" absurdity in the **render** path (`chooseDueAxis` refuses
+Ticket 09 fixed the "due in 93,450 miles" absurdity in the **render** path (`chooseDueAxis` refuses
 the miles axis when the driver has never confirmed an odometer). `isDue` computes the same thing
 independently:
 
