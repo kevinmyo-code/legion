@@ -1187,14 +1187,31 @@ def _answer(
         # and nothing here handles a crisis before this point, so the check belongs here.
         crisis=crisis.detect(words),
         goodbye=is_stop_utterance(words),
+        # The phone takes the companion's name off either end before judging a goodbye, so
+        # "Alfred, bye" is one (`Farewells.withoutCourtesy`).
+        companion_name=companion_name,
     )
+    # The phone's `fillerSkip` (`CascadeSession.kt:1366`): the decision binds the WHOLE chain, not
+    # the acknowledgement alone, because `scheduleWaitFillers` opens `if (fillerSkip != null)
+    # return`. So a crisis or a goodbye turn hears nothing light at all, where before the holding
+    # lines chained over words of distress. A clip missing from memory is not one of those reasons,
+    # so it is recorded in `ack_skip` below without closing the chain.
+    filler_skip = ack_skip
     if speak and ack_skip is None:
         # The first sound, on EVERY turn of theirs (Kevin, 2026-11-24: the phone's behavior is the
         # one to match, and the phone plays one every turn). A short acknowledgement from memory
         # while the model's first round runs. It used to be the conversation's first utterance only
         # (round 2 speech review 5, round 3 S5), which left every later question silent until the
         # answer: `fillers.ack_skip` carries the phone's skip list instead.
-        picked = filler_audio.pick(voice, ACK_TOOL)
+        # The shortest acknowledgement render in hand (never the last one said). The phone bounds
+        # its backchannel to 120 to 700 ms, but it measures a clip it has TRIMMED to its voice
+        # (`Backchannel.trimSilence`: the cloud voice pads a one-word render with 80 to 520 ms of
+        # silence each side), and this door plays what the engine returns untrimmed, so the phone's
+        # window cannot be applied to a raw clip. A hard `ceiling_ms` is also the wrong tool here:
+        # with nothing short enough it falls back to `FALLBACK`, whose words promise a look. So the
+        # bound is the shortest of the eight; trimming, and the measurement that would set a real
+        # window, are owed (report finding 5).
+        picked = filler_audio.pick(voice, ACK_TOOL, shortest=True)
         if picked is None:
             ack_skip = "not_in_memory"
         else:
@@ -1311,11 +1328,19 @@ def _answer(
         """The next chained holding line, if one is due (the phone's `WaitFillers`: 1.5 s after the
         last filler ended, then every 2.5 s, at most six fillers of all kinds in a turn).
 
-        The dead-air rule: never once an answer sentence is ready, and never after a cancel, because
-        a clip already pushed cannot be recalled. `wait_lines.MAX_CLIP_MS` bounds how long an answer
-        ready just after a line starts has to wait behind it.
+        The acknowledgement's skip binds these too, as on the phone (`filler_skip` above): a turn
+        that says nothing light says nothing light at all.
+
+        The dead-air rule: the chain runs until the answer's AUDIO is in hand, which is the phone's
+        own line (`CascadeSession.kt`: "until the answer's AUDIO is in hand ([DeadAir]: the first
+        text alone no longer ends them)"); a sentence whose speech has not come back yet is still
+        dead air to the person listening. Never after a cancel, because a clip already pushed
+        cannot be recalled. `wait_lines.MAX_CLIP_MS` bounds how long an answer ready just after a
+        line starts has to wait behind it.
         """
-        if not speak or sentences or not held.due_now(clock()) or cancelled_often():
+        if not speak or filler_skip is not None or cancelled_often():
+            return None
+        if speaker.first_audio_ms is not None or not held.due_now(clock()):
             return None
         ready = held.ready(lambda line: filler_audio.get(voice, line) is not None)
         if not ready:
