@@ -9,6 +9,9 @@ three; publishing adds `IsReleasePublisher`. A read-scoped token cannot publish 
 in `IsHouseholdMember`), and a recruiter's visit is refused every route here
 (`household.recruiter_routes.RECRUITER_DENIED`).
 
+The two READS also take a head unit's own token (2026-11-24, `headunit_signin.scope`), narrowed
+to `app=headunit` by `releases_refusal`; see that module for why. The POST does not.
+
 Releases are engine-wide (`releases/models.py`), so nothing here calls `household_of`: every
 member reads the same releases. Publishing is not a data route either; like the bank link
 (`ingest/plaid_views.py`) it is an engine action an owner takes. `tools/release_apk.py` is the
@@ -27,15 +30,30 @@ from drf_spectacular.utils import (
     inline_serializer,
 )
 from rest_framework import serializers, status
+from rest_framework.authentication import SessionAuthentication
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from api.schema import DetailSerializer
+from headunit_signin import scope as headunit_scope
+from headunit_signin.authentication import HeadUnitTokenAuthentication
+from household.authentication import DeviceTokenAuthentication
 from household.models import HouseholdMember
 from household.permissions import IsHouseholdOwner
 from household.tenancy import resolve_default_household
 from releases import signing
 from releases.models import APPS, HEX64, AppRelease
+
+# The two READ routes also take a head unit's own token (`headunit_signin.scope`): a paired unit
+# holds no member sign-in, so without this its updater can never ask for its own OTA. Listed
+# ahead of the defaults, and the class itself 401s every `hu1_` key while
+# `LEGION_HEADUNIT_SIGNIN` is off, so with the switch off these views behave exactly as before.
+# `ReleasePublishView` deliberately keeps the defaults: a unit never publishes.
+READ_AUTHENTICATION = [
+    HeadUnitTokenAuthentication,
+    DeviceTokenAuthentication,
+    SessionAuthentication,
+]
 
 TAGS = ["releases"]
 
@@ -180,6 +198,8 @@ class ReleasePublishView(APIView):
 
 
 class ReleaseLatestView(APIView):
+    authentication_classes = READ_AUTHENTICATION
+
     @extend_schema(
         tags=TAGS,
         operation_id="api_releases_latest_retrieve",
@@ -196,6 +216,9 @@ class ReleaseLatestView(APIView):
                 {"detail": f"There is no app called {app!r}; ask for one of: {', '.join(APPS)}."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        refusal = headunit_scope.releases_refusal(request, app)
+        if refusal is not None:
+            return Response({"detail": refusal}, status=status.HTTP_403_FORBIDDEN)
         newest = AppRelease.objects.filter(app=app).order_by("-version_code").first()
         if newest is None:
             return _no_release(app)
@@ -203,6 +226,8 @@ class ReleaseLatestView(APIView):
 
 
 class ReleaseDownloadView(APIView):
+    authentication_classes = READ_AUTHENTICATION
+
     @extend_schema(
         tags=TAGS,
         operation_id="api_releases_download_retrieve",
@@ -222,6 +247,9 @@ class ReleaseDownloadView(APIView):
                 {"detail": "No download link was made. There is no such release."},
                 status=status.HTTP_404_NOT_FOUND,
             )
+        refusal = headunit_scope.releases_refusal(request, release.app)
+        if refusal is not None:
+            return Response({"detail": refusal}, status=status.HTTP_403_FORBIDDEN)
         signer = signing.get_signer()
         if signer is None:
             return Response(

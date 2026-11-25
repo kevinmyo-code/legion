@@ -14710,6 +14710,7 @@ paths:
       tags:
       - releases
       security:
+      - headUnitToken: []
       - deviceToken: []
       - cookieAuth: []
       responses:
@@ -14746,6 +14747,7 @@ paths:
       tags:
       - releases
       security:
+      - headUnitToken: []
       - deviceToken: []
       - cookieAuth: []
       responses:
