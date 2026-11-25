@@ -661,11 +661,13 @@ object SpotifyWebApi {
     // each is named rather than inferred: the offset-paged reads carry it; a cursor-paged or
     // unpaged read does not, and an artist's own figure counts market and edition duplicates
     // that [parseArtistAlbums] collapses, so it is not a figure about what came back.
+    // Recently-played is cursor-paged: its documented `total` does not count what the cursor
+    // returned and is not reliably meaningful, so it is null like the queue (phone parity).
     internal fun savedAlbumsPage(json: JSONObject): Page<SavedAlbum> = Page(parseSavedAlbums(json), pageTotal(json))
     internal fun topArtistsPage(json: JSONObject): Page<TopArtist> = Page(parseTopArtists(json), pageTotal(json))
     internal fun topTracksPage(json: JSONObject): Page<TopTrack> = Page(parseTopTracks(json), pageTotal(json))
     internal fun recentlyPlayedPage(json: JSONObject): Page<RecentlyPlayedTrack> =
-        Page(parseRecentlyPlayed(json), pageTotal(json))
+        Page(parseRecentlyPlayed(json), null)
     internal fun queuePage(json: JSONObject): Page<QueuedTrack> = Page(parseQueue(json), null)
     internal fun artistAlbumsPage(json: JSONObject): Page<ArtistAlbum> = Page(parseArtistAlbums(json), null)
 

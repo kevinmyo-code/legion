@@ -51,6 +51,21 @@ class MusicLibraryResultTest {
     }
 
     @Test
+    fun `a total smaller than the page in hand is never published`() {
+        // Spotify's cursor-paged bodies carry a `total` that does not count what the cursor
+        // returned, and a 0 beside five rows would reach the model as a stated library figure of
+        // zero AND `truncated: false`, both contradicted by the rows under them.
+        val json = MusicLibraryToolbox.pageResult(rows(5), total = 0, sourceLabel = "recently played")
+        assertEquals(5, json.getInt("count"))
+        assertFalse("a library of zero beside five rows is not a figure to state", json.has("total"))
+        assertFalse("and never truncated false standing in for \"that is all of them\"", json.has("truncated"))
+        // Any total under the row count is the same contradiction, not just zero.
+        val short = MusicLibraryToolbox.pageResult(rows(5), total = 3, sourceLabel = "recently played")
+        assertFalse(short.has("total"))
+        assertFalse(short.has("truncated"))
+    }
+
+    @Test
     fun `zero rows is a real answer, not a failure`() {
         val json = MusicLibraryToolbox.pageResult(emptyList(), total = 0, sourceLabel = "liked songs")
         assertTrue(json.getBoolean("success"))

@@ -504,6 +504,11 @@ internal object SpotifyVoice {
      *
      * An empty row list stays a real answer ("Spotify said zero"), never a failure shape. Pure
      * and `internal`: a plain JVM test.
+     *
+     * A total SMALLER than the page in hand is dropped, not published (mirrored from the phone):
+     * a cursor-paged body's `total` does not count what the cursor returned, and a 0 beside five
+     * rows would reach the model as `total: 0, truncated: false` - a library figure and a claim
+     * that this is all of it, both contradicted by the rows underneath.
      */
     internal fun pageResult(rows: List<JSONObject>, total: Int?, sourceLabel: String): JSONObject {
         val items = JSONArray()
@@ -513,7 +518,7 @@ internal object SpotifyVoice {
             .put("items", items)
             .put("count", rows.size)
             .apply {
-                total?.let {
+                total?.takeIf { it >= rows.size }?.let {
                     put("total", it)
                     put("truncated", rows.size < it)
                 }
