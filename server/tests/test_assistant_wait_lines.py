@@ -70,6 +70,35 @@ def test_the_acknowledgement_says_the_phones_backchannel_words():
     assert tuple(re.findall(r'"([^"]+)"', found.group(1))) == fillers.ACK
 
 
+def test_the_closing_chime_is_the_phones():
+    """The web's chime (`frontend/src/assistant/cascade-words.ts`) against the phone's
+    (`service/ListenCue.kt`). The web test cannot read a file (that project builds for a browser and
+    has no `@types/node`), so the drift guard lives here, where reading Kotlin is already the habit.
+    It was a single 150 ms 880 Hz tone at half gain until 2026-11-24."""
+    kt = (CASCADE_KT.parents[1] / "ListenCue.kt").read_text(encoding="utf-8")
+    ts = (
+        Path(__file__).resolve().parents[1] / "frontend/src/assistant/cascade-words.ts"
+    ).read_text(encoding="utf-8")
+    notes = (
+        "CLOSE_HIGH_HZ",
+        "CLOSE_HIGH_SEC",
+        "CLOSE_GAP_SEC",
+        "CLOSE_LOW_HZ",
+        "CLOSE_LOW_SEC",
+        "CLOSE_EDGE_SEC",
+    )
+    for name in notes:
+        phone = re.search(rf"const val {name} = ([\d_.]+)", kt)
+        web = re.search(rf"const {name} = ([\d_.]+)", ts)
+        assert phone is not None, f"{name} is gone from ListenCue.kt: the phone's chime moved"
+        assert web is not None, f"{name} is gone from cascade-words.ts"
+        assert float(phone.group(1)) == float(web.group(1)), name
+    # The gain too: the phone's `EARCON_GAIN`, which the web spells the same.
+    assert re.search(r"private const val EARCON_GAIN = ([\d.]+)", kt).group(1) == re.search(
+        r"const EARCON_GAIN = ([\d.]+)", ts
+    ).group(1)
+
+
 def test_the_goodbye_skip_knows_the_phones_farewell_words():
     kt = (CASCADE_KT.parent / "Farewells.kt").read_text(encoding="utf-8")
     found = re.search(r"val FAREWELLS: List<String> = listOf\((.*?)\n    \)", kt, re.S)
