@@ -39,11 +39,15 @@ class Mnai2TokenFrameTest {
     }
 
     @Test fun `a TOKEN_OK datagram is these exact bytes, and names the token it is about`() {
-        val keys = DirectionKeys(linkKey)
         val fingerprint = Mnai2.fingerprint(token)
         assertEquals(FINGERPRINT_HEX, CarLinkVectors.hex(fingerprint))
-        val sealed = Mnai2.seal(keys.u2p, Mnai2.TOKEN_OK, session, 4, Mnai2.tokenOkBody(fingerprint))
+        // Built the unit's way (sealed under U2P): [Mnai2.seal] only ever speaks P2U, because the
+        // phone never sends a unit-to-phone datagram. It only has to OPEN this one.
+        val sealed = FakeUnit(linkKey, session).tokenOk(Mnai2.tokenOkBody(fingerprint), counterOverride = 4)
         assertEquals(TOKEN_OK_HEX, CarLinkVectors.hex(sealed))
+        val d = Mnai2.openFromUnit(DirectionKeys(linkKey).u2p, sealed)!!
+        assertEquals(Mnai2.TOKEN_OK, d.type)
+        assertArrayEquals(fingerprint, Mnai2.readTokenOk(d.body))
     }
 
     @Test fun `a vehicle-less TOKEN still carries the token`() {
