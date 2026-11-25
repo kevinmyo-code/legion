@@ -53,8 +53,9 @@ object LogbookExporter {
      * body runs on a detached coroutine with no catch of its own, and a ROM with nothing to share
      * to threw the chooser straight out of it, which on this app is the launcher process. The
      * render and the file write are NOT guarded here: they throw `IOException`, which
-     * [ExternalDoor] deliberately does not catch, and a full cache is a different bug from a
-     * missing share sheet (see the report's debt).
+     * [ExternalDoor] deliberately does not catch, because a full cache or an unreadable
+     * FileProvider is a different bug from a ROM with no share sheet, and words naming the second
+     * would be a wrong diagnosis of the first.
      *
      * @param context   An Activity or application context.
      * @param carLabel  Display label from [com.kevin.midnightai.vehicle.VehicleController],
