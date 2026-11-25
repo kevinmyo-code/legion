@@ -341,7 +341,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/fat-loss/map\|fat-loss]] | [[10-phone-coach-reads\|10]] | build | Phone: BodyCoachController, ask_body reads, saved meals in log_meal  waiting on [[04-energy-calculator\|04]], [[05-trend-and-waist\|05]], [[07-saved-meals\|07]] |
 | [[.scratch/fat-loss/map\|fat-loss]] | [[11-plan-generator-uses-the-estimate\|11]] | build | Phone: the plan generator uses the estimate and will not invent one  waiting on [[10-phone-coach-reads\|10]] |
 | [[.scratch/fat-loss/map\|fat-loss]] | [[12-digest-energy-and-protein\|12]] | build | Phone: BIO digest ENERGY line, INTAKE gains protein  waiting on [[10-phone-coach-reads\|10]] |
-| [[.scratch/fat-loss/map\|fat-loss]] | [[13-monday-weekly-line\|13]] | build | Phone: the Monday 8 am weekly weight line  waiting on [[05-trend-and-waist\|05]] |
+| [[.scratch/fat-loss/map\|fat-loss]] | [[13-monday-weekly-line\|13]] | build | Phone: the weekly weight line  waiting on [[05-trend-and-waist\|05]] |
 | [[.scratch/fat-loss/map\|fat-loss]] | [[14-weight-goal-tracked\|14]] | build | G1: the weight goal is shown and tracked  waiting on [[05-trend-and-waist\|05]] |
 | [[.scratch/fat-loss/map\|fat-loss]] | [[22-ship-pass\|22]] | test | Ship pass: deploy, enter the profile, run it on the phone  waiting on [[03-body-profile\|03]], [[04-energy-calculator\|04]], [[05-trend-and-waist\|05]], [[06-adaptation-proposals\|06]], [[07-saved-meals\|07]], [[08-engine-tools\|08]], [[09-web-body\|09]], [[10-phone-coach-reads\|10]], [[11-plan-generator-uses-the-estimate\|11]], [[12-digest-energy-and-protein\|12]], [[13-monday-weekly-line\|13]], [[14-weight-goal-tracked\|14]], [[15-meal-target-partial-and-honest-accept\|15]], [[16-routing-and-voice-guide\|16]], [[17-coach-tone-and-appetite\|17]], [[21-body-screen-build\|21]] |
 | [[.scratch/fat-loss/map\|fat-loss]] | [[25-workout-on-the-phone\|25]] | build | Phone: Today's workout card, the session tick-off view, voice  waiting on [[24-workout-programme-engine\|24]] |
@@ -357,10 +357,10 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/home-launcher/map\|home-launcher]] | [[04-lists-as-icon-cards\|04]] | build | Lists as icon cards; a list opens to a real checklist  waiting on [[02-soft-theme-and-chrome\|02]] |
 | [[.scratch/home-launcher/map\|home-launcher]] | [[05-ship-pass\|05]] | task | Ship pass: the launcher and the lists on the A25  waiting on [[03-home-is-a-launcher\|03]], [[04-lists-as-icon-cards\|04]] |
 | [[.scratch/home-launcher/map\|home-launcher]] | [[06-pinned-app-dock\|06]] | build | A dock of five pinned apps above the talk bar  waiting on [[03-home-is-a-launcher\|03]] |
-| [[.scratch/household-finance/map\|household-finance]] | [[02-household-internal-money\|02]] | build | Household-internal money: spouse transfers, cross-border wires, card payments  waiting on [[01-accounts-and-snapshots\|01]] |
+| [[.scratch/household-finance/map\|household-finance]] | [[02-household-internal-money\|02]] | build | Household-internal money: member transfers, cross-border wires, card payments  waiting on [[01-accounts-and-snapshots\|01]] |
 | [[.scratch/household-finance/map\|household-finance]] | [[04-statement-drops\|04]] | build | Statement drops for the other accounts  waiting on [[01-accounts-and-snapshots\|01]] |
-| [[.scratch/household-finance/map\|household-finance]] | [[05-ibkr-flex\|05]] | build | IBKR Flex connector  waiting on [[01-accounts-and-snapshots\|01]], [[03-fx-rates\|03]] |
-| [[.scratch/household-finance/map\|household-finance]] | [[06-computed-values\|06]] | build | Computed values: bonds, loan, flat, CPF interest, car  waiting on [[01-accounts-and-snapshots\|01]], [[03-fx-rates\|03]] |
+| [[.scratch/household-finance/map\|household-finance]] | [[05-ibkr-flex\|05]] | build | Broker Flex connector  waiting on [[01-accounts-and-snapshots\|01]], [[03-fx-rates\|03]] |
+| [[.scratch/household-finance/map\|household-finance]] | [[06-computed-values\|06]] | build | Computed values: bonds, loan, property, scheme interest, vehicle  waiting on [[01-accounts-and-snapshots\|01]], [[03-fx-rates\|03]] |
 | [[.scratch/household-finance/map\|household-finance]] | [[07-net-worth-and-runway\|07]] | build | Net worth, cash flow, runway and the income plan  waiting on [[01-accounts-and-snapshots\|01]], [[02-household-internal-money\|02]], [[03-fx-rates\|03]] |
 | [[.scratch/household-finance/map\|household-finance]] | [[08-budgets-and-pace\|08]] | build | Budgets and pace  waiting on [[02-household-internal-money\|02]] |
 | [[.scratch/household-finance/map\|household-finance]] | [[09-money-alerts\|09]] | build | Money alerts  waiting on [[07-net-worth-and-runway\|07]], [[08-budgets-and-pace\|08]] |
@@ -382,7 +382,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/mapbox-plus/map\|mapbox-plus]] | [[04-traffic-lanes-speed\|04]] | build | Build: traffic on the route, lane guidance, speed limit  waiting on [[02-a-real-drive\|02]] |
 | [[.scratch/mapbox-plus/map\|mapbox-plus]] | [[05-offline-maps\|05]] | decision | Decision: offline maps (area, size, refresh)  waiting on [[02-a-real-drive\|02]] |
 | [[.scratch/mapbox-plus/map\|mapbox-plus]] | [[06-place-search\|06]] | decision | Decision: place search (near me, open now)  waiting on [[02-a-real-drive\|02]] |
-| [[.scratch/mapbox-plus/map\|mapbox-plus]] | [[07-legion-only-extras\|07]] | decision | Decision: LEGION-only extras (ETA to Mia, leave-by, fuel-aware stops)  waiting on [[02-a-real-drive\|02]] |
+| [[.scratch/mapbox-plus/map\|mapbox-plus]] | [[07-legion-only-extras\|07]] | decision | Decision: LEGION-only extras (ETA to a household member, leave-by, fuel-aware stops)  waiting on [[02-a-real-drive\|02]] |
 | [[.scratch/matrix-open/map\|matrix-open]] | [[02-all-apps\|02]] | build | Build: All apps on Matrix HOME  waiting on [[01-block-model\|01]] |
 | [[.scratch/memory-and-vault/map\|memory-and-vault]] | [[02-memory-tools\|02]] | build | Memory tools for members and the worker  waiting on [[01-member-memory-table-and-rest\|01]] |
 | [[.scratch/memory-and-vault/map\|memory-and-vault]] | [[03-consolidation-job\|03]] | build | Consolidation job  waiting on [[01-member-memory-table-and-rest\|01]] |
@@ -432,7 +432,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/web-and-households/map\|web-and-households]] | [[03-accounts-signup-invites\|03]] | build | Accounts: signup, create a household, invite codes, join, members; session auth for the browser  waiting on [[02b-rls-belt\|02]] |
 | [[.scratch/web-and-households/map\|web-and-households]] | [[11-report-endpoints\|11]] | build | Report endpoints: aggregates computed once, described in the contract, unverified carried through  waiting on [[02b-rls-belt\|02]] |
 | [[.scratch/web-assistant/map\|web-assistant]] | [[08-web-chat-and-voice\|08]] | build | Web: chatbox and live voice  waiting on [[07-engine-endpoints\|07]] |
-| [[.scratch/web-assistant/map\|web-assistant]] | [[10-real-devices\|10]] | test | Mia talks to it on her iPhone; Kevin on the desktop and the phone  waiting on [[08-web-chat-and-voice\|08]], [[09-android-chatbox\|09]] |
+| [[.scratch/web-assistant/map\|web-assistant]] | [[10-real-devices\|10]] | test | Member B talks to it on her iPhone; Kevin on the desktop and the phone  waiting on [[08-web-chat-and-voice\|08]], [[09-android-chatbox\|09]] |
 | [[.scratch/web-revamp/map\|web-revamp]] | [[03-the-shell-split-by-viewport\|03]] | build | The shell split by viewport  waiting on [[02-design-tokens-light-dark-manifest-icons\|02]] |
 | [[.scratch/web-revamp/map\|web-revamp]] | [[05-join-signup-and-settings\|05]] | build | Join, signup and settings  waiting on [[03-the-shell-split-by-viewport\|03]] |
 | [[.scratch/web-revamp/map\|web-revamp]] | [[07-shared-and-private-on-the-web\|07]] | build | Shared and private on the web  waiting on [[03-the-shell-split-by-viewport\|03]], [[06-private-rows-on-the-engine\|06]] |
