@@ -9,6 +9,7 @@ ready; one line per turn at most. Invented household only."""
 
 from __future__ import annotations
 
+import base64
 import re
 import time
 
@@ -16,6 +17,7 @@ import pytest
 
 from agents.runtime import model as m
 from agents.runtime.model import FakeModel, call, say
+from agents.voice import wait_lines
 from assistant import cascade, fillers
 from engine_mcp.tools import SPEAK_VERBATIM, ToolResult
 from tests.test_addressed import _warm
@@ -61,7 +63,9 @@ def _turn(member, engine, conversation, model, heard=ASK):
 
 
 def _later(member, engine, monkeypatch, household_user):
-    """A conversation whose first question is behind it (its "one sec" used)."""
+    """A conversation with one question behind it. Since 2026-11-24 every turn of theirs gets its
+    own acknowledgement (`fillers.ack_skip`, the phone's rule), so this no longer "uses up" a
+    line; it is kept because a later turn is the case these tests are about."""
     _warm(monkeypatch, engine, household_user)
     conversation = _conversation(member, engine)
     _turn(member, engine, conversation, FakeModel([say("First answer.")]))
@@ -69,7 +73,17 @@ def _later(member, engine, monkeypatch, household_user):
 
 
 def _fillers(events) -> list[str]:
-    return [f["tool"] for f in _of(events, "filler")]
+    """This turn's TASK lines, by tool: the lines that name work a tool started. The
+    acknowledgement and the chained wait lines carry no tool and have their own helpers."""
+    return [f["tool"] for f in _of(events, "filler") if f["tool"]]
+
+
+def _acks(events) -> list[str]:
+    return [f["text"] for f in _of(events, "filler") if not f["tool"] and not f.get("wait")]
+
+
+def _waits(events) -> list[str]:
+    return [f["text"] for f in _of(events, "filler") if f.get("wait")]
 
 
 def _slow_answer():
@@ -133,25 +147,41 @@ def test_a_network_lookup_is_announced_when_it_starts(member, engine, monkeypatc
     assert kinds.index("working") < kinds.index("filler") < kinds.index("tool")
 
 
-def test_turns_one_two_and_three_each_get_one_line_when_slow(
+def test_turns_one_two_and_three_each_get_a_line_and_an_acknowledgement(
     member, engine, monkeypatch, household_user
 ):
     _warm(monkeypatch, engine, household_user)
     conversation = _conversation(member, engine)
-    first = _turn(member, engine, conversation, _slow_answer())
-    second = _turn(member, engine, conversation, _slow_answer())
-    third = _turn(member, engine, conversation, _slow_answer())
-    # The first question's "one sec" is its line: never a second one stacked on it.
-    assert _fillers(first) == [""]
-    assert _fillers(second) == ["monthly_spend"]
-    assert _fillers(third) == ["monthly_spend"]
+    turns = [_turn(member, engine, conversation, _slow_answer()) for _ in range(3)]
+    # Before 2026-11-24 only the first turn said anything of its own ("one sec") and the lookup's
+    # line was never stacked on it, so turn one had no task line at all.
+    for events in turns:
+        assert len(_acks(events)) == 1, _acks(events)
+        assert _fillers(events) == ["monthly_spend"]
 
 
-def test_never_two_lines_in_a_turn(member, engine, monkeypatch, household_user):
+def test_the_acknowledgement_and_the_task_line_are_never_back_to_back(
+    member, engine, monkeypatch, household_user
+):
     conversation = _later(member, engine, monkeypatch, household_user)
     model = SlowModel([call("web_search", {"query": "x"}), say("Done.")], [0.0, 1.0])
     events = _turn(member, engine, conversation, model)
-    assert _fillers(events) == ["web_search"]
+    # The search's line is announced at its start, right behind the acknowledgement, so it carries
+    # the spacing it still owed as silence in front of its own clip (`wait_lines.lead_ms`).
+    assert _fillers(events) == ["web_search"] and len(_acks(events)) == 1
+    clips = [len(base64.b64decode(a["pcm"])) for a in _of(events, "audio")]
+    assert clips[1] > clips[0], clips
+
+
+def test_only_one_task_line_a_turn_however_many_tools_run(
+    member, engine, monkeypatch, household_user
+):
+    conversation = _later(member, engine, monkeypatch, household_user)
+    model = SlowModel(
+        [call("web_search", {"query": "x"}), call("monthly_spend", {}), say("Done.")],
+        [0.0, 0.0, 1.0],
+    )
+    assert _fillers(_turn(member, engine, conversation, model)) == ["web_search"]
 
 
 @pytest.mark.parametrize(
@@ -162,7 +192,7 @@ def test_never_two_lines_in_a_turn(member, engine, monkeypatch, household_user):
     ],
     ids=["no-tool", "write"],
 )
-def test_no_lookup_no_line(member, engine, monkeypatch, household_user, script):
+def test_no_lookup_no_task_line(member, engine, monkeypatch, household_user, script):
     conversation = _later(member, engine, monkeypatch, household_user)
     delays = [1.0] * len(script)
     events = _turn(member, engine, conversation, SlowModel(script, delays))
@@ -349,3 +379,125 @@ def test_a_due_line_with_no_clip_asks_about_a_cancel_at_the_doors_rate(
     assert _fillers(events) == []
     # About 8 ticks past the 0.7 s wait, none of them a direct (database) question.
     assert Counting.direct <= quick
+
+
+# ---- the chained wait lines (Kevin, 2026-11-24: the same voice behavior as the phone) ----------
+#
+# Before this, a later question answered with no tool was SILENT for the whole model round, and a
+# turn with a tool heard exactly one line however long the wait ran. The phone has played an
+# acknowledgement at end of turn and then a chain of holding lines since 2026-11-20/21
+# (`WaitFillers`), which is what Kevin asked /try to match. The GAPS are the phone's, pinned by
+# `test_assistant_wait_lines.py`; these tests shorten them so a case runs in under a second.
+
+
+@pytest.fixture
+def quick_chain(monkeypatch):
+    """The phone's chain with its gaps shortened: the rule under test is the chaining, not the
+    numbers (those are pinned against `FillerTiming.kt` in `test_assistant_wait_lines.py`)."""
+    monkeypatch.setattr(wait_lines, "FIRST_GAP_MS", 100)
+    monkeypatch.setattr(wait_lines, "NEXT_GAP_MS", 100)
+
+
+def test_a_no_tool_turn_is_no_longer_silent_while_the_model_thinks(
+    member, engine, monkeypatch, household_user, quick_chain
+):
+    conversation = _later(member, engine, monkeypatch, household_user)
+    events = _turn(member, engine, conversation, SlowModel([say("You spent a little.")], [1.0]))
+    assert _fillers(events) == []  # no tool ran, so no task line
+    assert len(_waits(events)) >= 2, _waits(events)
+    assert set(_waits(events)) <= set(wait_lines.LINES)
+    assert [s["text"] for s in _of(events, "sentence")] == ["You spent a little."]
+
+
+def test_no_wait_line_is_said_twice_in_a_turn(
+    member, engine, monkeypatch, household_user, quick_chain
+):
+    conversation = _later(member, engine, monkeypatch, household_user)
+    events = _turn(member, engine, conversation, SlowModel([say("Done.")], [2.0]))
+    said = _waits(events)
+    assert len(said) == len(set(said)), said
+
+
+def test_the_chain_never_passes_six_fillers_of_all_kinds(
+    member, engine, monkeypatch, household_user, quick_chain
+):
+    conversation = _later(member, engine, monkeypatch, household_user)
+    # Long enough that the gaps alone would allow far more than the cap.
+    events = _turn(member, engine, conversation, SlowModel([say("Done.")], [3.0]))
+    lines = _of(events, "filler")
+    assert len(lines) <= wait_lines.MAX_PER_TURN, [f["text"] for f in lines]
+
+
+def test_a_wait_line_counts_the_task_line_against_the_cap(
+    member, engine, monkeypatch, household_user, quick_chain
+):
+    conversation = _later(member, engine, monkeypatch, household_user)
+    model = SlowModel([call("web_search", {"query": "x"}), say("Done.")], [0.0, 3.0])
+    events = _turn(member, engine, conversation, model)
+    assert _fillers(events) == ["web_search"]
+    assert len(_of(events, "filler")) <= wait_lines.MAX_PER_TURN
+
+
+def test_the_chain_stops_once_the_answer_is_ready(
+    member, engine, monkeypatch, household_user, quick_chain
+):
+    conversation = _later(member, engine, monkeypatch, household_user)
+    events = _turn(member, engine, conversation, SlowModel([say("You spent a little.")], [0.5]))
+    kinds = [k for k, _ in events]
+    waits = (i for i, f in enumerate(events) if f[0] == "filler" and f[1].get("wait"))
+    last_wait = max(waits, default=-1)
+    assert last_wait < kinds.index("sentence"), kinds
+
+
+def test_a_fast_round_hears_no_wait_line(member, engine, monkeypatch, household_user):
+    # The phone's own gap: 1.5 s. A round that answers at once never reaches it.
+    conversation = _later(member, engine, monkeypatch, household_user)
+    events = _turn(member, engine, conversation, FakeModel([say("You spent a little.")]))
+    assert _waits(events) == []
+
+
+def test_a_cancel_during_a_silent_round_sends_no_wait_line(
+    member, engine, monkeypatch, household_user, quick_chain
+):
+    # The chain's own version of F6: a clip already pushed cannot be recalled, so once the page has
+    # let the turn go nothing more is sent.
+    from tests.test_cancel_paid_calls import _Flag
+
+    conversation = _later(member, engine, monkeypatch, household_user)
+    flag = _Flag()
+    monkeypatch.setattr(cascade, "CancelCheck", lambda *a, **k: flag)
+
+    class CancelledWhileSilent(SlowModel):
+        def stream(self, req):
+            flag.hit = True
+            yield from super().stream(req)
+
+    events = _turn(member, engine, conversation, CancelledWhileSilent([say("Done.")], [1.0]))
+    assert _waits(events) == []
+
+
+# ---- the acknowledgement's skip list is the phone's (`fillers.ack_skip`) -----------------------
+
+
+def test_a_goodbye_turn_says_no_acknowledgement(member, engine, monkeypatch, household_user):
+    conversation = _later(member, engine, monkeypatch, household_user)
+    events = _turn(member, engine, conversation, FakeModel([say("Goodbye.")]), heard="bye")
+    assert _acks(events) == []
+
+
+def test_a_barge_in_turn_says_no_acknowledgement(member, engine, monkeypatch, household_user):
+    _warm(monkeypatch, engine, household_user)
+    conversation = _conversation(member, engine)
+    engine.speech.heard = ASK
+    engine.model = FakeModel([say("You spent a little.")])
+    events = _events(
+        _post(member, audio=PCM, conversation_id=conversation, barge_in="true")
+    )
+    assert _acks(events) == []
+
+
+def test_an_ordinary_later_turn_says_one(member, engine, monkeypatch, household_user):
+    conversation = _later(member, engine, monkeypatch, household_user)
+    events = _turn(member, engine, conversation, FakeModel([say("You spent a little.")]))
+    assert len(_acks(events)) == 1
+    assert _acks(events)[0] in fillers.ACK

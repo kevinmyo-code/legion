@@ -1371,7 +1371,6 @@ class AssistantTurnView(_AssistantView):
                 greet=greet,
                 greeting_history=_greeting_history(data.get("greeting_history")),
                 spoken=bool(data.get("spoken")) and bool(text),
-                heard_before=web_conversation.utterances_received(row),
                 barge_in=bool(data.get("barge_in")) and audio is not None,
                 last_reply=web_conversation.last_reply(row),
                 chip=suggestions.chip_for(request.user, data.get("chip"), text),
