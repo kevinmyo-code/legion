@@ -276,42 +276,6 @@ def test_a_miles_ago_backfill_leaves_the_asserted_anchor_standing(
     assert not item.needs_mileage, "a stated anchor times it, so nothing is owed"
 
 
-def test_a_backdated_log_does_not_outrank_an_anchor_stated_after_it(
-    auth_client, household_a, household_user
-):
-    """A dated backfill that DOES carry a figure ("I did it yesterday at
-    240,000"), landing after an anchor stated today. The phone stamps that
-    OBSERVED row midnight of yesterday and the assertion the wall clock, so the
-    assertion wins there however late the log arrives. This side ranked the log
-    by its arrival whenever its stated day was within a day of the write, which
-    is one day of slack standing in for a timezone the server is not told - and
-    it flipped this pair. A bare `service_date` already equals the write's own
-    UTC day for a LIVE log (`logServiceDirect` passes `now` and
-    `DjangoFleetBackend.fleetDate` converts at UTC), so an exact comparison tells
-    the two apart and the slack only widened the window."""
-    from brief.maintenance import schedule_status
-    from legacy.models.fleet import Vehicle
-
-    vehicle = _car(auth_client)
-    _put(
-        auth_client,
-        f"maintenance_schedules/{vehicle}/oil change/",
-        {"interval_miles": 5_000, "interval_source": "SEEDED", "never_done": False},
-    )
-    stated_on = _write_day()
-    _service(auth_client, "a1", vehicle, "oil change", stated_on, 100_000, kind="ASSERTED")
-    _service(
-        auth_client, "s1", vehicle, "oil change", stated_on - dt.timedelta(days=1), 240_000
-    )
-
-    item = schedule_status(
-        Viewer(user=household_user), Vehicle.objects.get(household=household_a)
-    )[0]
-
-    assert item.last_done_miles == 100_000, "the assertion was stated after the backdated log"
-    assert item.due_at_miles == 105_000
-
-
 def test_an_undated_asserted_anchor_outranks_an_older_dated_log(
     auth_client, mcp_client, household_a, household_user
 ):

@@ -474,10 +474,18 @@ class ServiceHistorySerializer(SyncedSerializer):
         Skipping the UPDATE rather than preserving `updated_at` around it: the
         trigger owns that column and nothing here may write it.
 
-        Residual, deliberate: re-stating an anchor with the identical figure and
-        day no longer moves the statement time. It cannot change the anchor
-        either, since the row it would have promoted holds exactly the values it
-        already holds."""
+        Residual, deliberate, and it DOES change an answer: the anchor is picked
+        by statement time, not by values, so re-stating an old assertion
+        unchanged used to promote its own old figures over a newer row - which is
+        the bug above, measured. A person re-saving identical values by hand
+        reaches the same wire shape as the lost-response re-send, and
+        `writeSetAnchor` stamps `updatedAt = now` for it either way, so after this
+        the phone would move its anchor back to that assertion and this side
+        would not. The two cases cannot be told apart from the body, one of them
+        speaks "overdue" off a year-old figure and the other is a person
+        re-typing what is already stored, so the quiet one wins. The honest close
+        is the phone's own stamp on the wire, which `ServiceHistoryWriteDto` does
+        not carry."""
         unchanged = all(
             getattr(instance, field) == value for field, value in validated_data.items()
         )
