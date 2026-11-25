@@ -33,7 +33,13 @@ object MediaTransport {
             Action.NEXT -> MusicControlToolbox.MusicAction.NEXT
             Action.PREVIOUS -> MusicControlToolbox.MusicAction.PREVIOUS
         }
-        return MusicControlToolbox.controlMusicTransport(context, musicAction).optBoolean("success")
+        // `dispatched`, not `success`: since the voice path reads the player back
+        // (music-suggestions-1124 P4), `success` means CONFIRMED, and a tap whose command went out
+        // but could not be verified would otherwise show "could not reach the music player" to
+        // someone whose music just changed. The screen reports reachability; speech reports the
+        // outcome, and only the latter needs the stronger claim.
+        val out = MusicControlToolbox.controlMusicTransport(context, musicAction)
+        return out.optBoolean("success") || out.optBoolean("dispatched")
     }
 
     /** Same wording `control_music` itself would speak for this exact failure - see this object's own doc. */
