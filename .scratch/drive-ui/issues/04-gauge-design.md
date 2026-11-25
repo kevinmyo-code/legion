@@ -17,7 +17,7 @@ tags: [ticket]
 
 The screen today is one 270-degree arc dial (RPM, or speed if RPM was never recorded) plus two pods
 (coolant, and the dial's complement), under a hard "glance ceiling of THREE readouts"
-(`DrivingModeScreen.kt:61-63`). Kevin: "the gauges can be improved too."
+(`DrivingModeScreen.kt:61-63`). Kevin wants the gauges improved too.
 
 This is a prototype ticket: draft two or three concrete alternatives, render them, and let Kevin
 react to pictures rather than descriptions.

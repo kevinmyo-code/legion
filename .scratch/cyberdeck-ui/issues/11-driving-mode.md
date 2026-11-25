@@ -32,7 +32,7 @@ while driving; the screen is a readout, not a control panel.
 
 Resolved 2026-08-08 by delegation (Kevin: "resolve them all with ur default recs").
 
-1. **Trigger: an OFFER, never an auto-switch** (Kevin's own framing: "the option"). When the OBD
+1. **Trigger: an OFFER, never an auto-switch** (Kevin's own framing: driving mode is an option). When the OBD
    link comes up, the offer surfaces in two places (per the FLEET resolution): the UPLINK panel
    and an Alfred strip prompt. One tap enters.
 2. **Exit: one giant EXIT hard-key, or the link dropping.** Either returns instantly to the

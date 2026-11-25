@@ -15,7 +15,7 @@ tags: [ticket]
 
 ## Question
 
-Kevin: "for everything in legion ... laptop". On dev there is no laptop worker: the Claude session
+Kevin wants procedures over everything in LEGION, the laptop included. On dev there is no laptop worker: the Claude session
 map (`.scratch/claude-session/`) is parked (`kiv`, "dont build it yet", 2026-10-29) and ADR 0067
 lives only on `feat/claude-session*`. **Cross-map blocker: this ticket also waits on that map
 unparking**; the tracker cannot express it, so it is written here.

@@ -4,7 +4,7 @@ ticket: "01"
 title: "Rulings: where workflows live, trigger, unattended runs, miner sources"
 type: grilling
 status: resolved
-status-detail: "Resolved 2026-11-09: Kevin took every recommendation (\"All ur picks\"); build ordered 2026-11-10 (\"yeah as per ur recs\"). Build tickets 02 to 05 and 15 carry it."
+status-detail: "Resolved 2026-11-09: Kevin took every recommendation; he ordered the build on those same recommendations 2026-11-10. Build tickets 02 to 05 and 15 carry it."
 size: S
 blockers: []
 blocked-by: []

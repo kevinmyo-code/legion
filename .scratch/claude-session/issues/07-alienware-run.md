@@ -4,7 +4,7 @@ ticket: "07"
 title: "Test: the first run on the Alienware from the phone"
 type: test
 status: open
-status-detail: "Kevin 2026-11-03: \"lets switch it on. lets do 1-4 then we test\". Unparked: merged into dev, worker installed on the Alienware, phone built; owes the engine deploy, then this run (step 9 is ticket 09's itinerary page)."
+status-detail: "Kevin unparked it 2026-11-03 and ordered the build first, the test after. Merged into dev, worker installed on the Alienware, phone built; owes the engine deploy, then this run (step 9 is ticket 09's itinerary page)."
 blockers: ["03", "04", "05", "06"]
 blocked-by: ["[[03-engine-app]]", "[[04-worker]]", "[[05-phone]]", "[[06-sessions-reporter]]"]
 open-blockers: 4
