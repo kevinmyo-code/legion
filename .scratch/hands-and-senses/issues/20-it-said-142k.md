@@ -13,10 +13,13 @@ tags: [ticket]
 ---
 # It said the Jeep was at 142k when the record says 199k
 
+*Odometer readings in this ticket are invented, with offsets preserved, for the public record. The
+"142k" figure is the one the assistant produced and is not a reading.*
+
 ## Question
 
-Kevin, 2026-08-20: *"ai just said jeep was at 142k miles. its clearly not, the fleet tab says 199k"*
-(199,621 mi).
+Kevin, 2026-08-20, paraphrased and not his words: the assistant said the Jeep was at 142k miles,
+and the fleet tab showed nothing near that. The fleet tab read 199,621 mi at the time.
 
 ### What was ruled out, by reading his real database off the phone
 
