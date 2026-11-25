@@ -5,6 +5,7 @@ import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.os.Build
+import android.os.SystemClock
 import android.util.Log
 import com.kevin.legion.BuildConfig
 import com.kevin.legion.ai.ALFRED
@@ -316,13 +317,24 @@ internal class CascadeSession(
     private val history = mutableListOf<ChatTurn>()
 
     /**
+     * A conversation he opened himself to talk, which is the only kind that takes the last one's
+     * context or leaves its own ([RewakeCarry]). Not a line Alfred opens (a proactive raise, Brief
+     * me, Look: those answer their own prompt, not his last conversation), not a ring window the
+     * mic only listens through, and not a test conversation. A line he never answered must also not
+     * spend, or wipe, the context his real re-wake is coming for.
+     */
+    private val ownConversation =
+        test == null && opener == null && micClaimant == MicArbiter.Claimant.LIVE_TURN
+
+    /**
      * The last conversation's turns, when he woke Alfred again inside [RewakeCarry.WINDOW_MS]
      * (Kevin, 2026-11-24). Deliberately NOT part of [history]: it rides his turns' prompt
      * (`turnContentsFor`) and nothing else, so every rule that reads [history] still sees this
-     * conversation alone. Taken once, here, so it cannot change mid-conversation.
+     * conversation alone. Taken once, here, so it cannot change mid-conversation. The clock is
+     * monotonic: a wall clock that jumps (this phone's does) must not widen the window.
      */
     private val carried: List<ChatTurn> =
-        if (test == null) rewake.take(System.currentTimeMillis()) else emptyList()
+        if (ownConversation) rewake.take(SystemClock.elapsedRealtime()) else emptyList()
 
     /**
      * This conversation ever read outside text (ADR 0090): a read-through opener's prompt, a
@@ -3855,13 +3867,17 @@ internal class CascadeSession(
         if (!closing.compareAndSet(false, true)) return
         // The one funnel every close goes through, so the one place the next conversation's context
         // is left behind (Kevin, 2026-11-24). Its own rules decide whether this close leaves any.
-        rewake.ended(
-            reason = reason,
-            turns = history.toList(),
-            test = test != null,
-            outsideTextRead = outsideTextRead,
-            nowMs = System.currentTimeMillis(),
-        )
+        if (ownConversation) {
+            rewake.ended(
+                reason = reason,
+                turns = history.toList(),
+                test = test != null,
+                // A read-through tool in the turn this close interrupted: that turn never reached
+                // history, so nothing of it leaks, but the conversation still read outside text.
+                outsideTextRead = outsideTextRead || turn?.readThrough == true,
+                nowMs = SystemClock.elapsedRealtime(),
+            )
+        }
         // A close that said nothing more (a tap, preemption, destroy): written down, never dropped.
         writeDownOwed()
         release(reason)
