@@ -34,6 +34,7 @@ import com.kevin.legion.service.cascade.CallWatch
 import com.kevin.legion.service.cascade.CascadeBridge
 import com.kevin.legion.service.cascade.CascadeOpener
 import com.kevin.legion.service.cascade.CascadeSession
+import com.kevin.legion.service.cascade.RewakeCarry
 import com.kevin.legion.service.cascade.VoiceEngine
 import com.kevin.legion.service.cascade.VoiceEngineSettings
 import com.kevin.legion.ui.LegionRoute
@@ -232,6 +233,13 @@ class LiveSessionController(context: Context) {
      */
     private var cascade: CascadeSession? = null
     private var cascadeBridge: CascadeBridge? = null
+
+    /**
+     * What one conversation leaves for the next (Kevin, 2026-11-24): wake Alfred again within about
+     * a minute and the last conversation's turns are still in front of the model. It lives here, not
+     * in a session, because it has to outlive the conversation that filled it. Memory only.
+     */
+    private val rewakeCarry = RewakeCarry()
 
     /** Run once the cascade has fully released the mic and audio mode (a Live door asked for it). */
     private var afterCascade: (() -> Unit)? = null
@@ -1008,6 +1016,7 @@ class LiveSessionController(context: Context) {
             opener = opener,
             micClaimant = micClaimant,
             test = test,
+            rewake = rewakeCarry,
             inHand = inHand,
             call = call,
         )

@@ -127,6 +127,14 @@ class LiveSessionController(context: Context) {
 
     private val tapDebounce = TapDebounce()
 
+    /**
+     * What one conversation leaves for the next (Kevin, 2026-11-24, phone parity): start talking to
+     * Moose again within about a minute of a conversation ending and that conversation is still in
+     * front of him. It lives here because it has to outlive each socket. Memory only; most ends
+     * already carry more through the warm park, see [RewakeCarry].
+     */
+    private val rewakeCarry = RewakeCarry()
+
     private fun dropped(request: ProactiveBus.SpeakRequest, why: String) {
         MidnightEvents.voiceTurnDecision(
             "proactive_dropped: $why :: ${request.kind} :: ${request.prompt.take(60)}"
@@ -456,7 +464,7 @@ class LiveSessionController(context: Context) {
      * failed connection doesn't burn the one-time introduction.
      */
     private fun startConversation() {
-        val s = GeminiLiveSession(appContext) { handleEvent(it) }
+        val s = GeminiLiveSession(appContext, { handleEvent(it) }, rewakeCarry)
         session = s
         pendingAction = Pending.CONVERSATION
         conversationMode = true
@@ -473,13 +481,21 @@ class LiveSessionController(context: Context) {
             val base = brain.buildBaseInstruction()
             val live = brain.buildLiveContext()
             val isFirst = !CompanionProfile.isFirstSessionDone(appContext)
+            // A conversation that ended inside the window, when the warm socket that held it is
+            // gone (Kevin, 2026-11-24). Taken once, here, because this is the one cold conversation
+            // start: a warm resume still has Gemini's own context and needs none of it.
+            val carried = if (isFirst) null else rewakeCarry.take(System.currentTimeMillis())
             // The greeting of a tapped conversation, not a proactive line: REQUESTED because the
             // driver asked for this session, and nothing holds or drops it either way.
             pendingPrompt = ProactiveBus.SpeakRequest(
                 when {
                     isFirst -> firstGreetingOpener()
-                    live.isBlank() -> GREETING_PROMPT
-                    else -> "(Current car/driver context, use naturally if relevant:\n$live)\n\n$GREETING_PROMPT"
+                    else -> listOfNotNull(
+                        carried,
+                        live.takeIf { it.isNotBlank() }
+                            ?.let { "(Current car/driver context, use naturally if relevant:\n$it)" },
+                        GREETING_PROMPT,
+                    ).joinToString("\n\n")
                 },
                 ProactiveKind.REQUESTED,
             )
@@ -520,7 +536,7 @@ class LiveSessionController(context: Context) {
 
     /** Cold start a speak-only proactive session (no warm socket existed). */
     private fun startProactive(request: ProactiveBus.SpeakRequest) {
-        val s = GeminiLiveSession(appContext) { handleEvent(it) }
+        val s = GeminiLiveSession(appContext, { handleEvent(it) }, rewakeCarry)
         session = s
         pendingAction = Pending.PROACTIVE_COLD
         pendingPrompt = request
