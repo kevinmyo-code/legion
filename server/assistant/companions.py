@@ -1,10 +1,11 @@
 """Which companion a member talks to (web-assistant ticket 03).
 
 Kevin, 2026-10-04: "her own companion. we already have dorothy. give that to
-her." Mia talks to Dorothy; Kevin talks to his own companion, which on the
-engine is Alfred until the phone pushes its roster up (ticket 03's "Kevin's
-phone pushes its companion roster up"; not built - there is no write path yet
-beyond the admin and `manage.py set_companion`).
+her." A member whose signup first name matches the seed below talks to Dorothy;
+Kevin talks to his own companion, which on the engine is Alfred until the phone
+pushes its roster up (ticket 03's "Kevin's phone pushes its companion roster
+up"; not built - there is no write path yet beyond the admin and `manage.py
+set_companion`).
 
 A member's `Companion` row is the answer when there is one. When there is not
 - a member who joined after the seeding migration ran - the companion is the
@@ -14,6 +15,7 @@ written down in one place, so the migration and the fallback cannot disagree.
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass, replace
 
 from django.db.models.functions import Now
@@ -23,14 +25,35 @@ from assistant.models import Companion
 
 DEFAULT_PERSONA = personas.ALFRED.key
 
+
+def first_name_digest(name: str) -> str:
+    """The key `SEED_PERSONA_BY_FIRST_NAME_DIGEST` uses: SHA-256 of the
+    normalised signup first name. The repo is public, so the names themselves
+    are not written down here; the digest is what the map holds."""
+    return hashlib.sha256(name.strip().lower().encode("utf-8")).hexdigest()
+
+
 # Kevin's ruling, keyed on the name the member gave at signup (`User.first_name`,
-# which `POST /api/auth/signup` fills from its `name` field). Lower-cased.
-SEED_PERSONA_BY_FIRST_NAME = {"mia": personas.DOROTHY.key}
+# which `POST /api/auth/signup` fills from its `name` field), through
+# `first_name_digest`. Keyed by digest rather than by the name because this file
+# is public: a member's own first name is not the repo's to publish. The digest
+# keeps the name out of the tree; it is not a secret, because a short first name
+# falls to a name list, and git history still holds the plaintext. The ruling
+# itself is unchanged - the same name resolves to the same companion as before.
+#
+# The map only ever decides for a member with NO `Companion` row (one who joined
+# after the seeding migration ran). Once every member has a row, this map and
+# `seed_persona_key` can go, and `resolve` can default straight to
+# `DEFAULT_PERSONA`. That needs a count of rowless members, which is Kevin's
+# read to make.
+SEED_PERSONA_BY_FIRST_NAME_DIGEST = {
+    "a6ae07ad556c5f9348cc09c16ed17a437e65acc71e689c1b19f872f1dab3c9c1": personas.DOROTHY.key,
+}
 
 
 def seed_persona_key(user) -> str:
     first = (getattr(user, "first_name", "") or "").strip().lower()
-    return SEED_PERSONA_BY_FIRST_NAME.get(first, DEFAULT_PERSONA)
+    return SEED_PERSONA_BY_FIRST_NAME_DIGEST.get(first_name_digest(first), DEFAULT_PERSONA)
 
 
 @dataclass(frozen=True)

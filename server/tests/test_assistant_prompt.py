@@ -19,7 +19,13 @@ from datetime import UTC, datetime
 import pytest
 
 from assistant import gen_shared_clauses, personas, shared_clauses
-from assistant.companions import ResolvedCompanion, resolve, seed_persona_key
+from assistant.companions import (
+    SEED_PERSONA_BY_FIRST_NAME_DIGEST,
+    ResolvedCompanion,
+    first_name_digest,
+    resolve,
+    seed_persona_key,
+)
 from assistant.prompt import (
     PHONE_ONLY,
     WEB_FRAME,
@@ -166,7 +172,7 @@ def test_the_web_prompt_carries_every_web_clause_and_says_the_crisis_rule_last()
 
 def test_the_web_prompt_names_what_only_the_phone_can_do():
     prompt = build_system_prompt(
-        companion=_alfred(), first_name="Mia", now=NOW, utc_offset_minutes=None
+        companion=_alfred(), first_name="Isla", now=NOW, utc_offset_minutes=None
     )
     for thing in PHONE_ONLY:
         assert thing in prompt
@@ -211,14 +217,51 @@ class _User:
         self.first_name = first_name
 
 
-def test_mia_is_seeded_dorothy_and_everyone_else_alfred():
-    assert seed_persona_key(_User("Mia")) == "dorothy"
-    assert seed_persona_key(_User(" mia ")) == "dorothy"
+class _Row:
+    """What `resolve` reads off a `Companion`. A stub, so the stored-row case
+    needs no database."""
+
+    def __init__(self, persona_key, name="", persona_fragment="", voice_name=""):
+        self.persona_key = persona_key
+        self.name = name
+        self.persona_fragment = persona_fragment
+        self.voice_name = voice_name
+
+
+def test_a_seeded_name_gets_dorothy_and_everyone_else_alfred(monkeypatch):
+    # The seeded name itself is not in this repo: `companions.py` keys the map by
+    # digest, so the test seeds an INVENTED name through the same function the
+    # production lookup uses. That exercises the mechanism without publishing a
+    # real member's name, which is the whole point of the digest.
+    monkeypatch.setitem(
+        SEED_PERSONA_BY_FIRST_NAME_DIGEST, first_name_digest("Isla"), personas.DOROTHY.key
+    )
+    assert seed_persona_key(_User("Isla")) == "dorothy"
+    # Normalisation: the lookup strips and lower-cases before digesting.
+    assert seed_persona_key(_User(" isla ")) == "dorothy"
+    assert seed_persona_key(_User("ISLA")) == "dorothy"
     assert seed_persona_key(_User("Kevin")) == "alfred"
     assert seed_persona_key(_User("")) == "alfred"
-    mia = resolve(None, _User("Mia"))
-    assert (mia.name, mia.voice_name, mia.stored) == ("Dorothy", "Vindemiatrix", False)
-    assert mia.clause == personas.DOROTHY.clause
+    assert seed_persona_key(_User(None)) == "alfred"
+    seeded = resolve(None, _User("Isla"))
+    assert (seeded.name, seeded.voice_name, seeded.stored) == ("Dorothy", "Vindemiatrix", False)
+    assert seeded.clause == personas.DOROTHY.clause
+
+
+def test_a_stored_row_wins_over_the_seeded_name(monkeypatch):
+    """The seed decides only for a member with no row. A member who HAS a row
+    keeps it even when their name is in the seed map."""
+    monkeypatch.setitem(
+        SEED_PERSONA_BY_FIRST_NAME_DIGEST, first_name_digest("Isla"), personas.DOROTHY.key
+    )
+    stored = resolve(_Row(personas.ALFRED.key), _User("Isla"))
+    assert (stored.persona_key, stored.name, stored.stored) == ("alfred", "Alfred", True)
+
+
+def test_the_seed_map_holds_no_plaintext_name():
+    """The repo is public: every key is a SHA-256 hex digest, never a name."""
+    for key in SEED_PERSONA_BY_FIRST_NAME_DIGEST:
+        assert re.fullmatch(r"[0-9a-f]{64}", key), key
 
 
 def test_a_renamed_companion_speaks_its_own_name():
