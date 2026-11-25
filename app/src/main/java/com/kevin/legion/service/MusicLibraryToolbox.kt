@@ -53,18 +53,18 @@ object MusicLibraryToolbox {
         val source = BrowseSource.fromWire(raw)
             ?: return result(success = false, message = "Unknown source: $raw")
         return when (source) {
-            BrowseSource.SAVED_ALBUMS -> libraryOutcomeToJson(context, SpotifyWebApi.getSavedAlbums(context, limit), "saved albums") { a ->
-                JSONObject().put("name", a.name).put("artist", a.artist)
-            }
+            BrowseSource.SAVED_ALBUMS -> libraryOutcomeToJson(
+                context, SpotifyWebApi.getSavedAlbums(context, limit), "saved albums",
+            ) { a -> JSONObject().put("name", a.name).put("artist", a.artist) }
             // Deliberately ignores `limit`: answering "which playlists do I have" from a page of
             // five is how a library read turned into a claim about what is NOT in the library, and
             // a NAMED lookup served off the first five rows can still miss the one he asked for
             // (music-suggestions-1124 P7). Playlist names are short; the whole cached list is
             // cheaper than a wrong answer.
             BrowseSource.PLAYLISTS -> browsePlaylists(context, args.optString("playlistName").ifBlank { null })
-            BrowseSource.LIKED_SONGS -> libraryOutcomeToJson(context, SpotifyWebApi.getLikedSongs(context, limit), "liked songs") { t ->
-                JSONObject().put("name", t.name).put("artist", t.artist).put("spotifyUri", t.uri)
-            }
+            BrowseSource.LIKED_SONGS -> libraryOutcomeToJson(
+                context, SpotifyWebApi.getLikedSongs(context, limit), "liked songs",
+            ) { t -> JSONObject().put("name", t.name).put("artist", t.artist).put("spotifyUri", t.uri) }
             BrowseSource.RECENTLY_PLAYED -> {
                 val json = libraryOutcomeToJson(context, SpotifyWebApi.getRecentlyPlayed(context, limit), "recently played") { t ->
                     JSONObject().put("name", t.name).put("artist", t.artist)
@@ -82,12 +82,12 @@ object MusicLibraryToolbox {
                     )
                 } else json
             }
-            BrowseSource.TOP_ARTISTS -> libraryOutcomeToJson(context, SpotifyWebApi.getTopArtists(context, limit), "top artists") { a ->
-                JSONObject().put("name", a.name)
-            }
-            BrowseSource.TOP_TRACKS -> libraryOutcomeToJson(context, SpotifyWebApi.getTopTracks(context, limit), "top tracks") { t ->
-                JSONObject().put("name", t.name).put("artist", t.artist)
-            }
+            BrowseSource.TOP_ARTISTS -> libraryOutcomeToJson(
+                context, SpotifyWebApi.getTopArtists(context, limit), "top artists",
+            ) { a -> JSONObject().put("name", a.name) }
+            BrowseSource.TOP_TRACKS -> libraryOutcomeToJson(
+                context, SpotifyWebApi.getTopTracks(context, limit), "top tracks",
+            ) { t -> JSONObject().put("name", t.name).put("artist", t.artist) }
             BrowseSource.LEGION_HISTORY -> browseLegionHistory(context, limit)
             BrowseSource.ARTIST_ALBUMS -> browseArtistAlbums(context, limit)
         }
