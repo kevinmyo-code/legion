@@ -7,7 +7,7 @@ Every read goes through `household.tenancy.scoped()` with the caller's
 request (or the brief job's `Viewer`), ADR 0045's choke point.
 
 **Where "last done" comes from.** Both axes come off ONE row, the most
-recently STATED service on file for that item (`_newest_first`, which ranks on
+recently STATED service on file for that item (`_anchor_key`, which ranks on
 `_stated_at`), never the latest date from one row paired with the highest
 mileage from another - the rule the phone's
 `FleetRecordBridge.projectAnchorLegacy` holds, ordering on its own
@@ -122,12 +122,12 @@ def schedule_status(viewer, vehicle) -> list[ItemStatus]:
         done = [h for h in history if h.service_name.strip().lower() == key]
         # BOTH axes of the single NEWEST row, never the highest mileage and the latest date picked
         # from different rows - the phone's own rule (`FleetRecordBridge.projectAnchorLegacy`, one
-        # row, both axes together); see `_newest_first` for which row that is here.
+        # row, both axes together); see `_anchor_key` for which row that is here.
         # `max(mileage)` across rows was the disagreement: a newer service logged with no reading
         # left the older row's mileage standing as the anchor here while the phone had already
         # dropped it, so this side went on reporting the just-logged item overdue, by name, from a
         # figure the phone no longer held.
-        newest = max(done, key=_newest_first) if done else None
+        newest = max(done, key=_anchor_key(done)) if done else None
         last_on = newest.service_date if newest else None
         last_miles = newest.mileage if newest else None
         # `is not None`, never truthiness: the phone tests `!= null`, so an interval stored as 0
@@ -172,7 +172,26 @@ def schedule_status(viewer, vehicle) -> list[ItemStatus]:
     return out
 
 
-def _stated_at(row) -> dt.datetime:
+def _days_an_anchor_was_stated_for(rows) -> frozenset[dt.date]:
+    """The stated days that carry a live ASSERTED row WITH a mileage.
+
+    A mileage-less OBSERVED row sharing one of those days is the second half of a
+    dated "miles ago" backfill: `log_past_service` with a day and the "miles ago"
+    phrasing writes the assertion (carrying the remembered figure) and the event
+    (carrying none, because an OBSERVED row may not hold a figure derived from the
+    live estimate), and `explainedBy` is false between them, so both survive. The
+    phone stamps that event row `updatedAt = date`, midnight of the stated day,
+    while the assertion gets the wall clock - so the assertion is the anchor there
+    for every stated day. This side cannot read the pair off one row, which is why
+    the set is computed over the whole history rather than inside [_stated_at]."""
+    return frozenset(
+        row.service_date
+        for row in rows
+        if row.kind == "ASSERTED" and row.service_date is not None and row.mileage is not None
+    )
+
+
+def _stated_at(row, anchor_days: frozenset[dt.date]) -> dt.datetime:
     """WHEN this row was last stated, in the phone's own terms - its
     `ServiceRecord.updatedAt`, restated against this schema. That field is what
     `FleetRecordBridge.projectAnchorLegacy` orders on, so reproducing it is what makes the two
@@ -185,7 +204,8 @@ def _stated_at(row) -> dt.datetime:
       assertion is still a statement made at a moment.
 
     So: an ASSERTED row, and an OBSERVED row whose service date is the day it was written, rank by
-    when the row was written; a BACKDATED observation ranks by the day the work happened. No row
+    when the row was written; a BACKDATED observation ranks by the day the work happened, because
+    that is the millis the phone stamped it with. No row
     is pushed to the bottom for lacking a date, which is what round 2's blocker A was - an undated
     ASSERTED anchor written today lost to a dated OBSERVED row from last year here while winning on
     the phone, so this side called a just-anchored service overdue by name in the spoken brief.
@@ -203,8 +223,23 @@ def _stated_at(row) -> dt.datetime:
 
     Gap left open: a DELAYED sync. These timestamps are when the engine was told, not when the
     phone wrote, so two writes made offline in one order and synced in the other rank by the sync.
-    Closing it needs the phone's own stamp on the wire, which `ServiceHistoryWriteDto` does not
-    carry."""
+    A live log whose PUT crosses UTC midnight is the same gap in its smallest form: its stated day
+    is then one behind the day it arrives, so it ranks by the event day rather than by arrival.
+    Closing either needs the phone's own stamp on the wire, which `ServiceHistoryWriteDto` does not
+    carry.
+
+    Gap NOT closable from one row at all, and the reason [anchor_days] is a parameter: a dated
+    backfill of the write's own day and a LIVE log of the same day arrive with identical fields.
+    `logServiceDirect` passes `now` as the event millis and `DjangoFleetBackend.fleetDate` converts
+    at UTC, so a live log's `service_date` IS the day it arrives - the same value a backfill of
+    today sends. The phone tells them apart by the millis behind that date and this side cannot.
+    [anchor_days] resolves the one pair where the difference changes the verdict and the phone's
+    answer is knowable (see [_days_an_anchor_was_stated_for]). Its mirror image - an anchor stated
+    WITH a figure, then the same item logged the same day with none - still ranks the assertion
+    first here while the phone takes the log. That costs an item timed from a figure stated that
+    day instead of one reported as needing a reading, and the next stated reading or log settles
+    it; the pair this resolves could not be settled at all, because `set_odometer` only pins onto
+    items the PHONE believes are waiting."""
     written = row.created_at
     # An ASSERTED row is RE-STATED IN PLACE, so it ranks by the later of its two timestamps.
     # `writeAssertedAnchorLegacy` keeps ONE ASSERTED row per item and rewrites it, so the sync's
@@ -217,9 +252,12 @@ def _stated_at(row) -> dt.datetime:
     # `created_at` - which picked a two-services-old row the first time this was written that way.
     # Taking the later of the two can only move a row FORWARD, never behind rows inserted after it.
     #
-    # It does mean any write to an old ASSERTED row makes it the anchor again. Checked rather than
-    # assumed: `syncAssertedAnchorToServer` has exactly two callers, `setAnchor` and
-    # `upsertNewItem`, both of them real anchor writes, so nothing re-PUTs an unchanged anchor row.
+    # It does mean any write that CHANGES an old ASSERTED row makes it the anchor again, which is
+    # the point. A write that changes nothing must not: `HomesSync.pushServiceRecords` re-sends
+    # every local record whose `serverId` is still null, so an upsert that committed here and whose
+    # response was lost comes back unchanged on the next sync, and the phone re-stamps nothing for
+    # it. `api.fleet.ServiceHistorySerializer.update` is where that is held - an identical PUT skips
+    # the UPDATE, so the trigger never fires and this row's statement time stands still.
     #
     # An OBSERVED row is deliberately NOT ranked on `updated_at`: the phone's own edit of a row's
     # mileage (`ServiceRecordDao.editMileageAndCost`) sets `mileage` and `costCents` and does NOT
@@ -227,23 +265,35 @@ def _stated_at(row) -> dt.datetime:
     # here would be this side inventing an order the phone does not have.
     if row.kind == "ASSERTED" or row.service_date is None:
         return max(written, row.updated_at)
-    # Written on the day it records (within a day): the row was stated at the event, so when it
-    # was written IS the moment the phone stamps. The day of slack is deliberate - this side keeps
-    # UTC timestamps while `service_date` is the household's own calendar day, so an evening log
-    # is written after midnight UTC and would otherwise read as backdated and rank below an
-    # assertion made before it. Measured: that is the case that failed when this compared dates
-    # exactly. Anything older than that is a real backdate and ranks by the day the work happened.
-    if row.service_date >= timezone.localtime(written).date() - dt.timedelta(days=1):
+    event_day = timezone.make_aware(dt.datetime.combine(row.service_date, dt.time.min))
+    # The dated "miles ago" backfill's event row: no figure of its own, sharing its day with an
+    # assertion that has one. `insertObserved` stamps it midnight of that day, so it ranks by the
+    # day it records and the assertion beats it however late the pair arrives. Round 3's review
+    # measured the alternative: ranked by arrival, this row took the anchor for any recent day, and
+    # the brief then said the service was "not timed at all" while the phone had it timed and due.
+    if row.mileage is None and row.service_date in anchor_days:
+        return event_day
+    # Written on the day it records: the row was stated at the event, so when it was written IS the
+    # moment the phone stamps. An exact comparison, because a live log's `service_date` already IS
+    # the day it arrives (`logServiceDirect` passes `now`, `fleetDate` converts at UTC) - a day of
+    # slack here bought nothing and widened the branch above's window by a day, which is what
+    # flipped a backdated log carrying a figure over an assertion stated after it.
+    if row.service_date == timezone.localtime(written).date():
         return written
-    return timezone.make_aware(dt.datetime.combine(row.service_date, dt.time.min))
+    return event_day
 
 
-def _newest_first(row):
+def _anchor_key(rows):
     """Which service history row the anchor comes from: the most recently STATED one
     ([_stated_at]), then when it was written for an exact tie.
+
+    A key over the whole history rather than one row, because one row cannot tell whether a
+    mileage-less observation is a live log or half of a dated backfill; its SIBLINGS can
+    ([_days_an_anchor_was_stated_for]).
 
     What matters beyond the order, and what fixed the first disagreement with the phone, is that
     the whole key belongs to ONE row: the anchor is never a mileage from one row paired with a date
     from another, and a newer service logged with no reading supersedes an older one's mileage
     rather than letting it stand."""
-    return (_stated_at(row), row.created_at)
+    anchor_days = _days_an_anchor_was_stated_for(rows)
+    return lambda row: (_stated_at(row, anchor_days), row.created_at)
