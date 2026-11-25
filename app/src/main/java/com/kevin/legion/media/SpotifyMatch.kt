@@ -1,6 +1,7 @@
 package com.kevin.legion.media
 
 import org.json.JSONObject
+import java.text.Normalizer
 
 /**
  * One near-miss a rejection named, with the URI that makes it actionable.
@@ -30,8 +31,14 @@ data class ClosestHit(val name: String, val artist: String?, val uri: String?) {
  *
  * Rules (thresholds are choices, covered by SpotifyMatchTest):
  *  - Normalisation: lowercase; drop "feat./ft./with" tails, parentheticals/brackets and
- *    " - remastered / - live / - radio edit"-style dash suffixes from CANDIDATE titles; drop
- *    punctuation except `*`; collapse whitespace.
+ *    " - remastered / - live / - radio edit"-style dash suffixes from CANDIDATE titles; fold
+ *    diacritics (`Beyoncé` is `beyonce`); turn a letter-standing symbol into the `*` wildcard
+ *    (`A$AP` is `a*ap`, which matches `asap`); drop other punctuation except `*`; collapse
+ *    whitespace. BOTH sides go through the same function, so a gap between how he says a name and
+ *    how Spotify prints it never decides anything.
+ *  - Joining words (`and`, `n`, `x`, `plus`, `with`) are skipped on both sides when an ARTIST's
+ *    name is matched, because `&` and `+` normalise to nothing: "simon and garfunkel",
+ *    "simon garfunkel" and `Simon & Garfunkel` are one artist. Title matching keeps them.
  *  - Censored spellings: a token compares equal when, after folding `ck`->`kk` and `c`->`k`, the
  *    two have the same length and every position is equal or a `*` on either side. So `fukk`,
  *    `f*kk`, `f**k` and `fuck` are all one word, while `bike` and `bake` stay different.
@@ -72,10 +79,32 @@ internal object SpotifyMatch {
     private val DASH_SUFFIX = Regex("""\s+-\s+.*$""")
     private val NON_WORD = Regex("""[^\p{L}\p{N}*\s]""")
     private val SPACES = Regex("""\s+""")
+    private val APOSTROPHES = Regex("""['’`´]""")
+    private val COMBINING = Regex("""\p{Mn}+""")
 
-    /** Lowercase, punctuation out (`*` stays: it is a censor mark), whitespace collapsed. */
-    fun normalize(s: String): String =
-        NON_WORD.replace(s.lowercase().replace('&', ' ').replace("'", ""), " ").let { SPACES.replace(it, " ").trim() }
+    /**
+     * Symbols a catalogue writes where a letter is said: `A$AP` for "asap", `$uicideboy$` for
+     * "suicideboys". Mapped to `*`, which [tokensMatch] already reads as "any letter here", rather
+     * than dropped (leaving `aap`) or spaced (leaving `a ap`) - neither of which the request's own
+     * spelling can ever match.
+     */
+    private val LETTER_SYMBOL = Regex("""[$@]""")
+
+    /**
+     * Lowercase, diacritics folded (`Beyoncé` -> `beyonce`), letter-standing symbols turned into
+     * the `*` wildcard, other punctuation out (`*` stays: it is a censor mark), whitespace
+     * collapsed.
+     *
+     * Both sides of every comparison in this file go through this one function, which is the
+     * point: a gap between how he says a name and how Spotify prints it must not decide anything.
+     * Folding runs BEFORE [NON_WORD], because a combining mark left in place becomes a space and
+     * splits the word in half.
+     */
+    fun normalize(s: String): String {
+        val folded = COMBINING.replace(Normalizer.normalize(s.lowercase(), Normalizer.Form.NFD), "")
+        val letters = LETTER_SYMBOL.replace(APOSTROPHES.replace(folded.replace('&', ' '), ""), "*")
+        return NON_WORD.replace(letters, " ").let { SPACES.replace(it, " ").trim() }
+    }
 
     /** [normalize] after shedding the decoration a streaming catalogue adds to a title. */
     fun normalizeCandidateTitle(title: String): String {
@@ -113,6 +142,43 @@ internal object SpotifyMatch {
 
     private fun containsSequence(long: List<String>, short: List<String>): Boolean =
         indexOfSequence(long, short) >= 0
+
+    /**
+     * Words that only ever JOIN two names. The catalogue prints "Simon & Garfunkel", "Earth, Wind
+     * & Fire", "Florence + The Machine", and [normalize] leaves those joiners as nothing at all,
+     * while the request says "simon and garfunkel". Either side may carry a joiner the other left
+     * out, so an artist's name is matched with them skipped on BOTH sides, and a joiner is never
+     * evidence of a different artist.
+     *
+     * Only the ARTIST comparisons skip them. Title matching stays exact, because
+     * [containmentLeftovers] measures its surplus by the matched run's own length.
+     */
+    private val CONNECTIVES = setOf("and", "n", "x", "plus", "with")
+
+    /**
+     * Where [short] sits inside [long] as one run with connectives on either side skipped, as a
+     * range over [long]'s own indices, or null when it does not. The range is what a caller takes
+     * back out of its list, so it covers the joiners the run swallowed too.
+     */
+    @Suppress("NestedBlockDepth") // one walk, one when; splitting it hides the two cursors
+    private fun artistRun(long: List<String>, short: List<String>): IntRange? {
+        if (short.isEmpty()) return null
+        for (start in long.indices) {
+            var i = start
+            var j = 0
+            while (i < long.size && j < short.size) {
+                when {
+                    tokensMatch(long[i], short[j]) -> { i++; j++ }
+                    long[i] in CONNECTIVES -> i++
+                    short[j] in CONNECTIVES -> j++
+                    else -> break
+                }
+            }
+            while (j < short.size && short[j] in CONNECTIVES) j++
+            if (j == short.size) return start until i
+        }
+        return null
+    }
 
     // ---------------------------------------------------------------- the checks
 
@@ -184,9 +250,26 @@ internal object SpotifyMatch {
         candidateArtists: List<String>,
         candidateRawTitle: String,
     ): Boolean {
-        val pool = candidateArtists.flatMap { tokens(normalize(it)) } + tokens(normalize(candidateRawTitle))
-        return leftovers.all { l -> pool.any { tokensMatch(it, l) } }
+        val artistTokens = candidateArtists.flatMap { tokens(normalize(it)) }
+        val pool = artistTokens + tokens(normalize(candidateRawTitle))
+        return leftovers.withIndex().all { (i, l) ->
+            pool.any { tokensMatch(it, l) } || joinsArtistWords(leftovers, i, artistTokens)
+        }
     }
+
+    /**
+     * Is [leftovers]`[at]` a connective sitting BETWEEN two of this candidate's own artist words?
+     *
+     * That is the one place a joiner carries no information: "mrs robinson simon and garfunkel"
+     * against a catalogue that prints `Simon & Garfunkel`, whose `&` [normalize] left as nothing,
+     * so his "and" has no token to match. Deliberately not filler - a surplus "and chill" still
+     * names something nobody involved has, and must still reject.
+     */
+    private fun joinsArtistWords(leftovers: List<String>, at: Int, artistTokens: List<String>): Boolean =
+        leftovers[at] in CONNECTIVES &&
+            at > 0 && at < leftovers.lastIndex &&
+            artistTokens.any { tokensMatch(it, leftovers[at - 1]) } &&
+            artistTokens.any { tokensMatch(it, leftovers[at + 1]) }
 
     fun artistMatches(candidateArtists: List<String>, wantedArtist: String): Boolean {
         val w = tokens(normalize(wantedArtist))
@@ -194,7 +277,7 @@ internal object SpotifyMatch {
         // Whole-token containment, never raw substrings: "ye" must not accept "Yeat".
         return candidateArtists.any {
             val c = tokens(normalize(it))
-            c.isNotEmpty() && (containsSequence(c, w) || containsSequence(w, c))
+            c.isNotEmpty() && (artistRun(c, w) != null || artistRun(w, c) != null)
         }
     }
 
@@ -313,10 +396,8 @@ internal object SpotifyMatch {
     internal fun titleRemainder(query: String, artistNames: List<String>): String? {
         val q = tokens(normalize(query))
         for (a in artistNames) {
-            val at = tokens(normalize(a))
-            val i = indexOfSequence(q, at)
-            if (i < 0) continue
-            return (q.take(i) + q.drop(i + at.size)).filterNot { it in FILLER }
+            val run = artistRun(q, tokens(normalize(a))) ?: continue
+            return (q.take(run.first) + q.drop(run.last + 1)).filterNot { it in FILLER }
                 .joinToString(" ").takeIf { it.isNotBlank() }
         }
         return q.filterNot { it in FILLER }.joinToString(" ").takeIf { it.isNotBlank() }
@@ -332,10 +413,8 @@ internal object SpotifyMatch {
     internal fun artistEvidence(query: String, candidateArtists: List<String>): String? {
         val q = tokens(normalize(query))
         for (a in candidateArtists) {
-            val at = tokens(normalize(a))
-            val i = indexOfSequence(q, at)
-            if (i < 0) continue
-            val rest = (q.take(i) + q.drop(i + at.size)).filterNot { it in FILLER }
+            val run = artistRun(q, tokens(normalize(a))) ?: continue
+            val rest = (q.take(run.first) + q.drop(run.last + 1)).filterNot { it in FILLER }
             if (rest.isNotEmpty()) return rest.joinToString(" ")
         }
         return null
