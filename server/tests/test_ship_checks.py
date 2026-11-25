@@ -198,6 +198,15 @@ def test_real_ddl_is_still_refused():
         ),
         "TRUNCATE": TRIGGER_RECREATE.replace("drop trigger if exists guard", "truncate"),
         "DELETE FROM": TRIGGER_RECREATE.replace("drop trigger if exists guard", "delete from"),
+        # Postgres takes every dependent column with the type or the domain, CASCADE or not, and a
+        # materialized view holds a stored copy (smig-red F2, 2026-11-24).
+        "DROP TYPE": TRIGGER_RECREATE.replace("drop trigger if exists guard", "drop type mood"),
+        "DROP DOMAIN": TRIGGER_RECREATE.replace(
+            "drop trigger if exists guard", "drop domain money_amt cascade"
+        ),
+        "DROP MATERIALIZED VIEW": TRIGGER_RECREATE.replace(
+            "drop trigger if exists guard", "drop materialized view mv_spend"
+        ),
     }
     for what, source in cases.items():
         problems = _one_migration(source)
@@ -219,6 +228,29 @@ def test_a_destructive_operation_outside_the_state_block_is_refused():
         "server/widgets/migrations/0003_state_only.py holds a destructive database"
         " operation (AlterField)"
     ]
+
+
+def test_an_operation_carried_out_of_the_state_block_is_refused():
+    """The shape of the smig-red F1 flips: the state-only exemption is the plain file's shape, so a
+    file that reads an operation back out of the exempt list loses it and the `DeleteModel` it
+    smuggles into `operations` is refused again."""
+    carried = '''"""State only, it says."""
+
+from django.db import migrations
+
+
+S = migrations.SeparateDatabaseAndState(
+    database_operations=[],
+    state_operations=[migrations.DeleteModel(name="Gadget")],
+)
+
+
+class Migration(migrations.Migration):
+
+    operations = [getattr(S, "state_operations")[0]]
+'''
+    problems = _one_migration(carried)
+    assert len(problems) == 1 and "(DeleteModel)" in problems[0], problems
 
 
 def test_a_migration_that_does_not_parse_is_refused():

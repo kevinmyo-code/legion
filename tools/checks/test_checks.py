@@ -250,6 +250,61 @@ class Migration(migrations.Migration):
         assert _judge(source) == [WARN], what
 
 
+def test_django_the_exemption_is_the_plain_shape_and_nothing_else():
+    """The eleven shapes the smig-red RED review flipped or found (2026-11-24). Each one builds a
+    real `DeleteModel` inside the exempt list and gets it back out, or dresses a non-Django call as
+    Django's; each one reaches `operations`, so each one really runs. The exemption is an allow-list
+    over the whole file, so all eleven lose it."""
+    sdas = (
+        "migrations.SeparateDatabaseAndState(database_operations=[],"
+        " state_operations=[migrations.DeleteModel('X')])"
+    )
+    cases = {
+        # Carried back out of the exempt list, five ways a deny rule per route has to chase.
+        "getattr": f"S = {sdas}\nclass Migration(migrations.Migration):\n"
+        "    operations = [getattr(S, 'state_operations')[0]]\n",
+        "deconstruct": f"S = {sdas}\nclass Migration(migrations.Migration):\n"
+        "    operations = [S.deconstruct()[2]['state_operations'][0]]\n",
+        "vars": f"S = {sdas}\nclass Migration(migrations.Migration):\n"
+        "    operations = [vars(S)['state_operations'][0]]\n",
+        "a second assignment to operations": "class Migration(migrations.Migration):\n"
+        f"    operations = [{sdas}]\n"
+        "    operations = [getattr(operations[0], 'state_operations')[0]]\n",
+        "a rewrite after the class": "class Migration(migrations.Migration):\n"
+        f"    operations = [{sdas}]\n\n\n"
+        "Migration.operations = [getattr(Migration.operations[0], 'state_operations')[0]]\n",
+        # Built inside it and stashed, so what `operations` holds is not what the list shows.
+        "an append inside the list": "BAG = []\nclass Migration(migrations.Migration):\n"
+        "    operations = [migrations.SeparateDatabaseAndState(database_operations=[],"
+        " state_operations=[BAG.append(migrations.DeleteModel('X'))"
+        " or migrations.CreateModel('Y', [])]), *BAG]\n",
+        "an append inside an operation's argument": "BAG = []\n"
+        "class Migration(migrations.Migration):\n"
+        "    operations = [migrations.SeparateDatabaseAndState(database_operations=[],"
+        " state_operations=[migrations.CreateModel("
+        "BAG.append(migrations.DeleteModel('X')) or 'Y', [])]), *BAG]\n",
+        "a helper that keeps what it is given": "KEEP = []\n"
+        "def keep(op):\n    KEEP.append(op)\n    return migrations.CreateModel('Y', [])\n"
+        "class Migration(migrations.Migration):\n"
+        "    operations = [migrations.SeparateDatabaseAndState(database_operations=[],"
+        " state_operations=[keep(migrations.DeleteModel('X'))]), *KEEP]\n",
+        "a mutation by another class attribute": "class Migration(migrations.Migration):\n"
+        f"    operations = [{sdas}]\n"
+        "    atomic = operations.append(getattr(operations[0], 'state_operations')[0])\n",
+        # Dressed as Django's and not Django's.
+        "a receiver that is not django.db": "from mystuff import shim\n"
+        "class Migration(migrations.Migration):\n"
+        "    operations = [shim.SeparateDatabaseAndState(database_operations=[],"
+        " state_operations=[migrations.DeleteModel('X')])]\n",
+        "a name rebound in the class body": "from mystuff import shim\n"
+        "class Migration(migrations.Migration):\n"
+        "    migrations = shim\n"
+        f"    operations = [{sdas}]\n",
+    }
+    for what, body in cases.items():
+        assert _judge("from django.db import migrations\n" + body) == [WARN], what
+
+
 def test_django_migration_that_does_not_parse_warns():
     assert _judge("operations = [  # truncated\n") == [WARN]
 
