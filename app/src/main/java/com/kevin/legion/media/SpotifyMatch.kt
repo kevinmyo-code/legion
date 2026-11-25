@@ -160,7 +160,9 @@ internal object SpotifyMatch {
      * range over [long]'s own indices, or null when it does not. The range is what a caller takes
      * back out of its list, so it covers the joiners the run swallowed too.
      */
-    @Suppress("NestedBlockDepth") // one walk, one when; splitting it hides the two cursors
+    // NestedBlockDepth: one walk, one when; splitting it hides the two cursors.
+    // ReturnCount: the empty guard, the hit and the miss, one worded exit each.
+    @Suppress("NestedBlockDepth", "ReturnCount")
     private fun artistRun(long: List<String>, short: List<String>): IntRange? {
         if (short.isEmpty()) return null
         for (start in long.indices) {
