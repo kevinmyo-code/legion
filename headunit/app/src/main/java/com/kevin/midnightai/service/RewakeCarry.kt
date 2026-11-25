@@ -32,10 +32,26 @@ class RewakeCarry {
     private var endedAtMs: Long? = null
 
     /**
+     * A conversation started or resumed on this socket ([GeminiLiveSession] `beginConversation`),
+     * so what is held is a conversation that is RUNNING again, not one that ended. Dropping the
+     * stamp is what makes [abandoned] mean what it says: without it, a conversation resumed on a
+     * socket that had already parked kept adding turns under the old park's stamp, and a teardown
+     * of that conversation (a drop, an error, `silentDestroy`, a crisis) left its own completed
+     * turns behind for the next cold connect to replay.
+     *
+     * The turns themselves stay: they are what the driver last heard, and this same conversation is
+     * carrying on. Its next real end ([ended]) stamps the lot again.
+     */
+    @Synchronized
+    fun running() {
+        endedAtMs = null
+    }
+
+    /**
      * A completed exchange. Turns accumulate across a park: a proactive line spoken on the warm
      * socket, and the next conversation on it, are both more of what he last heard, so they join
      * the list rather than replacing it, and the next end re-stamps the lot. Only [take] running
-     * out of time, or [abandoned] on a conversation that never ended, empties it.
+     * out of time, [abandoned] on a conversation that is not ended, or [wipe] empties it.
      */
     @Synchronized
     fun turn(driver: String, companion: String) {
@@ -55,13 +71,26 @@ class RewakeCarry {
 
     /**
      * The socket died without the conversation ending: a drop, an error, a teardown, a mic it could
-     * not open. A conversation that never ended leaves nothing. One that had already ended keeps
-     * what it left, which is the point: a parked socket the server closes must not cost the driver
-     * his context.
+     * not open. A conversation that is not ended leaves nothing, its own completed turns included
+     * ([running] is what keeps that true across a park). One that had already ended keeps what it
+     * left, which is the point: a parked socket the server closes must not cost the driver his
+     * context.
      */
     @Synchronized
     fun abandoned() {
-        if (endedAtMs == null) turns.clear()
+        if (endedAtMs == null) wipe()
+    }
+
+    /**
+     * Forget the conversation outright, ended or not: the crisis teardown (`LiveSessionController`'s
+     * one crisis handler, phone parity). CLAUDE.md sec 9.1 says stop performing the character, and
+     * replaying that conversation into the next greeting prompt a minute later is performing it
+     * again. Not a close reason, because a crisis lands on whatever socket is up.
+     */
+    @Synchronized
+    fun wipe() {
+        turns.clear()
+        endedAtMs = null
     }
 
     /**
@@ -76,10 +105,7 @@ class RewakeCarry {
         val expired = endedAt != null && !carries(endedAt, nowMs)
         // Held too long: emptied on the way past, because nothing will want it again. Turns with no
         // end stamp belong to a conversation still running, and are left alone.
-        if (expired) {
-            turns.clear()
-            endedAtMs = null
-        }
+        if (expired) wipe()
         return if (endedAt != null && !expired && turns.isNotEmpty()) block(turns.toList()) else null
     }
 

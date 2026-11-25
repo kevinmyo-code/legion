@@ -616,6 +616,10 @@ class LiveSessionController(context: Context) {
                 // meter by hand since silentDestroy skips the Closed path that
                 // normally does it (same reason as refreshIdleVoice).
                 usageMeter.pause(System.currentTimeMillis())
+                // Nothing of this conversation is replayed into the next greeting prompt: tearing
+                // the socket down and then carrying the same turns back a minute later would be
+                // performing the character again (CLAUDE.md sec 9.1, phone parity, [RewakeCarry]).
+                rewakeCarry.wipe()
                 session?.silentDestroy()
                 session = null
                 conversationMode = false

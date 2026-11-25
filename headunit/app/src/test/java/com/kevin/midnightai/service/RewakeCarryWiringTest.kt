@@ -51,6 +51,35 @@ class RewakeCarryWiringTest {
         assertEquals("both ends and nothing else", 2, Regex("rewake\\?\\.ended\\(").findAll(s).count())
     }
 
+    /**
+     * `abandoned()` can only mean "a conversation that never finished leaves nothing" if something
+     * tells the holder a conversation is running again. `beginConversation` is both the cold start's
+     * and the warm resume's one door, so the reset goes there.
+     */
+    @Test
+    fun `a conversation starting or resuming on the socket drops the end stamp`() {
+        val s = session()
+        val begin = bodyOf(s, "beginConversation")
+        assertTrue("the one door a cold start and a warm resume share", begin.contains("rewake?.running()"))
+        assertTrue(
+            "beside the flag that says a conversation is live",
+            begin.contains("conversationActive = true"),
+        )
+        assertEquals("one reset site", 1, Regex("rewake\\?\\.running\\(\\)").findAll(s).count())
+    }
+
+    @Test
+    fun `a crisis teardown wipes the carry, so nothing of it is replayed`() {
+        val c = controller()
+        val crisis = c.substring(c.indexOf("is LiveEvent.CrisisDetected ->"))
+        assertTrue(crisis.contains("rewakeCarry.wipe()"))
+        assertTrue(
+            "before the socket goes, so no later event can re-stamp it",
+            crisis.indexOf("rewakeCarry.wipe()") < crisis.indexOf("session?.silentDestroy()"),
+        )
+        assertEquals("one wipe site", 1, Regex("rewakeCarry\\.wipe\\(\\)").findAll(c).count())
+    }
+
     @Test
     fun `the clock is monotonic, because the unit's wall clock is not trusted`() {
         val s = session()
