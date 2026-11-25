@@ -20,11 +20,24 @@ class LinkFeedSet(
     private val nowMs: () -> Long = { System.nanoTime() / 1_000_000L },
     private val sessionOpen: () -> Boolean = { CarLink.pairingSessionOpen },
 ) {
-    data class Result(val outcome: PhoneFeed.Outcome, val commitPending: Boolean = false, val dropPending: Boolean = false)
+    data class Result(
+        val outcome: PhoneFeed.Outcome,
+        val commitPending: Boolean = false,
+        val dropPending: Boolean = false,
+        /** It opened under the PENDING key, so the pairing it belongs to is not committed yet. */
+        val underPending: Boolean = false,
+    )
 
     private var commitReported = false
     private var commitRetryAt = Long.MIN_VALUE
     private var oldKeyOnlySince: Long? = null
+
+    /**
+     * The COMMITTED feed's answer to a handed-over sign-in (rev 9). Only that feed: a credential
+     * that arrived under PENDING is not acted on, because committing the pairing it came with would
+     * overwrite the very token the answer would be about.
+     */
+    fun tokenOk(fingerprint: ByteArray): ByteArray? = committed?.tokenOk(fingerprint)
 
     fun hellos(intervalMs: Long): List<ByteArray> = listOfNotNull(pending, committed).map { it.hello(intervalMs) }
 
@@ -36,7 +49,7 @@ class LinkFeedSet(
                 if (accepted) oldKeyOnlySince = null
                 val commit = accepted && !commitReported && nowMs() >= commitRetryAt
                 if (commit) commitReported = true
-                return Result(out, commitPending = commit)
+                return Result(out, commitPending = commit, underPending = true)
             }
         }
         val c = committed ?: return Result(PhoneFeed.Outcome.Rejected(PhoneFeed.Refusal.AUTH_FAILED))

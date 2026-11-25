@@ -51,6 +51,14 @@ class PhoneFeed(
         data class Zone(val zoneId: String) : Outcome
         /** The phone's "Forget head unit" (spec 4.3): forget this pairing. */
         data object Revoke : Outcome
+
+        /**
+         * Rev 9: an engine sign-in for this unit, handed over after the pairing. Not a data class:
+         * it holds a token.
+         */
+        class Credential(val token: String, val vehicleId: String?) : Outcome {
+            override fun toString() = "Credential(redacted)"
+        }
         data class Rejected(val why: Refusal) : Outcome
     }
 
@@ -63,6 +71,15 @@ class PhoneFeed(
         while (challenges.size > MAX_LIVE_CHALLENGES) challenges.removeFirst()
         helloCounter++
         return PhoneLinkWire.encodeHello(u2pKey, helloSession, helloCounter, intervalMs, challenge)
+    }
+
+    /**
+     * This unit's "I stored it" (rev 9), on the same session and counter ladder as its HELLOs: one
+     * counter per session, so no GCM nonce is ever used twice under that key.
+     */
+    fun tokenOk(fingerprint: ByteArray): ByteArray {
+        helloCounter++
+        return PhoneLinkWire.encodeTokenOk(u2pKey, helloSession, helloCounter, fingerprint)
     }
 
     /** True when [data] opens under this feed's key (no other check, no state change). */
@@ -90,6 +107,10 @@ class PhoneFeed(
             is PhoneLinkWire.Decoded.Revoke -> {
                 adopt(decoded, sent)
                 Outcome.Revoke
+            }
+            is PhoneLinkWire.Decoded.Credential -> {
+                adopt(decoded, sent)
+                Outcome.Credential(decoded.token, decoded.vehicleId)
             }
             is PhoneLinkWire.Decoded.Fix -> {
                 val inFlightMs = (now - sent.atNanos).coerceAtLeast(0L) / 1_000_000L

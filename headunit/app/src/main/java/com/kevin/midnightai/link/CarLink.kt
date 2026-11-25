@@ -79,6 +79,13 @@ interface LinkKeySource {
     /** Forget: the link keys and exactly the values that came over the link (spec 3.7). */
     fun forget()
 
+    /**
+     * 5.6: a renewed engine sign-in for this unit, handed over the live link after the pairing.
+     * False = nothing was written, so the phone is told nothing and keeps the credential the car is
+     * already using. Decrypts and commits: call off the main thread.
+     */
+    fun acceptHandedToken(token: String, vehicleId: String?): Boolean = false
+
     fun phoneName(): String?
 }
 

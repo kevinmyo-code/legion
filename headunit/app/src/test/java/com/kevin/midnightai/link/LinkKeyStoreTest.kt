@@ -46,6 +46,10 @@ class LinkKeyStoreTest {
             return true
         }
         override fun rawToken() = values["device_token"]
+        override fun carLinkUserId() = values["user_id"]
+        override fun carLinkVehicleId() = vehicleId
+        var member = false
+        override fun memberSignedIn() = member
         override fun clear(): Boolean { values["device_token"] = null; values["user_id"] = null; return true }
     }
 
@@ -315,6 +319,59 @@ class LinkKeyStoreTest {
         assertNull(SpotifyLinkFill.fill(null, null))
         assertNull(SpotifyLinkFill.fill("  ", null))
         assertNull(SpotifyLinkFill.fill("a", "b"))
+    }
+
+    // --- 5.6: a renewed sign-in handed over the live link, after the pairing -------------------
+
+    @Test fun aRenewedSignInReplacesTheTokenAndKeepsTheMemberAndTheCar() {
+        pair(keyA)
+        engine.vehicleId = "veh-1"
+        val before = engine.values["device_token"]
+        assertTrue(store().acceptHandedToken("hu1_renewed", "veh-2"))
+        assertEquals(fakeEnc("hu1_renewed"), engine.values["device_token"])
+        assertEquals("u-1", engine.values["user_id"])
+        assertEquals("the car in the frame wins: it is what the engine bound the new one to", "veh-2", engine.vehicleId)
+        assertTrue(before != engine.values["device_token"])
+        // Still the link's own sign-in, so Forget still takes it away with the pairing.
+        assertTrue(store().holdsLinkEngineToken())
+        store().forget()
+        assertNull(engine.values["device_token"])
+    }
+
+    @Test fun aRenewedSignInIsIdempotentAndTheCarIsKeptWhenTheFrameNamesNone() {
+        pair(keyA)
+        engine.vehicleId = "veh-1"
+        assertTrue(store().acceptHandedToken("hu1_renewed", null))
+        assertEquals("veh-1", engine.vehicleId)
+        assertTrue(store().acceptHandedToken("hu1_renewed", null))
+        assertEquals(fakeEnc("hu1_renewed"), engine.values["device_token"])
+        assertTrue(store().holdsLinkEngineToken())
+    }
+
+    @Test fun nothingIsWrittenAndNothingIsAnsweredWhenTheWriteCannotHold() {
+        pair(keyA)
+        val before = engine.values.toMap()
+        engine.failSave = true
+        assertFalse(store().acceptHandedToken("hu1_renewed", "veh-2"))
+        assertEquals(before, engine.values.toMap())
+        engine.failSave = false
+        // A build with no https engine address takes no token at all (review H4), as at pairing.
+        assertFalse(store("").acceptHandedToken("hu1_renewed", "veh-2"))
+        assertEquals(before, engine.values.toMap())
+        assertTrue(store().holdsLinkEngineToken())
+    }
+
+    @Test fun aUnitWithNoPairingAtAllTakesNoHandedOverSignIn() {
+        assertFalse(store().acceptHandedToken("hu1_renewed", "veh-2"))
+        assertNull(engine.values["device_token"])
+    }
+
+    @Test fun aRenewedSignInBehindAMemberSignInSaysTheMemberStaysInUse() {
+        pair(keyA)
+        engine.member = true
+        val s = store()
+        assertTrue(s.acceptHandedToken("hu1_renewed", "veh-2"))
+        assertEquals(LinkKeyStore.MEMBER_KEPT, s.lastNote)
     }
 
     @Test fun enginePolicyIsHttpsOnly() {
