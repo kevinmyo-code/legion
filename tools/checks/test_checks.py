@@ -423,6 +423,11 @@ def test_django_an_operation_name_the_ast_walk_cannot_read_is_still_refused():
         "    operations = [migrations.RunSQL(update_wrapper("
         "migrations.SeparateDatabaseAndState, dict) or 'select 1'),\n"
         f"        {sdas}]\n",
+        "a project helper inside a NON-exempt operation's argument": head
+        + "from server.common import boot\n"
+        "class Migration(migrations.Migration):\n"
+        "    operations = [migrations.RunSQL(boot.patch() or 'select 1'),\n"
+        f"        {sdas}]\n",
     }
     for what, source in cases.items():
         assert _judge(source) == [WARN], what
