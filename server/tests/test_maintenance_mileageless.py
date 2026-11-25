@@ -12,7 +12,8 @@ The anchor is now BOTH axes of the single most-recently-stated row, the phone's
 own rule (`FleetRecordBridge.projectAnchorLegacy`). These tests pin the one
 verdict across both renderers over ONE history, so the brief and the tool cannot
 drift apart again, and the phone-side half of the same history is pinned by
-`VehicleControllerNeedsMileageTest` on the app side.
+`FleetAnchorParityTest` on the app side (which runs this file's own history; the predicate itself is
+pinned by `VehicleControllerNeedsMileageTest`).
 """
 
 from __future__ import annotations
@@ -59,8 +60,9 @@ def _car(client):
 
 def _service(client, key, vehicle, name, on, mileage, kind="OBSERVED"):
     """One service history row. `mileage=None` is the honest value for a service
-    the driver logged without stating a reading; `kind="ASSERTED"` is a driver's
-    own anchor statement with no event behind it."""
+    the driver logged without stating a reading; `on=None` is the honest value for
+    an anchor the driver stated with no day attached ("I did it at 232,000"); and
+    `kind="ASSERTED"` is a driver's own anchor statement with no event behind it."""
     _put(
         client,
         f"service_history/{key}/",
@@ -68,7 +70,7 @@ def _service(client, key, vehicle, name, on, mileage, kind="OBSERVED"):
             "vehicle_id": vehicle,
             "service_name": name,
             "kind": kind,
-            "service_date": on.isoformat(),
+            "service_date": on.isoformat() if on else None,
             "mileage": mileage,
         },
     )
@@ -237,3 +239,82 @@ def test_a_miles_ago_backfill_leaves_the_asserted_anchor_standing(
     assert item.last_done_miles == 42_000, "the driver's own anchor statement stands"
     assert item.due_at_miles == 47_000
     assert not item.needs_mileage, "a stated anchor times it, so nothing is owed"
+
+
+def test_an_undated_asserted_anchor_outranks_an_older_dated_log(
+    auth_client, mcp_client, household_a, household_user
+):
+    """Round 2 blocker A. The mileage-only backfill ("I did the oil change at
+    232,000") writes an UNDATED ASSERTED anchor, because the phone's
+    `mergeBackfillAnchors` anti-pairing rule refuses to attach a date nobody
+    stated. The phone orders on `ServiceRecord.updatedAt` and `setAnchor` stamps
+    the wall clock, so that row is the anchor there. Sorting an undated row LAST
+    here made this side keep an older dated row's mileage and call the service
+    overdue by name, in the spoken brief and in `next_service`, for a service the
+    phone times as fine. The phone's half is `FleetAnchorParityTest`."""
+    from brief.maintenance import schedule_status
+    from legacy.models.fleet import Vehicle
+
+    vehicle = _car(auth_client)
+    _put(
+        auth_client,
+        f"maintenance_schedules/{vehicle}/oil change/",
+        {"interval_miles": 5_000, "interval_source": "SEEDED", "never_done": False},
+    )
+    _put(
+        auth_client,
+        "code_events/c1/",
+        {
+            "vehicle_id": vehicle,
+            "occurred_at": "2026-10-10T12:00:00Z",
+            "mileage": 235_000,
+            "codes": ["P0128"],
+        },
+    )
+    # The old dated log first, then today's undated assertion - the real order.
+    _service(auth_client, "s1", vehicle, "oil change", dt.date(2025, 1, 10), 71_200)
+    _service(auth_client, "a1", vehicle, "oil change", None, 232_000, kind="ASSERTED")
+
+    item = schedule_status(
+        Viewer(user=household_user), Vehicle.objects.get(household=household_a)
+    )[0]
+    lines = _lines(household_a, household_user)
+    entry, text = _entry(mcp_client)
+
+    assert item.last_done_miles == 232_000, "the phone's anchor, so this side's anchor"
+    assert item.due_at_miles == 237_000
+    assert not item.needs_mileage, "a stated anchor times it"
+    assert not any("oil change overdue" in line.lower() for line in lines), lines
+    assert "oil change" not in [row["service_name"] for row in entry["overdue"]], entry
+    assert "76,200" not in " ".join(lines) and "76,200" not in text, (
+        "71,200 + 5,000 is an anchor the phone has already dropped"
+    )
+
+
+def test_a_dated_log_today_outranks_an_asserted_anchor_stated_earlier_today(
+    auth_client, household_a, household_user
+):
+    """The other direction, so the fix is an ORDER and not a preference for
+    assertions: a hands "mark done" (ASSERTED, no mileage) followed the same day
+    by a voice log that carries one. The phone takes the later write; so does
+    this side, because a service logged on the day it happened ranks by when it
+    was written, exactly as the assertion does."""
+    from brief.maintenance import schedule_status
+    from legacy.models.fleet import Vehicle
+
+    today = dt.date.today()
+    vehicle = _car(auth_client)
+    _put(
+        auth_client,
+        f"maintenance_schedules/{vehicle}/oil change/",
+        {"interval_miles": 5_000, "interval_source": "SEEDED", "never_done": False},
+    )
+    _service(auth_client, "a1", vehicle, "oil change", today, None, kind="ASSERTED")
+    _service(auth_client, "s1", vehicle, "oil change", today, 240_000)
+
+    item = schedule_status(
+        Viewer(user=household_user), Vehicle.objects.get(household=household_a)
+    )[0]
+
+    assert item.last_done_miles == 240_000, "the newer write is the anchor"
+    assert item.due_at_miles == 245_000
