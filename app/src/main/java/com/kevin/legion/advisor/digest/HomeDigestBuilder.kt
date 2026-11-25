@@ -282,7 +282,8 @@ object HomeDigestBuilder : DigestBuilder {
             // newest service cannot be timed at all (needsMileageReading), and
             // this line feeds a model's own context.
             next.needsMileage.isNotEmpty() ->
-                "no mileage reading against ${next.needsMileage.joinToString(", ")}, so nothing can be timed by miles"
+                "no mileage reading against ${next.needsMileage.joinToString(", ")}, so nothing can be " +
+                    "timed by miles until a reading is stated"
             else -> "on track, nothing anchored yet"
         }
         return DigestText.withTier(DigestText.line("FLEET", phrase), TrustTier.REPORTED)
