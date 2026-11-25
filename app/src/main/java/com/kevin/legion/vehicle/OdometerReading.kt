@@ -12,9 +12,9 @@ package com.kevin.legion.vehicle
  * wrapper was wording both as the first.
  */
 
-internal const val ODOMETER_MIN_MILES = 100
+private const val ODOMETER_MIN_MILES = 100
 
-internal const val ODOMETER_MAX_MILES = 999_999
+private const val ODOMETER_MAX_MILES = 999_999
 
 /** True when [miles] is a reading an odometer could actually show on this car. */
 internal fun odometerReadingPlausible(miles: Int): Boolean =

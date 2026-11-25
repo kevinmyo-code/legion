@@ -26,7 +26,7 @@ import android.content.Context
  *
  * **Why an ASSERTED row is the honest home for it.** The row records a driver statement, never an
  * observed event, and that is what this is: asked for a reading against a named service, he gave
- * one. The item's known service DATE rides along unchanged ([setAnchor] writes both axes together),
+ * one. The item's known service DATE rides along unchanged ([FleetEngineStore.setAnchor] writes both axes at once),
  * so nothing that was known is dropped. The figure is the driver's own reading rather than the
  * estimator's guess, and [pinnedReadingNote] says in words which items took it, so a reading given
  * long after the service shows up as an anchor that times the item slightly late rather than as a
@@ -35,7 +35,7 @@ import android.content.Context
  *
  * Its own file because it is one job that belongs to neither side of the two it joins:
  * [VehicleController] sits on detekt's class-size ceiling (CLAUDE.md's 1000-line rule) and
- * [MaintenanceAxes]'s predicate is deliberately pure, with no `Context` and no Room.
+ * `MaintenanceAxes.kt`'s predicate is deliberately pure, with no `Context` and no Room.
  */
 
 /**
