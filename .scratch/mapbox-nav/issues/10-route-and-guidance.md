@@ -171,6 +171,6 @@ Phone run 4 (Galaxy A25), branch `feat/mapbox-voice`. Three small defects; no Hi
 
 ### Owed on the phone
 
-Start a trip, End, request "1000 N Navarro St, Victoria, TX": preview fits route and puck above the sheet, and the
+Start a trip, End, request a full street address (number, street, city, state): preview fits route and puck above the sheet, and the
 overview button re-fits; Start with the Stops panel open: the guiding sheet has no panel; mute, wait for a cue,
 `adb logcat -s NavCueSpeaker` shows "turn cue dropped: muted".

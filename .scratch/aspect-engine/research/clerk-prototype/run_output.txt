@@ -57,7 +57,7 @@ I have deleted 1 row from workouts, 0 failed. I will write the final message ac'
   [gemini-3.1-pro-preview] ambiguous run 2/3: 7.12s, calls=2, rows=0, final='Wrote 0 rows, 0 failed: Please provide the details of your workout (such as the '
   [gemini-3.1-pro-preview] ambiguous run 3/3: 4.33s, calls=1, rows=0, final='Wrote 0 rows, 0 failed: I need to know the details of your workout! Please tell '
 
-Wrote C:\Users\Kwin\StudioProjects\legion\.scratch\aspect-engine\research\clerk-prototype\results.json
+Wrote C:\Users\<user>\StudioProjects\legion\.scratch\aspect-engine\research\clerk-prototype\results.json
 
 === SUMMARY (median latency, seconds) ===
 case                     flash       pro

@@ -213,9 +213,9 @@ second machine identically.
    backup path silently does not exist on any other build - and ticket 04 ruling 4 made this the
    ONLY recovery path once the xlsx mirror is deleted.
 2. **The unblock is one console entry, not a code change.** This machine's debug SHA-1 is
-   `52:4F:39:23:7E:8B:3B:5B:C2:3A:76:A7:EE:BD:16:ED:82:77:30:07`. Registering it against the
+   `<the debug keystore's SHA-1>`. Registering it against the
    package as a second Android OAuth client makes Drive work from here permanently, and makes the
-   restore exercise runnable without the Kwin laptop.
+   restore exercise runnable without the first laptop.
 
 **RESOLVED THE SAME DAY.** Kevin registered this machine's SHA-1 as a second Android OAuth client
 against `com.kevin.legion`, Drive authorised, and the restore was exercised end to end on the A25.

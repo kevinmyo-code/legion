@@ -77,7 +77,7 @@ Run from this machine (the A25 came up on wireless debugging for the first time 
 installed with `adb install -r` - **no uninstall, no data loss** - after proving the installed APK's
 signer matches this machine's debug keystore byte for byte
 (`fd819ada7fdbf98f4b072b511d2dff33cb3dc68b720b8a9a0ff862ebd03aac01`). That kills a standing premise:
-MEMORY.md said device work must happen on the Kwin laptop because the keystore lives there. **Both
+MEMORY.md said device work must happen on the first laptop because the keystore lives there. **Both
 machines carry the same debug key.** Install verified by on-device `sha256sum`, not by "Success".
 
 **Ticket 12's diagnosis was incomplete.** It recorded zero persisted URI grants and concluded the

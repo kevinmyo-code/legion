@@ -29,12 +29,12 @@ Read from the parsers and Kevin's real file, `tested`:
 
 | Source | Row |
 |---|---|
-| `BofaCardStatementParser.kt:43` | `PAYMENT FROM CHK 5042 CONF#9qz4rmxbf ... -350.00` |
-| `BofaCsvStatementParser.kt:31` | `Online Banking transfer from SAV 8267 Confirmation# 2245981037 ... 30.00` |
-| `currentTransaction_7823.csv` | `PAYMENT FROM SAV 8267 CONF#v1ikbyqeg ... 1300.00` |
+| `BofaCardStatementParser.kt:43` | `PAYMENT FROM CHK 3366 CONF#aaa4rmxbf ... -350.00` |
+| `BofaCsvStatementParser.kt:31` | `Online Banking transfer from SAV 2277 Confirmation# 1111111111 ... 30.00` |
+| `currentTransaction_1199.csv` | `PAYMENT FROM SAV 2277 CONF#bbb1kbyqeg ... 1300.00` |
 
-So the US side already holds at least three accounts that move money to each other: checking 5042,
-savings 8267, card 7823. Put them in one entity and sum credits and debits naively and the $1,300
+So the US side already holds at least three accounts that move money to each other: checking 3366,
+savings 2277, card 1199. Put them in one entity and sum credits and debits naively and the $1,300
 card payment lands as **$1,300 of income on the card and $1,300 of expense on the savings account**.
 Both sides inflate. If only one of the two statements has been imported, the NET is wrong too, not
 just the gross.
@@ -278,7 +278,7 @@ Pure functions, plain JVM. Fixtures **invented**, never Kevin's real rows.
 5. Two candidate partners at 1 day and 4 days -> pairs with the 1-day one.
 6. A row whose partner sits outside the month but inside `pairingWindow` -> the in-period row is
    excluded, and the out-of-period row is NOT returned in either list.
-7. Unpaired `PAYMENT FROM SAV 8267` -> `SUSPECTED_TRANSFER`.
+7. Unpaired `PAYMENT FROM SAV 2277` -> `SUSPECTED_TRANSFER`.
 8. `KROGER #115` -> not excluded (no keyword, no pair).
 9. Reversing the input list order changes nothing (deterministic tie-break).
 

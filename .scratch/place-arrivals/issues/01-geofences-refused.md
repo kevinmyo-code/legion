@@ -20,7 +20,7 @@ Logcat, repeated every time LEGION re-arms, as recently as 12:22:
 
 ```
 W/Geofencer: registration not active, registration not permitted for registration:
-  10358/com.kevin.legion/33de5e6f {na} (FINE) GeofenceRequest(29.782164,-95.532689+150.0m,
+  10358/com.kevin.legion/33de5e6f {na} (FINE) GeofenceRequest(<lat>,<lon>+150.0m,
   eventsFilter=[INSIDE, OUTSIDE], initialEventsFilter=[INSIDE] ...
 ```
 

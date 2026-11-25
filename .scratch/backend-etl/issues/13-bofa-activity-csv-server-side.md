@@ -34,7 +34,7 @@ half (the login script that PRODUCES these files) stays open in 09.
     (09's script), with Drive's ` (1)` suffix. Anything else quarantines, never guesses.
   - **Signs as printed, never negated.** Ticket 12 of ledger-drive-ingestion read the real card
     file: 38 negative debits, 2 positive credits. The copied card fixture
-    (`currentTransaction_7823.csv`) is synthetic and prints the opposite; it is used for layout only.
+    (`currentTransaction_1199.csv`) is synthetic and prints the opposite; it is used for layout only.
 - **`server/ingest/provisional.py`**, the rule 7 writer, registered with
   `register_provisional_writer`. Rows `UNRECONCILED`, `statement_id` NULL, no header. Refuses any
   other provenance (no side door around the gate).
