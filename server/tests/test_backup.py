@@ -22,6 +22,8 @@ from django.conf import settings
 from django.core.management import call_command
 from django.core.management.base import CommandError
 
+from household import tenancy
+from household.models import Household
 from ingest import backup, drive, vault
 from ingest.drive import FOLDER_MIME, DriveClient, DriveError, DriveRefused, Response
 from ingest.freshness import freshness_for
@@ -394,6 +396,41 @@ def test_another_households_drive_never_receives_the_whole_database(
 
 
 @pytest.mark.django_db
+def test_a_demo_household_never_makes_the_backup_look_unowned(
+    monkeypatch, drive_login, household_a
+):
+    """The 2026-11-22 breakage: the engine runs a public demo, so a visit copy
+    and the shared demo household made `resolve_default_household` see several
+    households and refuse. Only real households count now, so with one of them
+    the backup runs with no environment variable set."""
+    monkeypatch.delenv(tenancy.BOOTSTRAP_ID_ENV, raising=False)
+    Household.objects.create(name="Demo visit backup", is_demo_visit=True)
+    Household.objects.create(name=settings.LEGION_DEMO_HOUSEHOLD_NAME)
+    fake = FakeDrive()
+
+    runs = backup.run_nightly(_job(fake), write=lambda line: None)
+
+    assert runs[0].household_id == household_a.pk
+    assert runs[0].outcome == Outcome.OK
+    assert len(fake.live(**{backup.PROP_KIND: "dump"})) == 1
+
+
+@pytest.mark.django_db
+def test_two_real_households_refuse_loudly_and_say_the_demo_is_not_counted(
+    monkeypatch, drive_login, household_a, household_b
+):
+    monkeypatch.delenv(tenancy.BOOTSTRAP_ID_ENV, raising=False)
+    Household.objects.create(name="Demo visit refusal", is_demo_visit=True)
+    lines = []
+
+    runs = backup.run_nightly(_job(FakeDrive()), write=lines.append)
+
+    assert {r.outcome for r in runs} == {Outcome.SKIPPED}
+    assert "more than one real household" in lines[0]
+    assert "the demo's own are not counted" in lines[0]
+
+
+@pytest.mark.django_db
 def test_the_command_runs_end_to_end_and_exits_zero_when_not_set_up(household_a):
     out = io.StringIO()
     call_command("backup_nightly", stdout=out)
@@ -588,6 +625,18 @@ def restore_fakes(drive_login, monkeypatch):
     calls.restored_counts = {"public.a": 3, "public.b": 5}
     monkeypatch.setattr(backup, "live_counts", lambda schemas: calls.live)
     monkeypatch.setattr(backup, "restored_counts", lambda target, schemas: calls.restored_counts)
+    # A foreign key is in here on purpose: the drill refuses to pass a live
+    # database that reports none, so a fixture without one would make every
+    # case below fail for the wrong reason.
+    calls.live_constraints = {
+        "public.a.a_pkey": "primary key",
+        "public.b.b_a_id_fk": "foreign key",
+    }
+    calls.restored_constraints = dict(calls.live_constraints)
+    monkeypatch.setattr(backup, "live_constraints", lambda schemas: calls.live_constraints)
+    monkeypatch.setattr(
+        backup, "restored_constraints", lambda target, schemas: calls.restored_constraints
+    )
     return calls
 
 
@@ -602,6 +651,7 @@ def test_restore_drills_into_a_throwaway_database_and_drops_it(restore_fakes):
     assert restore_fakes.restored == [(b"PGDMP", target)]
     assert restore_fakes.dropped == [target]
     assert "All 2 tables match live." in out.getvalue()
+    assert "All 2 constraints are in the restore." in out.getvalue()
 
 
 @pytest.mark.django_db
@@ -615,6 +665,189 @@ def test_restore_reports_every_difference_and_exits_non_zero(restore_fakes):
     assert "public.b: 5 = live" in text
     assert "public.c: MISSING from the restore (live has 1)" in text
     assert len(restore_fakes.dropped) == 1
+
+
+# =============================================================================
+# The drill's verdict is not row counts alone
+# =============================================================================
+#
+# Row counts cannot see the failure this guards against. `pg_dump -Fc` writes
+# foreign keys in post-data, so a child table's rows COPY in and the
+# `ALTER TABLE ... ADD CONSTRAINT` that follows fails on its own against a
+# parent that is short of rows. pg_restore reports that and carries on, the
+# child counts stay equal to live, and what comes out is a database with no
+# foreign key where one belongs. Both halves of the verdict live here: the
+# restore's exit code, and the constraints that are in it.
+
+
+@pytest.mark.django_db
+def test_a_restore_missing_a_foreign_key_fails_the_drill_though_every_count_matches(
+    restore_fakes,
+):
+    """The review's finding, as a test: equal rows, lost foreign key."""
+    restore_fakes.restored_constraints = {"public.a.a_pkey": "primary key"}
+    out = io.StringIO()
+
+    with pytest.raises(CommandError, match="MISSING from the restore: public.b.b_a_id_fk"):
+        call_command("restore_backup", "2026-09-27", stdout=out)
+
+    text = out.getvalue()
+    assert "public.a: 3 = live" in text, "the counts matched, and that is the point"
+    assert "public.b.b_a_id_fk: foreign key constraint MISSING from the restore" in text
+    assert len(restore_fakes.dropped) == 1
+
+
+@pytest.mark.django_db
+def test_a_drill_whose_live_database_reports_no_foreign_keys_is_not_a_pass(restore_fakes):
+    """A constraint check both sides of which are empty passes on anything.
+    Section 4 rule 6: a check an empty result satisfies is not a check."""
+    restore_fakes.live_constraints = {"public.a.a_pkey": "primary key"}
+    restore_fakes.restored_constraints = {"public.a.a_pkey": "primary key"}
+
+    with pytest.raises(CommandError, match="reported no foreign keys"):
+        call_command("restore_backup", "2026-09-27", stdout=io.StringIO())
+    assert len(restore_fakes.dropped) == 1
+
+
+@pytest.mark.django_db
+def test_a_pg_restore_that_exits_non_zero_fails_the_drill_and_still_drops_the_database(
+    restore_fakes, monkeypatch
+):
+    def angry_restore(path, target, binary=None):
+        raise backup.BackupError("pg_restore exited 1; the restore is not a restore.")
+
+    monkeypatch.setattr(backup, "pg_restore", angry_restore)
+
+    with pytest.raises(CommandError, match="pg_restore exited 1"):
+        call_command("restore_backup", "2026-09-27", stdout=io.StringIO())
+    assert restore_fakes.dropped == restore_fakes.created, "the throwaway database must go"
+
+
+def test_pg_restore_raises_on_a_non_zero_exit_rather_than_handing_back_stderr():
+    """It used to return stderr and let the caller read past it, which is how
+    an ignored ADD CONSTRAINT failure reached a passing drill. The whole stderr
+    goes in the message, not a tail: the failing constraint can be anywhere."""
+    noise = "\n".join(f"pg_restore: error: line {n}" for n in range(1, 40))
+
+    def run(args, **kwargs):
+        return SimpleNamespace(returncode=1, stderr=noise, stdout="")
+
+    with pytest.raises(backup.BackupError) as caught:
+        backup.pg_restore(Path("x.dump"), "legion_restore_x", run=run, binary="pg_restore")
+
+    assert "pg_restore exited 1" in str(caught.value)
+    assert "line 1" in str(caught.value) and "line 39" in str(caught.value)
+
+
+_SCHEMA_NOISE = (
+    'pg_restore: error: could not execute query: ERROR:  schema "public" already exists\n'
+    "    Command was: CREATE SCHEMA public;\n"
+    "pg_restore: warning: errors ignored on restore: 1\n"
+)
+
+
+def test_pg_restore_reads_past_the_one_error_a_healthy_restore_always_makes():
+    """The dump carries `CREATE SCHEMA public` and every new database already
+    has `public`, so pg_restore exits 1 on a restore with nothing wrong with
+    it. Measured 2026-11-24 against a real dump of the test database; a drill
+    that failed here would never run at all. It is the only class read past."""
+
+    def run(args, **kwargs):
+        return SimpleNamespace(returncode=1, stderr=_SCHEMA_NOISE, stdout="")
+
+    said = backup.pg_restore(Path("x.dump"), "legion_restore_x", run=run, binary="pg_restore")
+    assert said == _SCHEMA_NOISE
+
+
+def test_pg_restore_raises_when_a_real_error_rides_along_with_the_benign_one():
+    """The review's failure, in pg_restore's own words. One ignorable line must
+    not buy the rest of them a pass."""
+    stderr = _SCHEMA_NOISE + (
+        "pg_restore: error: could not execute query: ERROR:  insert or update on table "
+        '"memory_consolidations" violates foreign key constraint "mc_log_fk"\n'
+    )
+
+    def run(args, **kwargs):
+        return SimpleNamespace(returncode=1, stderr=stderr, stdout="")
+
+    with pytest.raises(backup.BackupError) as caught:
+        backup.pg_restore(Path("x.dump"), "legion_restore_x", run=run, binary="pg_restore")
+    assert "1 of the 2 error(s)" in str(caught.value)
+    assert "mc_log_fk" in str(caught.value)
+
+
+def test_pg_restore_raises_on_a_non_zero_exit_it_cannot_read_rather_than_assuming_noise():
+    """Fail closed. An exit code with no error line this code recognises is not
+    more of the benign class; it is something nobody has looked at."""
+
+    def run(args, **kwargs):
+        return SimpleNamespace(returncode=2, stderr="pg_restore: out of memory", stdout="")
+
+    with pytest.raises(backup.BackupError, match="pg_restore exited 2"):
+        backup.pg_restore(Path("x.dump"), "legion_restore_x", run=run, binary="pg_restore")
+
+
+def test_a_restore_losing_only_a_table_is_not_read_past_as_a_schema_line():
+    """The benign pattern is schemas, not `already exists` in general."""
+
+    def run(args, **kwargs):
+        return SimpleNamespace(
+            returncode=1,
+            stderr='pg_restore: error: could not execute query: ERROR:  relation "events" '
+            "already exists",
+            stdout="",
+        )
+
+    with pytest.raises(backup.BackupError, match="1 of the 1 error"):
+        backup.pg_restore(Path("x.dump"), "legion_restore_x", run=run, binary="pg_restore")
+
+
+def test_pg_restore_returns_stderr_on_success_so_the_drill_can_print_it():
+    def run(args, **kwargs):
+        return SimpleNamespace(returncode=0, stderr="pg_restore: warning: something", stdout="")
+
+    said = backup.pg_restore(Path("x.dump"), "legion_restore_x", run=run, binary="pg_restore")
+    assert said == "pg_restore: warning: something"
+
+
+def test_compare_constraints_names_what_the_restore_lost_and_ignores_what_it_gained():
+    live = {
+        "public.memory_consolidations.mc_log_fk": "foreign key",
+        "public.events.events_pkey": "primary key",
+    }
+
+    lines, missing = backup.compare_constraints(dict(live), live)
+    assert missing == []
+    assert "Constraints: 2 restored, 2 live." in lines
+
+    lines, missing = backup.compare_constraints({"public.events.events_pkey": "primary key"}, live)
+    assert missing == ["public.memory_consolidations.mc_log_fk"]
+    assert any("mc_log_fk: foreign key constraint MISSING" in line for line in lines)
+
+    # A constraint the restore has and live does not is not data loss.
+    _lines, missing = backup.compare_constraints({**live, "public.events.extra": "check"}, live)
+    assert missing == []
+
+
+@pytest.mark.django_db
+def test_live_constraints_really_reads_foreign_keys_out_of_the_database():
+    """The SQL itself, against the migrated test database, because every case
+    above fakes it. Without this the schema filter or the `contype` decoding
+    could return nothing and the drill's constraint check would pass on an
+    empty set forever."""
+    found = backup.live_constraints(backup.schemas())
+
+    kinds = set(found.values())
+    assert "foreign key" in kinds and "primary key" in kinds
+    assert all(name.count(".") >= 2 for name in found), "schema.table.constraint"
+    # The foreign key the device-log exclusion broke: a consolidation points at
+    # the conversation it was made from.
+    on_consolidations = {
+        name: kind
+        for name, kind in found.items()
+        if name.startswith("public.memory_consolidations.")
+    }
+    assert "foreign key" in on_consolidations.values(), on_consolidations
 
 
 @pytest.mark.django_db
@@ -667,8 +900,12 @@ def test_subprocess_is_the_default_runner():
 )
 def test_a_real_dump_restores_into_a_throwaway_database_with_equal_counts(tmp_path):
     """The real client tools against the TEST database (never live): pg_dump,
-    CREATE DATABASE, extensions, pg_restore, counts, DROP. Proves the
-    mechanics; the drill against live is still owed by hand."""
+    CREATE DATABASE, extensions, pg_restore, counts, constraints, DROP. Proves
+    the mechanics; the drill against live is still owed by hand.
+
+    `pg_restore` raising on a non-zero exit is part of what is proved: a real
+    dump of this schema has to restore with no error at all, so this test fails
+    outright rather than printing stderr nobody reads."""
     assert settings.DATABASES["default"]["NAME"].startswith("test_"), "never against live"
     dump_bin, restore_bin = backup.pg_binary("pg_dump"), backup.pg_binary("pg_restore")
     backup.check_versions(dump_bin)
@@ -682,13 +919,18 @@ def test_a_real_dump_restores_into_a_throwaway_database_with_equal_counts(tmp_pa
         print(stderr)
         restored = backup.restored_counts(target, backup.schemas())
         live = backup.live_counts(backup.schemas())
+        restored_cons = backup.restored_constraints(target, backup.schemas())
+        live_cons = backup.live_constraints(backup.schemas())
     finally:
         backup.drop_database(target)
     lines, mismatched = backup.compare(restored, live)
-    for line in lines:
+    con_lines, missing_cons = backup.compare_constraints(restored_cons, live_cons)
+    for line in [*lines, *con_lines]:
         print(line)
     assert restored, "the restore produced no tables"
     assert mismatched == []
+    assert "foreign key" in set(live_cons.values()), "a drill with no foreign key proves nothing"
+    assert missing_cons == []
 
 
 def test_source_credential_config_carries_only_the_switch(vault_key, household_a, db):

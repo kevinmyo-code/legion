@@ -3,9 +3,16 @@ ticket 03: "drilled, not described").
 
 Downloads that day's dump from the operator household's Drive, restores it
 into a THROWAWAY database it creates and always drops, and prints a row count
-per table against live. Exits non-zero on any difference, and on anything that
-stops the drill. It refuses, before touching anything, a target named like the
-live database.
+per table and a constraint count against live. Exits non-zero on any
+difference, and on anything that stops the drill. It refuses, before touching
+anything, a target named like the live database.
+
+**Row counts alone were not a verdict.** `pg_dump -Fc` writes foreign keys
+after the rows, so a child table whose parent is short restores its rows and
+then fails its own `ADD CONSTRAINT`; the counts stay equal and the rule is
+gone. So a non-zero `pg_restore` exit is a failed drill (it raises in
+`backup.pg_restore`), and the constraints live holds must all be in the
+restore.
 
 Run it by hand, never from the crontab. It reads live (counts only) and never
 writes to it.
@@ -27,7 +34,8 @@ from ingest.models import SessionSource
 class Command(BaseCommand):
     help = (
         "Restore one day's Drive backup into a throwaway database, compare per-table "
-        "row counts with live, drop it. Non-zero exit on any mismatch."
+        "row counts and every constraint with live, drop it. Non-zero exit if pg_restore "
+        "reported an error, if any count differs, or if a constraint did not restore."
     )
 
     def add_arguments(self, parser):
@@ -81,13 +89,17 @@ class Command(BaseCommand):
             write(f"Created throwaway database {target}.")
             try:
                 backup.prepare_extensions(target, write=write)
+                # Raises on a non-zero exit: an error here means the database
+                # in front of us is not the one that was dumped.
                 stderr = backup.pg_restore(path, target, binary=restore_bin)
                 if stderr.strip():
-                    write("pg_restore said (the row counts below are the verdict):")
+                    write("pg_restore said (it exited 0, so none of this stopped it):")
                     write(stderr.strip())
                 schema_names = backup.schemas()
                 restored = backup.restored_counts(target, schema_names)
                 live = backup.live_counts(schema_names)
+                restored_cons = backup.restored_constraints(target, schema_names)
+                live_cons = backup.live_constraints(schema_names)
             finally:
                 backup.drop_database(target)
                 write(f"Dropped throwaway database {target}.")
@@ -99,12 +111,30 @@ class Command(BaseCommand):
                 f"The restore produced no tables in {', '.join(schema_names)}; the dump is "
                 f"empty or did not restore. {len(live)} live tables were not matched."
             )
-        lines, mismatched = backup.compare(restored, live)
-        for line in lines:
-            write(line)
-        if mismatched:
+        # And a constraint check both sides of which are empty passes on
+        # anything, which is the same shape of non-check as the one above.
+        if not any(kind == "foreign key" for kind in live_cons.values()):
             raise CommandError(
+                f"Live reported no foreign keys in {', '.join(schema_names)}, so comparing "
+                f"constraints would pass whatever the restore holds. Fix that query before "
+                f"trusting this drill; nothing about the dump was judged."
+            )
+        lines, mismatched = backup.compare(restored, live)
+        con_lines, missing_cons = backup.compare_constraints(restored_cons, live_cons)
+        for line in [*lines, *con_lines]:
+            write(line)
+        problems = []
+        if mismatched:
+            problems.append(
                 f"{len(mismatched)} of {len(lines)} tables differ from live: "
                 f"{', '.join(mismatched)}."
             )
+        if missing_cons:
+            problems.append(
+                f"{len(missing_cons)} constraint(s) live has are MISSING from the restore: "
+                f"{', '.join(missing_cons[:20])}."
+            )
+        if problems:
+            raise CommandError(" ".join(problems))
         write(f"All {len(lines)} tables match live.")
+        write(f"All {len(live_cons)} constraints are in the restore.")

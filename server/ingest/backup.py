@@ -117,9 +117,9 @@ def not_set_up_reason() -> str:
     household = resolve_default_household()
     if household is None:
         return (
-            "backup: not set up. This engine holds more than one household and "
-            "LEGION_BOOTSTRAP_HOUSEHOLD_ID names none of them, so no household owns the "
-            "whole-database backup. Nothing was dumped."
+            "backup: not set up. This engine holds more than one real household (the "
+            "demo's own are not counted) and LEGION_BOOTSTRAP_HOUSEHOLD_ID names none of "
+            "them, so no household owns the whole-database backup. Nothing was dumped."
         )
     return (
         f"backup: not set up. Household {household.pk} runs this engine but has no Drive "
@@ -506,8 +506,9 @@ def drop_database(name: str) -> None:
 def prepare_extensions(name: str, *, write: Callable[[str], object] = print) -> None:
     """Create, in the throwaway database, the extensions live has, in the
     schemas live has them in, so defaults like `extensions.uuid_generate_v4()`
-    resolve. Best effort: an extension the server will not create is said,
-    and the counts decide the verdict."""
+    resolve. Best effort: an extension the server will not create is said, and
+    a restore that then fails over it fails the drill at pg_restore's exit
+    code."""
     from psycopg import sql
 
     with connection.cursor() as cursor:
@@ -531,11 +532,36 @@ def prepare_extensions(name: str, *, write: Callable[[str], object] = print) -> 
                 write(f"note: extension {extname} could not be created ({type(exc).__name__}).")
 
 
+_RESTORE_ERROR_PREFIX = "pg_restore: error:"
+# The one benign class, matched narrowly on purpose: a schema the dump creates
+# and the fresh database already has. Not "already exists" in general, which
+# would read past a table or a constraint that failed to appear.
+_SCHEMA_ALREADY_EXISTS = re.compile(r'schema "[^"]+" already exists')
+
+
 def pg_restore(path: Path, target: str, *, run=subprocess.run, binary: str | None = None) -> str:
-    """`pg_restore` into `target`. Returns its stderr; a non-zero exit is
-    reported by the caller, not raised, because pg_restore exits 1 for any
-    ignored error (a policy naming a Supabase-only role) and the row counts
-    are the verdict."""
+    """`pg_restore` into `target`, returning its stderr. An error it reported
+    RAISES, with one named exception below: a restore that failed an item did
+    not restore the database.
+
+    It used to hand every exit back for the caller to print, on the reasoning
+    that pg_restore exits 1 for noise worth reading past and the row counts
+    were the verdict. The row counts are not the verdict. `pg_dump -Fc` writes
+    foreign keys in post-data, so a child table's rows COPY in and the
+    `ALTER TABLE ... ADD CONSTRAINT` after them fails on its own; pg_restore
+    says so, exits 1 and carries on, and what is left is equal row counts and
+    no foreign key. That is the failure this raise exists for.
+
+    **One class is read past, and it was measured rather than assumed.** The
+    dump carries `CREATE SCHEMA public` and every new database already has a
+    `public`, so a healthy restore of these schemas ALWAYS reports that one
+    error and exits 1 (seen 2026-11-24 against a real dump of the test
+    database; a drill that failed on it would never run). Nothing else is read
+    past: a non-zero exit whose stderr holds no error line this code recognises
+    raises too, rather than being taken for more of the same. The constraint
+    comparison in the drill is the independent backstop, so a benign-looking
+    class nobody has named yet still cannot hide a lost foreign key.
+    """
     refuse_live_target(target)
     binary = binary or pg_binary("pg_restore")
     completed = run(
@@ -545,6 +571,23 @@ def pg_restore(path: Path, target: str, *, run=subprocess.run, binary: str | Non
         text=True,
         check=False,
     )
+    if completed.returncode != 0:
+        reported = [
+            line.strip()
+            for line in (completed.stderr or "").splitlines()
+            if line.strip().startswith(_RESTORE_ERROR_PREFIX)
+        ]
+        real = [line for line in reported if not _SCHEMA_ALREADY_EXISTS.search(line)]
+        if real or not reported:
+            # Its WHOLE stderr, not a tail: pg_restore reports one line per
+            # failed item and the one that matters can be anywhere in the list.
+            raise BackupError(
+                f"pg_restore exited {completed.returncode} and {len(real)} of the "
+                f"{len(reported)} error(s) it reported are not the schema-already-exists "
+                f"line a healthy restore makes. The restore is not a restore, so the drill "
+                f"fails rather than counting rows in it. Its stderr follows.\n"
+                f"{(completed.stderr or '').strip()}"
+            )
     return completed.stderr or ""
 
 
@@ -574,6 +617,60 @@ def restored_counts(target: str, schema_names: Iterable[str]) -> dict[str, int]:
     refuse_live_target(target)
     with _admin_connect(target) as conn, conn.cursor() as cursor:
         return _counts(cursor, schema_names)
+
+
+# `contype` is Postgres's internal "char", so it is cast to text rather than
+# decoded by whichever driver is in front of it. Only the four kinds that carry
+# an integrity rule are counted: an index or a trigger is not one.
+_CONSTRAINT_ROWS = (
+    "select n.nspname, t.relname, c.conname, "
+    "case c.contype when 'f' then 'foreign key' when 'p' then 'primary key' "
+    "when 'u' then 'unique' else 'check' end "
+    "from pg_constraint c "
+    "join pg_class t on t.oid = c.conrelid "
+    "join pg_namespace n on n.oid = t.relnamespace "
+    "where n.nspname = any(%s) and c.contype in ('f', 'p', 'u', 'c') "
+    "order by 1, 2, 3"
+)
+
+
+def _constraints(cursor, schema_names: Iterable[str]) -> dict[str, str]:
+    cursor.execute(_CONSTRAINT_ROWS, [list(schema_names)])
+    return {f"{s}.{t}.{name}": kind for s, t, name, kind in cursor.fetchall()}
+
+
+def live_constraints(schema_names: Iterable[str]) -> dict[str, str]:
+    with connection.cursor() as cursor:
+        return _constraints(cursor, schema_names)
+
+
+def restored_constraints(target: str, schema_names: Iterable[str]) -> dict[str, str]:
+    refuse_live_target(target)
+    with _admin_connect(target) as conn, conn.cursor() as cursor:
+        return _constraints(cursor, schema_names)
+
+
+_NAMES_SHOWN = 20
+
+
+def compare_constraints(
+    restored: dict[str, str], live: dict[str, str]
+) -> tuple[list[str], list[str]]:
+    """(report lines, constraints live has that the restore does not).
+
+    The half of the verdict row counts cannot give. A foreign key that failed
+    to restore leaves every count equal and the rule gone, so the restored
+    database holds rows pointing at parents that are not there and would accept
+    more. A constraint the restore has and live does not is not data loss and
+    is not reported as a problem.
+    """
+    missing = sorted(name for name in live if name not in restored)
+    lines = [f"Constraints: {len(restored)} restored, {len(live)} live."]
+    for name in missing[:_NAMES_SHOWN]:
+        lines.append(f"{name}: {live[name]} constraint MISSING from the restore")
+    if len(missing) > _NAMES_SHOWN:
+        lines.append(f"... and {len(missing) - _NAMES_SHOWN} more missing constraint(s).")
+    return lines, missing
 
 
 def compare(restored: dict[str, int], live: dict[str, int]) -> tuple[list[str], list[str]]:
