@@ -17,6 +17,7 @@ import clock_times  # noqa: E402
 import detekt_baseline  # noqa: E402
 import em_dashes  # noqa: E402
 import file_size  # noqa: E402
+import inline_scripts  # noqa: E402
 import migrations  # noqa: E402
 import run_all  # noqa: E402
 from common import FAIL, WARN, split_comment  # noqa: E402
@@ -439,3 +440,63 @@ def test_detekt_class_level_finding_still_rekeys_one_for_one():
     ch = change({BASELINE: ("M", new), KT + "Old.kt": ("D", ""), KT + "Renamed.kt": ("A", "x\n")},
                 base={BASELINE: old})
     assert detekt_baseline.check(ch) == []
+
+
+# ------------------------------------------------------------------- (g) hand-written page scripts
+HTML = ".scratch/web-revamp/research/prototypes/a.html"
+
+
+def page(body: str, attrs: str = "") -> str:
+    return f"<!doctype html>\n<body>\n<script{attrs}>{body}</script>\n</body>\n"
+
+
+def test_inline_script_that_parses_is_silent():
+    ch = change({HTML: ("A", page("const a = {ok: 1};\n"))})
+    assert inline_scripts.check(ch) == []
+
+
+def test_inline_script_with_a_syntax_error_fails():
+    # The 2026-11-24 defect: a rename turned an object key into two words.
+    ch = change({HTML: ("A", page("const a = { Member B: {} };\n"))})
+    found = inline_scripts.check(ch)
+    assert levels(found) == [FAIL]
+    assert found[0].path == HTML
+
+
+def test_the_finding_points_at_the_line_the_script_starts_on():
+    text = "<!doctype html>\n<p>one</p>\n<p>two</p>\n<script>\nlet = ;\n</script>\n"
+    assert inline_scripts.check(change({HTML: ("A", text)}))[0].line == 4
+
+
+def test_a_src_reference_and_an_empty_block_are_not_source():
+    ch = change({HTML: ("A", page("", ' src="x.js"') + page("   "))})
+    assert inline_scripts.check(ch) == []
+
+
+def test_a_module_block_may_use_import():
+    ch = change({HTML: ("A", page("import x from './x.js';\n", ' type="module"'))})
+    assert inline_scripts.check(ch) == []
+
+
+def test_a_json_block_is_checked_as_json_not_as_script():
+    assert inline_scripts.check(change({HTML: ("A", page('{"a": 1}', ' type="application/json"'))})) == []
+    bad = inline_scripts.check(change({HTML: ("A", page("{a: 1,}", ' type="application/json"'))}))
+    assert levels(bad) == [FAIL]
+
+
+def test_a_standalone_js_file_under_docs_is_checked():
+    assert levels(inline_scripts.check(change({"docs/x.js": ("A", "let = ;\n")}))) == [FAIL]
+
+
+def test_only_scratch_and_docs_are_in_scope():
+    ch = change({"server/frontend/src/x.js": ("A", "let = ;\n"), "other/y.html": ("A", page("let = ;"))})
+    assert inline_scripts.check(ch) == []
+
+
+def test_a_deleted_page_is_not_parsed():
+    assert inline_scripts.check(change({HTML: ("D", "")})) == []
+
+
+def test_count_reports_files_and_blocks():
+    ch = change({HTML: ("A", page("const a=1;") + page("const b=2;")), "docs/x.js": ("A", "const c=1;\n")})
+    assert inline_scripts.count(ch) == (2, 3)
