@@ -55,6 +55,38 @@ def test_the_clip_window_is_the_phones(ours, theirs):
     assert ours == _const(WAIT_KT, theirs)
 
 
+@pytest.mark.parametrize(
+    "ours,theirs",
+    [
+        (w.FIRST_AUDIO_MS, "CLOUD_FIRST_AUDIO_MS"),
+        (w.MAX_HOLD_MS, "MAX_HOLD_MS"),
+        (w.STALE_MS, "STALE_MS"),
+    ],
+)
+def test_the_hold_in_front_of_the_answer_is_the_phones(ours, theirs):
+    assert ours == _const(CASCADE_KT / "DeadAir.kt", theirs)
+
+
+def test_nothing_is_held_before_the_answers_speech_is_asked_for():
+    # A tool round, or text the speaker still holds: the phone's `answerAskedAtMs` is null and a
+    # line is free to start.
+    assert w.fits_before_answer(now=10.0, asked_at=None, clip_ms=w.MAX_CLIP_MS)
+
+
+def test_a_line_that_would_still_be_playing_when_the_answer_speaks_does_not_start():
+    # Asked at 10.0, so audio is expected at 10.8 and a line may end by 11.1. A 1,300 ms clip
+    # starting at 10.0 would end at 11.3.
+    assert not w.fits_before_answer(now=10.0, asked_at=10.0, clip_ms=1_300)
+    assert w.fits_before_answer(now=10.0, asked_at=10.0, clip_ms=1_100)
+
+
+def test_a_voice_slower_than_expected_lets_the_lines_start_again():
+    # The estimate is wrong by more than `STALE_MS`, so silence is the worse risk (the phone's
+    # `DeadAir` comment: a slow voice must not buy a long silence).
+    assert not w.fits_before_answer(now=11.0, asked_at=10.0, clip_ms=1_300)
+    assert w.fits_before_answer(now=11.6, asked_at=10.0, clip_ms=1_300)
+
+
 def test_the_wait_lines_are_the_phones_words():
     found = re.search(r"val LINES = listOf\(([^)]*)\)", WAIT_KT.read_text(encoding="utf-8"))
     assert found is not None, "WaitFillers.LINES moved: the phone's words are the source"
