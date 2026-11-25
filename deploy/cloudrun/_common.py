@@ -123,6 +123,11 @@ PLAIN_ENV_VARS = ("ALLOWED_HOSTS", "CSRF_TRUSTED_ORIGINS", "MEDIA_ROOT", "DJANGO
 # Supabase egress cut 4 (2026-11-23): LEGION_DEMO_MEDIA_BUCKET names the private bucket the
 #   recruiter page's media files live in (`demo.media_store`). Unset, their bytes come out of
 #   Postgres as before. Not listed here, a line in `.env` never reached Cloud Run.
+# Default household (Kevin, 2026-11-24): LEGION_BOOTSTRAP_HOUSEHOLD_ID names the household every
+#   pre-tenancy row was backfilled into and the one `household.tenancy.resolve_default_household()`
+#   answers with first (`BOOTSTRAP_ID_ENV`). Listed so the SERVICE carries it too: it was set by
+#   hand on the job and kept there only by a ship script's read-back, while the service fell to the
+#   no-id rule and could name no household. Unset, the server falls to that rule as before.
 OPTIONAL_PLAIN_ENV_VARS = (
     "LEGION_MCP", "LEGION_MCP_RATE", "VAPID_PUBLIC_KEY", "VAPID_SUBJECT", "LEGION_APK_BUCKET",
     "LEGION_MEMORY_REVIEW", "LEGION_MEMORY_REVIEW_CAP", "LEGION_CLAUDE_FILES_BUCKET",
@@ -140,6 +145,7 @@ OPTIONAL_PLAIN_ENV_VARS = (
     "LEGION_ASSISTANT_TURN_IP_RATE", "LEGION_WEB_EARLY_TRANSCRIPTS", "LEGION_DEMO_REFS",
     "LEGION_DEMO_COST_PER_SPEECH_REQUEST_USD",
     "LEGION_BOARD", "LEGION_BOARD_ACTIONS", "LEGION_DEMO_MEDIA_BUCKET",
+    "LEGION_BOOTSTRAP_HOUSEHOLD_ID",
 )
 
 # Optional secrets: mounted only when the switch named beside them is set in `.env`, because
