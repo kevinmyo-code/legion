@@ -464,7 +464,7 @@ class LiveSessionController(context: Context) {
      * failed connection doesn't burn the one-time introduction.
      */
     private fun startConversation() {
-        val s = GeminiLiveSession(appContext, { handleEvent(it) }, rewakeCarry)
+        val s = GeminiLiveSession(appContext, rewakeCarry) { handleEvent(it) }
         session = s
         pendingAction = Pending.CONVERSATION
         conversationMode = true
@@ -484,7 +484,7 @@ class LiveSessionController(context: Context) {
             // A conversation that ended inside the window, when the warm socket that held it is
             // gone (Kevin, 2026-11-24). Taken once, here, because this is the one cold conversation
             // start: a warm resume still has Gemini's own context and needs none of it.
-            val carried = if (isFirst) null else rewakeCarry.take(System.currentTimeMillis())
+            val carried = if (isFirst) null else rewakeCarry.take(SystemClock.elapsedRealtime())
             // The greeting of a tapped conversation, not a proactive line: REQUESTED because the
             // driver asked for this session, and nothing holds or drops it either way.
             pendingPrompt = ProactiveBus.SpeakRequest(
@@ -536,7 +536,7 @@ class LiveSessionController(context: Context) {
 
     /** Cold start a speak-only proactive session (no warm socket existed). */
     private fun startProactive(request: ProactiveBus.SpeakRequest) {
-        val s = GeminiLiveSession(appContext, { handleEvent(it) }, rewakeCarry)
+        val s = GeminiLiveSession(appContext, rewakeCarry) { handleEvent(it) }
         session = s
         pendingAction = Pending.PROACTIVE_COLD
         pendingPrompt = request

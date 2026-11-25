@@ -14,6 +14,7 @@ import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.NoiseSuppressor
 import android.os.Build
 import android.os.Process
+import android.os.SystemClock
 import android.util.Base64
 import android.util.Log
 import androidx.core.content.ContextCompat
@@ -143,13 +144,14 @@ sealed class ConnectionMode {
 
 class GeminiLiveSession(
     context: Context,
-    private val onEvent: (LiveEvent) -> Unit,
     /**
      * What this conversation leaves for the next one ([RewakeCarry], Kevin 2026-11-24). The
      * controller owns it, so it outlives this socket. Null for a socket that leaves nothing behind
-     * (onboarding, which is a wizard rather than a conversation).
+     * (onboarding, which is a wizard rather than a conversation). Declared before [onEvent] so the
+     * event handler stays a trailing lambda at every call site.
      */
     private val rewake: RewakeCarry? = null,
+    private val onEvent: (LiveEvent) -> Unit,
 ) {
     private val appContext = context.applicationContext
     private val apiKey get() = GeminiKeyProvider.key()
@@ -1635,7 +1637,7 @@ class GeminiLiveSession(
         // The end of a conversation he was in, whether it went quiet or he said goodbye. The socket
         // stays warm for three minutes and a tap resumes it with Gemini's own context, so this only
         // matters when the socket dies inside the window ([RewakeCarry]).
-        rewake?.ended(System.currentTimeMillis())
+        rewake?.ended(SystemClock.elapsedRealtime())
         warm.set(true)
         emit(LiveEvent.Idle(afterDismissal = onDismissal))
         warmHoldJob?.cancel()
@@ -1877,7 +1879,7 @@ class GeminiLiveSession(
         // His tap ends the conversation here; every other close either ends a conversation that
         // already left its turns behind at the park, or ends one that never finished ([RewakeCarry]).
         if (RewakeCarry.endsHisConversation(reason)) {
-            rewake?.ended(System.currentTimeMillis())
+            rewake?.ended(SystemClock.elapsedRealtime())
         } else {
             rewake?.abandoned()
         }
