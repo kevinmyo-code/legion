@@ -97,7 +97,7 @@ class OdometerAnswersTheMileageAskTest {
     }
 
     @Test
-    fun `the reply names the item that took the reading, so a write he did not ask for is not silent`() = runBlocking {
+    fun `the reply names the item that took the reading, so the write is not silent`() = runBlocking {
         aMilesOnlyItemLoggedWithNoReading()
 
         val outcome = VehicleController.setOdometer(context, 235_000, vehicleId = "V1")
@@ -126,6 +126,33 @@ class OdometerAnswersTheMileageAskTest {
         assertTrue(
             "and nothing is claimed about it. Was: ${outcome.message}",
             !outcome.message.contains("Tire Rotation"),
+        )
+    }
+
+    @Test
+    fun `a reading given long after the service still times the item, counted from the reading`() = runBlocking {
+        // The route's weak joint, pinned rather than left to be discovered: the reading is taken
+        // today and the work was done months ago, so the item comes due LATE by the miles driven
+        // since. Better than the alternative, which is never due at all and the same question
+        // asked forever - and the reply says "timing it from" rather than asserting that the
+        // service happened at this figure. A later log, or editing the row in the history screen,
+        // corrects it.
+        val monthsAgo = System.currentTimeMillis() - 120L * 24 * 60 * 60 * 1000
+        FleetEngineStore.upsertNewItem(
+            context,
+            MaintenanceItem(
+                vehicleId = "V1", serviceName = "Oil Change", intervalMiles = 5_000,
+                lastDoneMileage = null, lastDoneDate = monthsAgo,
+            ),
+        )
+
+        val outcome = VehicleController.setOdometer(context, 235_000, vehicleId = "V1")
+
+        assertEquals(235_000, FleetEngineStore.get(context, "V1", "Oil Change")!!.lastDoneMileage)
+        assertEquals(emptyList<String>(), next().needsMileage)
+        assertTrue(
+            "the sentence says what the schedule will do, not what the service was at. Was: ${outcome.message}",
+            outcome.message.contains("timing it from 235000"),
         )
     }
 }
