@@ -60,8 +60,11 @@ class RewakeCarryWiringTest {
         val s = session()
         assertTrue(
             "his turns and their drafts",
-            s.contains("CascadePrompt.contents(carried + history, heard, turnPreamble())"),
+            s.contains("CascadePrompt.contents(carriedBlock + history, heard, turnPreamble())"),
         )
+        // The note is the prompt's own, never part of what this conversation leaves behind, so a
+        // second re-wake cannot stack notes.
+        assertTrue(s.contains("carried + ChatTurn(fromUser = false, text = RewakeCarry.NOTE)"))
         // The greeting round is the model's hello, not a turn of his: it sees this conversation only.
         assertTrue(s.contains("CascadePrompt.contents(history, heard, preamble)"))
         // Nothing adds a carried turn to history, so history.isEmpty() and history.size still mean
@@ -83,7 +86,9 @@ class RewakeCarryWiringTest {
             shutdown.contains("outsideTextRead = outsideTextRead || turn?.readThrough == true,"),
         )
         assertTrue(shutdown.contains("test = test != null,"))
-        assertTrue(shutdown.contains("turns = history.toList(),"))
+        // What was in front of the model, so a second follow-up still reaches the conversation
+        // that started it: what this one carried in, then its own turns.
+        assertTrue(shutdown.contains("turns = carried + history,"))
         assertTrue(shutdown.contains("reason = reason,"))
         assertEquals("one close door", 1, Regex("rewake\\.ended\\(").findAll(session()).count())
     }
@@ -112,8 +117,10 @@ class RewakeCarryWiringTest {
         assertEquals("the chime reads it once", 1, Regex("reason !in PLAYS").findAll(cue).count())
         val carry = stripComments(File(sourceRoot(), "service/cascade/RewakeCarry.kt").readText())
         assertTrue("and the carry reads the same list", carry.contains("reason in CloseCue.PLAYS"))
-        // No second list of close reasons anywhere in the carry.
-        assertFalse(carry.contains("setOf("))
+        // The carry keeps no list of its own for THAT question. Its one set answers a different one:
+        // which close means he asked to start fresh, which the chime has no opinion about.
+        assertEquals("one set, and it is the wipes", 1, Regex("setOf\\(").findAll(carry).count())
+        assertTrue(carry.contains("val WIPES = setOf(\"new conversation\")"))
     }
 
     // --- source access ----------------------------------------------------------------------------
