@@ -4,6 +4,7 @@ import com.kevin.legion.service.turn.VoiceOutlet
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -56,13 +57,12 @@ internal object CallLine {
 
     /** The call is over. A stale id is ignored: the next call has already taken the line. */
     fun ended(callId: Long) {
-        if (state.value?.callId == callId) state.value = null
+        state.update { now -> if (now?.callId == callId) null else now }
     }
 
+    /** Atomic: the session, its route follower and the screen's controls all write from own threads. */
     private inline fun edit(callId: Long, change: (CallLineState) -> CallLineState) {
-        val now = state.value ?: return
-        if (now.callId != callId) return
-        state.value = change(now)
+        state.update { now -> if (now == null || now.callId != callId) now else change(now) }
     }
 }
 
@@ -83,7 +83,7 @@ internal object InCallRule {
 
     /**
      * `mm:ss`, as a phone shows a call. Minutes are not folded into hours: a call to Alfred that runs
-     * past an hour is worth seeing as the 63 minutes it is. A clock that went backwards reads 00:00
+     * past an hour is worth seeing as the 63 minutes it is. A clock that went backwards reads zero
      * rather than a negative.
      */
     fun elapsed(ms: Long): String {

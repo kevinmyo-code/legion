@@ -1,12 +1,20 @@
 package com.kevin.legion.ui.call
 
 import androidx.activity.ComponentActivity
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.click
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import com.kevin.legion.service.cascade.InCallRule
@@ -41,6 +49,7 @@ class InCallScreenTest {
         muted: Boolean = false,
         outlet: VoiceOutlet = VoiceOutlet.EARPIECE,
         name: String = "Alfred",
+        nowMs: Long = NOW,
     ) {
         rule.mainClock.autoAdvance = false
         rule.setContent {
@@ -53,6 +62,7 @@ class InCallScreenTest {
                     onMute = { muteTaps++ },
                     onSpeaker = { speakerTaps++ },
                     onHangUp = { hangUps++ },
+                    clock = { nowMs },
                 )
             }
         }
@@ -65,11 +75,16 @@ class InCallScreenTest {
     }
 
     @Test
-    fun `before the pickup it says connecting, and after it shows the time`() {
+    fun `before the pickup it says connecting`() {
         show(answeredAtMs = null)
         rule.onNodeWithText(InCallRule.CONNECTING).assertExists()
-        show(answeredAtMs = System.currentTimeMillis())
-        rule.onNodeWithText("00:00").assertExists()
+    }
+
+    @Test
+    fun `once answered it shows how long the call has been up`() {
+        // Answered 65 s before the held clock reads NOW: a phone would say 01:05.
+        show(answeredAtMs = NOW - 65_000)
+        rule.onNodeWithText("01:05").assertExists()
     }
 
     @Test
@@ -103,6 +118,35 @@ class InCallScreenTest {
         rule.onNodeWithContentDescription(InCallRule.mute(true).detail).assertHasClickAction()
     }
 
+    /**
+     * Every touch stops at the call screen. Without it a tap on the empty middle reaches whatever is
+     * under the overlay, and on the home page that is the orb, which interrupts or ends the call.
+     */
+    @Test
+    fun `a tap on the screen never reaches what is under it`() {
+        var underneath = 0
+        rule.mainClock.autoAdvance = false
+        rule.setContent {
+            TypesetPage {
+                Box(Modifier.fillMaxSize().clickable { underneath++ }.testTag("under"))
+                InCallScreen(
+                    name = "Alfred",
+                    answeredAtMs = NOW,
+                    muted = false,
+                    outlet = VoiceOutlet.EARPIECE,
+                    onMute = { muteTaps++ },
+                    onSpeaker = { speakerTaps++ },
+                    onHangUp = { hangUps++ },
+                    clock = { NOW },
+                )
+            }
+        }
+        // The middle of the screen: between the name and the controls, over no control of its own.
+        rule.onNodeWithTag("under").performTouchInput { click(center) }
+        assertEquals("the page under the call must not be tapped", 0, underneath)
+        assertEquals(0, muteTaps + speakerTaps + hangUps)
+    }
+
     @Test
     fun `on the loudspeaker the control offers the ear again`() {
         show(outlet = VoiceOutlet.LOUDSPEAKER)
@@ -120,5 +164,10 @@ class InCallScreenTest {
         // Hang up is still his: the call ends on the phone even when the audio is not on it.
         rule.onNodeWithText("Hang up").performClick()
         assertEquals(1, hangUps)
+    }
+
+    private companion object {
+        /** A held clock, so the timer's text is exact rather than a race with the wall clock. */
+        const val NOW = 1_764_000_000_000L
     }
 }

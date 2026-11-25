@@ -3255,7 +3255,8 @@ internal class CascadeSession(
         val windowMs = FollowUpWindow.windowAfter(lastClipText)
         LiveLatency.log("LIVE_FOLLOWUP", "armed ms=$windowMs engine=${engineToken()}")
         followUpJob = scope.launch(loop) {
-            delay(windowMs)
+            waitOutWindow(windowMs)
+            if (closing.get()) return@launch
             val now = System.currentTimeMillis()
             followUpEvent(
                 FollowUpWindow.Event.Elapsed(
@@ -3266,15 +3267,27 @@ internal class CascadeSession(
         }
     }
 
+    /**
+     * The window, held while he is muted and then started again (plan 1.5: Mute pauses the idle
+     * rules, because a muted call is him choosing silence and silence must not hang up on him).
+     *
+     * Nothing is emitted while it holds, so the window's state machine stays armed; and it is the
+     * WHOLE window again once he is back, not the instant he unmutes. Swallowing the expiry instead
+     * would be a one-way door: the window is armed by a reply, so after Mute, expiry, Unmute,
+     * silence would never close the conversation again.
+     */
+    private suspend fun waitOutWindow(windowMs: Long) {
+        while (true) {
+            delay(windowMs)
+            if (!micMuted || closing.get()) return
+            LiveLatency.log("LIVE_FOLLOWUP", "held muted engine=${engineToken()}")
+            while (micMuted && !closing.get()) delay(MUTE_HOLD_POLL_MS)
+            if (closing.get()) return
+        }
+    }
+
     private fun onFollowUpExpired() {
         if (closing.get()) return
-        // Muted is him choosing silence, so silence must not hang up on him. Without this, Mute is a
-        // delayed Hang up. The controller's 30-minute idle backstop is still the outer bound, and the
-        // call's own idle cap is its own slice (plan 1.5).
-        if (micMuted) {
-            LiveLatency.log("LIVE_FOLLOWUP", "held muted engine=${engineToken()}")
-            return
-        }
         if (checkInStep == CheckInStep.LISTENING) {
             scope.launch(loop) { closeCheckInUnanswered() }
             return
@@ -4168,6 +4181,9 @@ internal class CascadeSession(
         private const val OPEN_WAIT_MS = 20_000L
         private const val TEST_POLL_MS = 50L
         private const val MIDWAY_POLL_MS = 50L
+
+        /** How often a held idle window looks to see whether he is back ([waitOutWindow]). */
+        private const val MUTE_HOLD_POLL_MS = 250L
 
 
         private const val CAPTION_CHARS = 160

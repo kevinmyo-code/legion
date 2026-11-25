@@ -24,6 +24,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -85,16 +87,30 @@ internal fun InCallScreen(
     onMute: () -> Unit,
     onSpeaker: () -> Unit,
     onHangUp: () -> Unit,
+    /** The wall clock, so a test can hold it still. */
+    clock: () -> Long = { System.currentTimeMillis() },
 ) {
-    var nowMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    var nowMs by remember { mutableLongStateOf(clock()) }
     // One tick a second while the screen is composed: the timer is the only thing on it that moves.
+    // It does not tick while the screen is dark at his ear, which is correct and free.
     LaunchedEffect(answeredAtMs) {
         while (answeredAtMs != null) {
-            nowMs = System.currentTimeMillis()
+            nowMs = clock()
             delay(TICK_MS)
         }
     }
-    Box(Modifier.fillMaxSize().background(SoftColors.ground)) {
+    Box(
+        Modifier.fillMaxSize()
+            .background(SoftColors.ground)
+            // Every touch stops here, as the card stage's own overlay does. Without it a tap on the
+            // screen's empty middle reaches whatever is under it, and on the home page that is the
+            // orb, which would interrupt or end the call he is on.
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) awaitPointerEvent(PointerEventPass.Final).changes.forEach { it.consume() }
+                }
+            },
+    ) {
         Column(
             Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 48.dp),
             horizontalAlignment = Alignment.CenterHorizontally,

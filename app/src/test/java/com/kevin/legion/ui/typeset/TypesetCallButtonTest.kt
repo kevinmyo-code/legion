@@ -21,6 +21,7 @@ import com.kevin.legion.service.turn.AudioRoute
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -107,6 +108,18 @@ class TypesetCallButtonTest {
         show(duringCall, TypesetHomeActions(onCall = { calls++ }))
         rule.onNodeWithContentDescription(duringCall.detail).assertIsNotEnabled().performClick()
         assertEquals(0, calls)
+    }
+
+    /** The persona's name is never a literal in the code (CLAUDE.md sec 1): a rename reaches TalkBack. */
+    @Test
+    fun `what TalkBack says uses the persona's own name`() {
+        val renamed = CallButtonRule.face("Jarvis", hasEarpiece = true, route = AudioRoute.PHONE_SPEAKER, false)!!
+        assertTrue(renamed.detail, renamed.detail.contains("Jarvis"))
+        assertFalse("no other name is said", renamed.detail.contains(persona))
+        for (route in AudioRoute.entries) for (inCall in listOf(true, false)) {
+            val face = CallButtonRule.face("Jarvis", hasEarpiece = true, route = route, inCall = inCall) ?: continue
+            assertFalse("$route $inCall", face.detail.contains(persona))
+        }
     }
 
     @Test

@@ -869,9 +869,13 @@ class LiveSessionController(context: Context) {
         VoiceOutput.askRoute(earpiece)
     }
 
-    /** The in-call Hang up: the call ends with its closing tone, as a conversation he stopped does. */
+    /**
+     * The in-call Hang up. The same door a tap's "end the chat" uses ([CascadeSession.onTap]), so a
+     * write he has not heard is written down rather than dropped, and the strip says the chat ended;
+     * only the reason differs, and `hung_up` is what plays the closing tone.
+     */
     fun onHangUp() {
-        cascade?.close("hung_up")
+        cascade?.close("hung_up", userEnded = true)
     }
 
     /**

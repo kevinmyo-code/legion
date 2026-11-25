@@ -132,6 +132,54 @@ class CallScreenWiringTest {
     }
 
     /**
+     * Review F6's wiring, which is what makes the rename fix real: the renamed pool is handed to the
+     * voice at construction (membership of the keep set is what lets a line be kept at all) AND
+     * warmed on the ordinary filler schedule. Take either away and the pool stays narrowed forever
+     * with every pure test still green.
+     */
+    @Test
+    fun `a renamed persona's pickup pool reaches the voice and is warmed`() {
+        val s = session()
+        assertTrue(
+            "handed to the voice at construction",
+            s.contains("keepAlso = CallPickup.renamedKeep(CompanionProfile.name(context), ALFRED.defaultName)"),
+        )
+        val speech = bodyOf(s, "defaultCloudSpeech")
+        assertTrue("and it widens the keep set", speech.contains("keepLines = ScriptedLines.KEEP + keepAlso"))
+        val warm = bodyOf(s, "warmFillers")
+        assertTrue(
+            "and warmed where the fillers are",
+            warm.contains("b.tts.warm(CallPickup.renamedKeep(CompanionProfile.name(ctx), ALFRED.defaultName))"),
+        )
+    }
+
+    /**
+     * Mute pauses the idle window rather than swallowing its expiry. Swallowing it is a one-way door:
+     * the window is armed by a reply, so after Mute, expiry, Unmute, silence would never close the
+     * conversation again, and the mic and the voice session would stay open with nobody closing them.
+     */
+    @Test
+    fun `a muted call holds its idle window and starts it again, never swallows it`() {
+        val arm = bodyOf(session(), "armFollowUp")
+        assertTrue("the window's wait is the mute-aware one", arm.contains("waitOutWindow(windowMs)"))
+        val wait = bodyOf(session(), "waitOutWindow")
+        assertTrue("it loops, so the whole window runs again after a hold", wait.contains("while (true)"))
+        assertTrue("it holds while muted", wait.contains("while (micMuted && !closing.get())"))
+        val expired = bodyOf(session(), "onFollowUpExpired")
+        assertFalse("and the expiry itself is never swallowed", expired.contains("micMuted"))
+    }
+
+    @Test
+    fun `the call screen is mounted, and every touch stops at it`() {
+        val activity = stripComments(File(sourceRoot(), "ui/MainActivity.kt").readText())
+        assertTrue("drawn over every route", activity.contains("com.kevin.legion.ui.call.InCallOverlay()"))
+        val screen = stripComments(File(sourceRoot(), "ui/call/InCallScreen.kt").readText())
+        assertTrue("touches are consumed, as the card stage's overlay does", screen.contains("pointerInput(Unit)"))
+        assertTrue(screen.contains("changes.forEach { it.consume() }"))
+        assertTrue("and a crisis takes the screen back", screen.contains("if (crisis) return"))
+    }
+
+    /**
      * Review F11, stated as what is true at this head: Live is retired, so a voice fault mid-call
      * closes the conversation and nothing re-opens one. The branch that WOULD re-open carries neither
      * the call nor the in-hand flag, so whoever un-retires Live owes both, and this fails on the day
