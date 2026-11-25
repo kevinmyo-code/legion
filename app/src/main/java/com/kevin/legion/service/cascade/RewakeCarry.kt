@@ -14,10 +14,12 @@ import com.kevin.legion.service.TextChatEngine
  * testable without a clock. The snapshot is immutable and the field volatile: one conversation's
  * loop thread writes it at its close, the next conversation reads it once at its open.
  *
- * Three rules keep it honest:
+ * Three rules keep it honest here, and a fourth lives in the session: only a conversation he opened
+ * to talk (`ownConversation`) calls [take] or [ended] at all, so a proactive line, Brief me or a
+ * ring window neither spends the context nor wipes it.
  * - **Only the end of his conversation.** [CloseCue.endsHisConversation] is the one definition of
- *   that, shared with the closing chime: a preemption, a controller teardown, a failed voice, a
- *   crisis or a ring window leaves nothing behind.
+ *   that, shared with the closing chime: a preemption, a controller teardown, a failed voice or a
+ *   crisis leaves nothing behind.
  * - **Nothing from a conversation that read outside text (ADR 0090).** Such a conversation keeps
  *   NOTHING, so neither the text (a read-through opener's prompt sits in `history` in clear) nor
  *   its one-turn write taint can outlive it. The write guard is therefore never weaker for a
