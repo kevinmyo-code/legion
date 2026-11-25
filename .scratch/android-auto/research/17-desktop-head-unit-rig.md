@@ -14,7 +14,7 @@ and a window on the desk. This is the recipe, so nobody pays the setup cost twic
 There is no `cmdline-tools`/`sdkmanager` on this machine, but **Android Studio ships its own CLI**:
 
 ```
-C:\Users\Kwin\Apps\AndroidStudio\plugins\android\resources\android-cli\bin\android.exe sdk install "extras;google;auto"
+C:\Users\<user>\Apps\AndroidStudio\plugins\android\resources\android-cli\bin\android.exe sdk install "extras;google;auto"
 ```
 
 It self-downloads on first run. Lands at `Sdk/extras/google/auto/desktop-head-unit.exe`, with
@@ -31,9 +31,9 @@ reach it:
 Then:
 
 ```
-ADB="/c/Users/Kwin/AppData/Local/Android/Sdk/platform-tools/adb.exe"
+ADB="/c/Users/<user>/AppData/Local/Android/Sdk/platform-tools/adb.exe"
 "$ADB" -s <serial> forward tcp:5277 tcp:5277
-cd "C:/Users/Kwin/AppData/Local/Android/Sdk/extras/google/auto"
+cd "C:/Users/<user>/AppData/Local/Android/Sdk/extras/google/auto"
 tail -f /dev/null | ./desktop-head-unit.exe -a 5277 -c config/default.ini -i touch
 ```
 

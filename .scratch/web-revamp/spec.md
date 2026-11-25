@@ -279,7 +279,7 @@ One web client, two surfaces, split by viewport.
     "month": "2026-10",
     "currency": "USD",
     "accounts": [
-      {"account_last4": "7823", "label": "BofA card", "spend_cents": 64255,
+      {"account_last4": "1199", "label": "BofA card", "spend_cents": 64255,
        "unverified": true, "unverified_cents": 21000, "latest_row_at": "2026-10-03T09:12:00Z"}
     ],
     "categories": [
@@ -293,7 +293,7 @@ One web client, two surfaces, split by viewport.
   ```
 
 - Accounts key on `account_last4` (scout: nickname splits one card). `label` is the most recent
-  server-ingested `account_nickname` for that last4, falling back to "Card ending 7823".
+  server-ingested `account_nickname` for that last4, falling back to "Card ending 1199".
 - `unverified` is true when any contributing row is `UNRECONCILED`. The client renders the word.
 - `complete` is true only when every account active in the month has gated statements covering
   every day of it, so the current month (provisional activity) is never complete (accepted 2026-10-03).

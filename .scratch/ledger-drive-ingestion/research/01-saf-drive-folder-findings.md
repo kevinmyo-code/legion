@@ -645,7 +645,7 @@ for this section only; the sections above it were still authored without hardwar
 
 | Step | Observable | Result |
 |---|---|---|
-| 1 | Drive offered as a root in the tree picker | **PASS.** "Drive / kevinmyo@gmail.com" in the drawer |
+| 1 | Drive offered as a root in the tree picker | **PASS.** "Drive / <the signed-in account>" in the drawer |
 | 2 | Folder selectable, persistable grant taken | **PASS.** `TREE=content://com.google.android.apps.docs.storage/tree/acc%3D1%3Bdoc%3Dencoded%3D...` |
 | 3 | `listFiles()` returns the folder's files | **PASS.** `COUNT=5`, all `application/pdf`, non-zero sizes |
 | 4 | Byte read works | **PASS.** `READ ok ... bytes=164087 header=%PDF- ms=637` |

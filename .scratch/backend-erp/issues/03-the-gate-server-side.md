@@ -59,7 +59,7 @@ outcome-verb rule). Whether UNRECONCILED transience needs server-side enforcemen
    per-account balances key on. Last-4 is stable across statements and not sensitive alone; the
    nickname makes every surface readable. **This fits what already exists**: `sameCard`
    (`ledger/LedgerAccountIdentity.kt:32-33`) already matches on exact equality OR last-4 suffix,
-   precisely because the card CSV parser stores `"7823"` while the PDF parser stores the full PAN.
+   precisely because the card CSV parser stores `"1199"` while the PDF parser stores the full PAN.
    Its known weakness carries over unchanged and must be said out loud: **two accounts sharing a
    last-4 collide.** The nickname is what disambiguates them, so it is load-bearing, not cosmetic.
 6. **Rows from the CSV are tagged `LLM_RECONCILED` (Kevin, 2026-08-25).** Provenance describes the

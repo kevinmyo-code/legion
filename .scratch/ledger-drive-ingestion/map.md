@@ -28,7 +28,7 @@ The map is done when nothing is left to decide. Implementation is a separate pas
 ## Notes
 
 **Domain:** Android phone app (Kotlin, Compose, Room v3), `com.kevin.legion`. Repo
-`C:\Users\Kwin\StudioProjects\legion`, branch `dev`.
+`C:\Users\<user>\StudioProjects\legion`, branch `dev`.
 
 **Read before deciding anything:** `CLAUDE.md` (rules, especially §4 the reconciliation gate and §7
 guardrails) and `memory/MEMORY.md` (state). Most of `memory/library/` is FROZEN Midnight AI history

@@ -30,7 +30,7 @@ Kevin's ask (2026-08-06): ingest it anyway. Decide how, without making §4 mean 
 
 ### Facts, read from the real file (`tested`, not assumed)
 
-`C:\Users\Kwin\Downloads\currentTransaction_7823.csv`, read 2026-08-06, not copied into the repo:
+`C:\Users\<user>\Downloads\currentTransaction_1199.csv`, read 2026-08-06, not copied into the repo:
 
 | Fact | Value |
 |---|---|
@@ -40,7 +40,7 @@ Kevin's ask (2026-08-06): ingest it anyway. Decide how, without making §4 mean 
 | Sign split | 38 debits, 2 credits (a merchant refund and a `PAYMENT FROM SAV`) |
 | Balance column | **absent** |
 | Total row | **absent** |
-| Account number | **absent from the file body.** Present only in the filename: `_7823` |
+| Account number | **absent from the file body.** Present only in the filename: `_1199` |
 
 Two consequences fall straight out of that table:
 
@@ -79,7 +79,7 @@ CSV shows up later, that is its own ticket and its own deterministic parser.
 
 ### Call 2 - Account identity: FILENAME LAST-4
 
-`accountId` is the last-4 parsed from the filename: `currentTransaction_7823.csv` -> `"7823"`.
+`accountId` is the last-4 parsed from the filename: `currentTransaction_1199.csv` -> `"1199"`.
 Self-describing, needs no folder mapping, and correct even in Kevin's mixed
 `USA Bank Statements/` folder where `accountHint` may name the checking account.
 
@@ -110,8 +110,8 @@ and any figure containing one is labelled unverified.
 **Calls 2 and 3+4 do not compose as stated.** Kevin was shown this consequence when picking call 2
 and picked it anyway, so the stored value stands; the mechanism has to absorb it.
 
-- Call 2 stores `accountId = "7823"`.
-- The card PDF (`BofaCardStatementParser`) derives `accountId = "4111111111117823"` from the
+- Call 2 stores `accountId = "1199"`.
+- The card PDF (`BofaCardStatementParser`) derives `accountId = "4111111111111199"` from the
   document's own printed account.
 - These are different strings. Every mechanism in the ledger keys on `accountId` **equality**.
 
@@ -132,7 +132,7 @@ fun sameCard(a: String, b: String): Boolean =
 
 The three places: the supersede delete (§3), the adjusted-balance pairing (§5), and
 `BalancesSection` grouping (§5). Nowhere else. In particular **`resolveDedup` is NOT changed** -
-loosening its key on a suffix would let a checking account ending 7823 absorb card rows.
+loosening its key on a suffix would let a checking account ending 1199 absorb card rows.
 
 **Known weakness, stated rather than hidden:** a suffix match collides if two accounts share a
 last-4. Kevin has four accounts today and no collision. `sameCard` must carry that in a doc comment
@@ -286,7 +286,7 @@ data class AccountBalance(
   that date. Provisional rows dated before the last printed balance are already inside it.
 - When there is no printed balance at all (`balanceCents == null`) but provisional rows exist,
   display the delta alone, clearly marked - never render it as a balance.
-- **`BalancesSection` groups on `sameCard`**, so `7823` and `4111111111117823` render as one row,
+- **`BalancesSection` groups on `sameCard`**, so `1199` and `4111111111111199` render as one row,
   not two.
 
 ### 7. UI
@@ -342,7 +342,7 @@ invert.
 
 `LedgerDedupTest` / supersede
 
-14. `sameCard`: exact match true; `"7823"` vs `"4111111111117823"` true; `"7823"` vs `"1234"` false;
+14. `sameCard`: exact match true; `"1199"` vs `"4111111111111199"` true; `"1199"` vs `"1234"` false;
     strings under 4 chars do not throw.
 15. `resolveDedup` is unchanged by this ticket - assert an `UNRECONCILED` row and a
     `DETERMINISTIC` row with the same key still dedup exactly as before.
@@ -368,7 +368,7 @@ follow-up / impossible-and-why** before reporting this built. A surfaced gap is 
    Kevin's PATH.)
 2. `./gradlew testDebugUnitTest` green, 221 existing + the new cases.
 3. **Run the real file, count its rows independently of the parser** (L14). Copy
-   `currentTransaction_7823.csv` in, import it, confirm **exactly 40 transactions**, **38 negative
+   `currentTransaction_1199.csv` in, import it, confirm **exactly 40 transactions**, **38 negative
    and 2 positive**, then DELETE the file. Those counts came from `grep -c` on the real file, not
    from the parser. A fixture built from this ticket's own spec proves the parser matches the spec,
    not the bank.
@@ -386,7 +386,7 @@ follow-up / impossible-and-why** before reporting this built. A surfaced gap is 
 
 - A generic LLM CSV path (declined, call 1).
 - Any other bank's CSV export.
-- Resolving whether `7823` should have been the full PAN - §0 absorbs it in three places; revisiting
+- Resolving whether `1199` should have been the full PAN - §0 absorbs it in three places; revisiting
   the stored value is a separate call.
 - Card PAN masking (Kevin declined, MEMORY.md).
 - Ledger categorization, FX, insights.

@@ -15,10 +15,10 @@ it stopped and cannot resume.**
 `ObdSampleReconcile` uploaded 12,807 samples (2026-07-16 to 08-11, all three real cars) and then
 reported honestly:
 
-> Stopped early: `66:1E:11:0E:82:0E`: vehicle not yet migrated - run Fleet's vehicle upload first.
+> Stopped early: `AA:BB:CC:00:00:01`: vehicle not yet migrated - run Fleet's vehicle upload first.
 > Samples past this point were not checked this run.
 
-**That advice cannot be followed.** `66:1E:11:0E:82:0E` is one of the two **year-0 placeholder
+**That advice cannot be followed.** `AA:BB:CC:00:00:01` is one of the two **year-0 placeholder
 vehicles** - the same rows that aborted the fleet projection on 2026-08-28 and that
 `skippedUnexportable` now deliberately refuses to upload, because `public.vehicles` requires
 `year between 1885 and 2200` and these carry 0 with no name, make or model.
@@ -54,11 +54,11 @@ considered, and the fleet cutover created exactly that category one day earlier.
 
 | vehicle | samples | status |
 |---|---|---|
-| `00:1D:A5:0E:82:0E` (Jeep) | 9,863 | real |
+| `AA:BB:CC:00:00:02` (Jeep) | 9,863 | real |
 | `car:c352c532-...` (F-150) | 5,691 | real |
 | `imported-mitsubishi-outlander-2020` | 5,242 | real |
 | **`default`** | **5,242** | **permanently unexportable** |
-| **`66:1E:11:0E:82:0E`** | **21** | **permanently unexportable, and what stopped the run** |
+| **`AA:BB:CC:00:00:01`** | **21** | **permanently unexportable, and what stopped the run** |
 
 **20,796 samples belong to real cars; 5,263 belong to the two dead rows.** 12,807 are already up, so
 **7,989 real samples are stuck behind 5,263 dead ones** - and the row that actually halted the cursor
