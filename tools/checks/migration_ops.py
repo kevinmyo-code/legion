@@ -289,6 +289,7 @@ def _exempt_callees(tree: ast.AST, bindings: dict[str, str]) -> tuple[frozenset[
         return frozenset(), False
     exempt: set[int] = set()
     constructors: set[int] = set()
+    nested: set[int] = set()
     for element in operations.elts:
         if not _operation_constructor(element, bindings):
             return frozenset(), False  # something else runs beside the exempt call
@@ -301,9 +302,20 @@ def _exempt_callees(tree: ast.AST, bindings: dict[str, str]) -> tuple[frozenset[
                 return frozenset(), False  # not a django.db operation: the exemption is off
             constructors.add(id(op))
             exempt.add(id(op.func))
-    if not _only_allowed_helpers(tree, bindings, constructors):
+            nested |= _calls_in_arguments(op)
+    if not _only_allowed_helpers(tree, bindings, constructors, nested):
         return frozenset(), False
     return frozenset(exempt), True
+
+
+def _calls_in_arguments(call: ast.Call) -> set[int]:
+    """Every call, at any depth, inside this call's arguments. The one place a helper may sit."""
+    found: set[int] = set()
+    for argument in [*call.args, *(kw.value for kw in call.keywords)]:
+        for node in ast.walk(argument):
+            if isinstance(node, ast.Call):
+                found.add(id(node))
+    return found
 
 
 def _operation_constructor(node: ast.AST, bindings: dict[str, str]) -> bool:
@@ -318,19 +330,20 @@ def _operation_constructor(node: ast.AST, bindings: dict[str, str]) -> bool:
 
 
 def _only_allowed_helpers(
-    tree: ast.AST, bindings: dict[str, str], constructors: set[int]
+    tree: ast.AST, bindings: dict[str, str], constructors: set[int], nested: set[int]
 ) -> bool:
-    """Whether every remaining call in the file - each one nested inside an operation's argument,
-    since rules 1 and 2 leave nowhere else for a call to sit - is an operation constructor or a
-    project helper (rule 5's second clause).
+    """Whether every remaining call in the file is an operation constructor, or a project helper in
+    the one place rule 5's second clause allows one: inside an EXEMPT state operation's argument.
 
     A helper is a call rooted at an imported name whose source is in neither the standard library
     nor `django`. A `django`-rooted callee has to be an operation constructor and nothing else,
     because an attribute chain off a Django import is a place to read a function out of something
     the import did not name: `migrations.__dict__.update(...)`,
     `serializer.builtins.setattr(...)` and a stdlib function re-exported under a `django` path all
-    went that way. Anything else withdraws the exemption, so the file is judged by its operations
-    and by the old text match.
+    went that way. A helper inside a NON-exempt operation's argument is refused for a different
+    reason: it runs beside the exempt call and can patch what that call reaches, and `boot.patch()`
+    in a sibling `RunSQL` was a base-STOP the walk shipped. Anything else withdraws the exemption,
+    so the file is judged by its operations and by the old text match.
 
     This is stricter than it has to be for a `db_default=django.db.models.functions.datetime.Now()`,
     which is honest and loses the exemption. One tracked migration is that shape, it is not
@@ -341,6 +354,8 @@ def _only_allowed_helpers(
             continue
         if _operation_constructor(node, bindings):
             continue
+        if id(node) not in nested:
+            return False
         root = node.func
         while isinstance(root, ast.Attribute):
             root = root.value
