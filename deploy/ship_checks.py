@@ -141,12 +141,15 @@ def migration_problems(
     pinned: dict[str, str],
     new_apps: set[str],
     sources: dict[str, str],
+    blobs: dict[str, str],
 ) -> list[str]:
     """`status`: (letter, path) for every */migrations/* change LIVE_CODE..FIX. Allowed: exactly the pinned
     files, each ADDED, at its pinned blob (checked by the caller through `pinned` vs the blobs), plus an
     empty __init__.py for an app new since LIVE_CODE; nothing that changes the database destructively
-    (`sources` path -> text, judged by tools/checks/migration_ops.py: a state-only
-    `SeparateDatabaseAndState` runs no SQL and ships, a real DROP does not)."""
+    (`sources` path -> text and `blobs` path -> its blob at FIX, judged by
+    tools/checks/migration_ops.py: the old destructive-name match, plus destructive SQL, minus the
+    migrations a reviewer has listed as state-only by path and exact blob in
+    tools/checks/state_only_migrations.txt). The blob is read from git, never hashed from the text."""
     problems = []
     for letter, path in status:
         if letter != "A":
@@ -156,7 +159,9 @@ def migration_problems(
         if m:
             if path not in pinned:
                 problems.append(f"schema file added but not pinned: {path}")
-            elif reason := migration_ops.database_destructive(sources.get(path, "")):
+            elif reason := migration_ops.database_destructive(
+                sources.get(path, ""), path, blobs.get(path, "")
+            ):
                 problems.append(f"{path} holds a destructive database operation ({reason})")
             continue
         app_init = re.match(r"^server/([^/]+)/migrations/__init__\.py$", path)
@@ -346,12 +351,13 @@ def cmd_scope(a) -> list[str]:
         if (m := MIGRATION_PATH.match(p))
         and blob_at(a.live_code, f"server/{m.group(1)}/migrations/__init__.py") is None
     }
-    sources = {
-        p: git("show", f"{a.fix}:{p}")
+    blobs = {
+        p: b
         for _, p in status
-        if MIGRATION_PATH.match(p) and blob_at(a.fix, p)
+        if MIGRATION_PATH.match(p) and (b := blob_at(a.fix, p))
     }
-    problems += migration_problems(status, mig_pins, new_apps, sources)
+    sources = {p: git("show", f"{a.fix}:{p}") for p in blobs}
+    problems += migration_problems(status, mig_pins, new_apps, sources, blobs)
     for path, blob in mig_pins.items():
         if blob_at(a.fix, path) != blob:
             problems.append(f"{path} at FIX is not the pinned blob {blob[:8]}")

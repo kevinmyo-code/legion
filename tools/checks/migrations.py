@@ -7,12 +7,12 @@ branches each adding `0005` to the same Django app.
 Django (`server/<app>/migrations/NNNN_*.py`):
   - FAIL: an existing migration modified or deleted (CLAUDE.md section 5: additive only);
   - FAIL: an added migration whose number another file in the same app already has;
-  - WARN: an added migration whose OPERATIONS are destructive to the database (the engine ship
-    refuses it later). `migration_ops.py` owns that judgement: the operations are read with `ast`,
-    a docstring naming `DeleteModel` is not an operation, the `state_operations` of a
-    `SeparateDatabaseAndState(database_operations=[], ...)` run no SQL (granted by the whole file's
-    shape, so nothing can carry an operation back out of them), and a `RunSQL` that drops a table or
-    deletes rows counts even though no Django operation names it.
+  - WARN: an added migration that is destructive to the database (the engine ship refuses it
+    later). `migration_ops.py` owns that judgement: the old destructive-name text match, plus a
+    `RunSQL` that drops a table or deletes rows (which no Django operation names), minus the
+    migrations a reviewer has confirmed state-only by listing their path and exact blob sha in
+    `tools/checks/state_only_migrations.txt`. The blob comes from git (`Change.blob`), so a file
+    edited by one byte no longer matches its listed sha and is judged like any other.
   Declaration itself is Django's own graph, checked by `makemigrations --check` in server.yml.
 Room (`app/schemas/<db>/N.json`, `headunit/app/schemas/<db>/N.json`):
   - FAIL: an added version N > 1 whose `MIGRATION_<N-1>_<N>` is not inside an `.addMigrations(...)` call
@@ -105,7 +105,9 @@ def _check(change: Change) -> list[Finding]:
             if twins:
                 out.append(Finding(FAIL, NAME, path, 0,
                                    f"migration number {m.group(2)} already used in {m.group(1)}: {', '.join(twins)}"))
-            reason = migration_ops.database_destructive(change.read(path) or "")
+            reason = migration_ops.database_destructive(
+                change.read(path) or "", path, change.blob(path)
+            )
             if reason:
                 out.append(Finding(WARN, NAME, path, 0,
                                    f"destructive database operation ({reason}): the engine ship refuses it"))

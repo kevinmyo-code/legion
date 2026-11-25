@@ -25,9 +25,17 @@ class Change:
     base_text: dict[str, str] = field(default_factory=dict)
     head_files: list[str] = field(default_factory=list)  # every tracked path at head
     moved_from: dict[str, str] = field(default_factory=dict)  # added path -> deleted path it was moved from
+    blobs: dict[str, str] = field(default_factory=dict)  # tracked path at head -> its git blob sha
 
     def read(self, path: str) -> str | None:
         return self.head_text.get(path)
+
+    def blob(self, path: str) -> str:
+        """The file's git blob sha at head, or "" when it is not tracked there.
+
+        A hand-built `Change` carries no blobs, so it earns no blob-bound exemption: the strict
+        direction, and what keeps the rules pure functions."""
+        return self.blobs.get(path, "")
 
     def read_base(self, path: str) -> str | None:
         return self.base_text.get(path)
@@ -129,20 +137,35 @@ def from_git(base: str, head: str = "HEAD") -> Change:
         parts = line.split("\t")
         if len(parts) == 3:
             moved[parts[2]] = parts[1]
+    blobs = tracked_blobs(head)
     return Change(status=status, added=added, head_text=LazyText(head), base_text=LazyText(merge_base),
-                  head_files=tracked_files(head), moved_from=moved)
+                  head_files=list(blobs), moved_from=moved, blobs=blobs)
+
+
+def tracked_blobs(rev: str = "HEAD") -> dict[str, str]:
+    """path -> git blob sha for every tracked file at `rev`, in one git call.
+
+    The blob is what grants the state-only migration exemption (migration_ops.py), so it is read
+    from git here and never hashed from a file's decoded text."""
+    out: dict[str, str] = {}
+    for line in git("ls-tree", "-r", rev).splitlines():
+        meta, _, path = line.partition("\t")
+        parts = meta.split()
+        if path and len(parts) == 3 and parts[1] == "blob":
+            out[path] = parts[2]
+    return out
 
 
 def tracked_files(rev: str = "HEAD") -> list[str]:
-    return [p for p in git("ls-tree", "-r", "--name-only", rev).splitlines() if p]
+    return list(tracked_blobs(rev))
 
 
 def whole_tree(rev: str = "HEAD") -> Change:
     """Every tracked file as if newly added: for the counts-only `--all` mode."""
-    files = tracked_files(rev)
+    blobs = tracked_blobs(rev)
     text = LazyText(rev)
-    return Change(status={p: "A" for p in files}, added=_AllLines(text), head_text=text, base_text={},
-                  head_files=files)
+    return Change(status={p: "A" for p in blobs}, added=_AllLines(text), head_text=text, base_text={},
+                  head_files=list(blobs), blobs=blobs)
 
 
 class _AllLines(dict):
