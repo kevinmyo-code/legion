@@ -111,6 +111,37 @@ internal fun parseMileageEntry(text: String): MileageEntry {
     return if (miles == null || miles <= 0) MileageEntry.Invalid else MileageEntry.Reading(miles)
 }
 
+/**
+ * What the edit dialog's two boxes mean TOGETHER: either a save to make, or a reason it is refused.
+ *
+ * One function for both fields because the dialog's rule is one rule - nothing is written unless
+ * both boxes are readable - and because a refusal reaches the driver as words either way. A blank
+ * box is a real value on both axes: no reading on the mileage one, no cost logged on the other.
+ */
+internal sealed interface EditedFields {
+    /** The save does not happen and [reason] is shown. A typo must never read as a deliberate clear. */
+    data class Refused(val reason: String) : EditedFields
+
+    data class Fields(val mileage: Int?, val costCents: Long?) : EditedFields
+}
+
+internal fun parseEditedFields(mileageText: String, costText: String): EditedFields {
+    val mileage = parseMileageEntry(mileageText)
+    val cost = costText.trim()
+    val dollars = cost.toDoubleOrNull()
+    val costUnreadable = cost.isNotEmpty() && (dollars == null || dollars < 0.0)
+    return when {
+        mileage is MileageEntry.Invalid ->
+            EditedFields.Refused("Mileage needs to be a reading above zero - leave it blank for no mileage.")
+        costUnreadable ->
+            EditedFields.Refused("Cost needs to be a number, e.g. 45.99 - leave it blank to clear it.")
+        else -> EditedFields.Fields(
+            mileage = (mileage as? MileageEntry.Reading)?.miles,
+            costCents = dollars?.takeIf { cost.isNotEmpty() }?.let { Math.round(it * 100.0) },
+        )
+    }
+}
+
 @Composable
 fun ServiceHistoryScreen(
     recordsNewestFirst: List<ServiceRecord>,
@@ -327,68 +358,83 @@ private fun EditServiceRecordDialog(
             if (statusText != null) {
                 Text(statusText!!, style = LegionType.stamp, color = sem.faint, modifier = Modifier.padding(bottom = 8.dp))
             }
-            DeckTextField(
-                value = mileageText,
-                onValueChange = { mileageText = it },
-                label = "Mileage",
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            EditDialogBoxes(
+                mileageText = mileageText,
+                onMileageChange = { mileageText = it },
+                costText = costText,
+                onCostChange = { costText = it },
             )
-            Spacer(Modifier.height(8.dp))
-            DeckTextField(
-                value = costText,
-                onValueChange = { costText = it },
-                label = "Cost (dollars)",
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-            )
-            Row(Modifier.padding(top = 12.dp)) {
-                DeckButton(
-                    text = "Save",
-                    onClick = {
-                        val mileage = when (val entry = parseMileageEntry(mileageText)) {
-                            MileageEntry.Invalid -> {
-                                statusText = "Mileage needs to be a reading above zero - leave it blank for no mileage."
-                                return@DeckButton
-                            }
-                            MileageEntry.None -> null
-                            is MileageEntry.Reading -> entry.miles
-                        }
-                        val trimmedCost = costText.trim()
-                        val costCents: Long? = if (trimmedCost.isEmpty()) {
-                            null
-                        } else {
-                            val dollars = trimmedCost.toDoubleOrNull()
-                            if (dollars == null || dollars < 0.0) {
-                                statusText = "Cost needs to be a number, e.g. 45.99 - leave it blank to clear it."
-                                return@DeckButton
-                            }
-                            Math.round(dollars * 100.0)
-                        }
-                        scope.launch {
-                            val outcome = onSave(mileage, costCents)
+            EditDialogActions(
+                confirmingDelete = confirmingDelete,
+                onSaveClick = {
+                    when (val fields = parseEditedFields(mileageText, costText)) {
+                        is EditedFields.Refused -> statusText = fields.reason
+                        is EditedFields.Fields -> scope.launch {
+                            val outcome = onSave(fields.mileage, fields.costCents)
                             statusText = outcome.message
-                            if (outcome.success) onSaved(mileage, costCents)
+                            if (outcome.success) onSaved(fields.mileage, fields.costCents)
                         }
-                    },
-                )
-                Spacer(Modifier.width(8.dp))
-                DeckButton(
-                    text = if (confirmingDelete) "Tap again to delete" else "Delete",
-                    destructive = true,
-                    confirming = confirmingDelete,
-                    onClick = {
-                        if (!confirmingDelete) {
-                            confirmingDelete = true
-                        } else {
-                            scope.launch {
-                                val outcome = onDelete()
-                                statusText = outcome.message
-                                if (outcome.success) onDeleted()
-                            }
+                    }
+                },
+                onDeleteClick = {
+                    if (!confirmingDelete) {
+                        confirmingDelete = true
+                    } else {
+                        scope.launch {
+                            val outcome = onDelete()
+                            statusText = outcome.message
+                            if (outcome.success) onDeleted()
                         }
-                    },
-                )
-            }
+                    }
+                },
+            )
         }
+    }
+}
+
+/**
+ * The edit dialog's two boxes. Both keyboards are numeric, and a BLANK box is a real value on each
+ * axis - no reading, no cost logged - which is why neither field carries a placeholder figure.
+ */
+@Composable
+private fun EditDialogBoxes(
+    mileageText: String,
+    onMileageChange: (String) -> Unit,
+    costText: String,
+    onCostChange: (String) -> Unit,
+) {
+    DeckTextField(
+        value = mileageText,
+        onValueChange = onMileageChange,
+        label = "Mileage",
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+    )
+    Spacer(Modifier.height(8.dp))
+    DeckTextField(
+        value = costText,
+        onValueChange = onCostChange,
+        label = "Cost (dollars)",
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+    )
+}
+
+/**
+ * The edit dialog's SAVE and DELETE, drawn apart from the dialog that owns their state - the dialog
+ * sits on detekt's function-length ceiling, and the two buttons are the half of it that is pure
+ * layout. The "tap again to confirm" pattern stays the caller's state, so this draws what it is
+ * told and decides nothing.
+ */
+@Composable
+private fun EditDialogActions(confirmingDelete: Boolean, onSaveClick: () -> Unit, onDeleteClick: () -> Unit) {
+    Row(Modifier.padding(top = 12.dp)) {
+        DeckButton(text = "Save", onClick = onSaveClick)
+        Spacer(Modifier.width(8.dp))
+        DeckButton(
+            text = if (confirmingDelete) "Tap again to delete" else "Delete",
+            destructive = true,
+            confirming = confirmingDelete,
+            onClick = onDeleteClick,
+        )
     }
 }
 
