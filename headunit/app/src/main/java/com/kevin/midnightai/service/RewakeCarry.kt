@@ -95,9 +95,19 @@ class RewakeCarry {
 
     /**
      * The block a cold conversation puts in front of its greeting, or null when there is nothing to
-     * carry or it is too late. What is handed over stays held: a cold connect that fails, or a
-     * conversation that hears nothing, does not cost him the context. Out of time, it is emptied on
-     * the way past, because nothing will want it again.
+     * carry or it is too late. Taking it costs nothing by itself: what is handed over stays held.
+     *
+     * **What spends it is [running], not this.** From the moment the conversation that took the block
+     * begins until that conversation's own end, there is no end stamp, so any teardown
+     * ([abandoned]) leaves nothing. A cold connect whose greeting never reached the socket
+     * (`LiveSessionController`'s `Pending.CONVERSATION` branch ignores what `beginConversation`
+     * returns, and a false there means the text was never sent), and a conversation that heard
+     * nothing and then dropped, both DO
+     * cost him the context. That is the head unit erring toward forgetting, which is the safe
+     * direction here: the phone's holder keeps an immutable snapshot of the previous conversation
+     * and survives such a teardown, while this one has a single accumulating deque with no
+     * conversation boundary in it. Out of time, it is emptied on the way past, because nothing will
+     * want it again.
      */
     @Synchronized
     fun take(nowMs: Long): String? {
