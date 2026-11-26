@@ -15,11 +15,16 @@ public, or nothing.
 
 The set is per case, not one set for the whole run, and that is the point: a case with no reply-length
 bound cannot report `len:max_words`, and a case naming one tool cannot report a failure about another.
-Typically two to six codes are possible for a case, so a malicious commit's choice carries a couple of
-bits rather than free text. The widest sets are the ones that have to name a tool nobody wrote down in
-advance: `chat_called:`, `write_on_read:` and `write_in_test_mode:` take any name on the published
-voice surface (about 140), because the whole point of those three is to say which tool wrongly ran.
-That residual channel is named here on purpose rather than left for a reader to find.
+Measured over the committed cases it runs 6 to 13 codes, median 9 (the test prints it), so a malicious
+commit's choice carries about three bits rather than free text. Part of that floor cannot be removed:
+no case definition rules out `timeout`, `no_answer`, `expression_tag` or the turn counts.
+
+The widest sets are the ones that have to name a tool nobody wrote down in advance: `chat_called:`,
+`write_on_read:` and `write_in_test_mode:` take any name on the published voice surface (about 140),
+because the whole point of those three is to say which tool wrongly ran. That residual channel is
+named here on purpose rather than left for a reader to find. So is this one: the `trusted` checkout
+lives inside the job's workspace, so a gated commit whose own steps rewrote it would defeat this
+script, as it would already defeat the scrub beside it.
 
 Fail-safe by construction: the scorecard it is handed holds NO reason, and this script only ever adds
 one. On any trouble it prints a note, adds nothing, and exits 0, which leaves exactly today's
