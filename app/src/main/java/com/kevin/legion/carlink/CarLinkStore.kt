@@ -25,8 +25,14 @@ sealed interface StoredLink {
     object Broken : StoredLink
 }
 
-/** A minted unit sign-in the unit has not yet said it stored. Not a data class: it holds a token. */
-class PendingUnitToken(val id: String, val token: String, val vehicleId: String?) {
+/**
+ * A minted unit sign-in the unit has not yet said it stored. Not a data class: it holds a token.
+ *
+ * [replaces] is the credential it was minted to replace, which is the pairing it belongs to: a
+ * record whose [replaces] is no longer the car's unit id was left behind by a pairing that is over,
+ * and handing it to the unit now would bind the car to the pairing before it (RED review round 3).
+ */
+class PendingUnitToken(val id: String, val token: String, val vehicleId: String?, val replaces: String) {
     override fun toString() = "PendingUnitToken($id)"
 }
 
@@ -72,22 +78,38 @@ class CarLinkStore(
         current?.let(::register)
         reserve?.let(::register)
         val clearing = current == null
+        // 5.6: a pending renewal belongs to the link key it was minted under, so any write that
+        // leaves a DIFFERENT key current ends it: a new pairing, a revert, or a stored key this
+        // device can no longer read. Deciding it here is what keeps the record from outliving its
+        // pairing however the keys were written (RED review round 3: "Pair again" left it behind
+        // and the next pass handed the new unit the old pairing's token).
+        val endsRenewal = clearing || !sameCurrentKey(current)
         return file.writeAll(
             buildMap {
                 put(CURRENT, cur)
                 put(RESERVE, res)
+                if (endsRenewal) {
+                    put(PENDING_ID, null)
+                    put(PENDING_TOKEN, null)
+                    put(PENDING_VEHICLE, null)
+                    put(PENDING_FOR, null)
+                }
                 if (clearing) {
                     put(UNIT_DEVICE_ID, null)
                     put(SEND_LOCATION, null)
                     put(REVOKE_ONLY, null)
                     put(REVOKE_SINCE, null)
                     put(PAIRING_NET, null)
-                    put(PENDING_ID, null)
-                    put(PENDING_TOKEN, null)
-                    put(PENDING_VEHICLE, null)
                 }
             },
         )
+    }
+
+    /** True only when [current] is byte for byte the key already stored. Unreadable = not the same. */
+    private fun sameCurrentKey(current: ByteArray?): Boolean {
+        if (current == null) return false
+        val stored = file.read()[CURRENT] ?: return false
+        return openWithRetry(stored)?.contentEquals(current) == true
     }
 
     /** A REVOKE-only record exists (5.4, rev 5): a forgotten pairing whose unit was not yet told. */
@@ -110,7 +132,7 @@ class CarLinkStore(
             mapOf(
                 CURRENT to null, RESERVE to null, UNIT_DEVICE_ID to null, SEND_LOCATION to null,
                 REVOKE_ONLY to blob, REVOKE_SINCE to sinceMs.toString(),
-                PENDING_ID to null, PENDING_TOKEN to null, PENDING_VEHICLE to null,
+                PENDING_ID to null, PENDING_TOKEN to null, PENDING_VEHICLE to null, PENDING_FOR to null,
             ),
         )
     }
@@ -133,9 +155,15 @@ class CarLinkStore(
     fun pendingUnitToken(): PendingUnitToken? {
         val values = file.read()
         val id = values[PENDING_ID]
+        val replaces = values[PENDING_FOR]
         val token = values[PENDING_TOKEN]?.let(::openText)
-        return if (id != null && token != null) PendingUnitToken(id, token, values[PENDING_VEHICLE]) else null
+        // A record with no pairing to belong to is never handed over, so it is not a record.
+        if (id == null || token == null || replaces == null) return null
+        return PendingUnitToken(id, token, values[PENDING_VEHICLE], replaces)
     }
+
+    /** Which credential is waiting for the unit, without opening its token. Null = none. */
+    fun pendingUnitId(): String? = file.read()[PENDING_ID]
 
     /** Writes or (null) clears it. False = nothing was written, so nothing changed. */
     fun setPendingUnitToken(pending: PendingUnitToken?): Boolean {
@@ -145,6 +173,7 @@ class CarLinkStore(
                 PENDING_ID to pending?.id,
                 PENDING_TOKEN to sealed,
                 PENDING_VEHICLE to pending?.vehicleId,
+                PENDING_FOR to pending?.replaces,
             ),
         )
     }
@@ -188,6 +217,7 @@ class CarLinkStore(
         private const val PENDING_ID = "pending_unit_id"
         private const val PENDING_TOKEN = "pending_unit_token"
         private const val PENDING_VEHICLE = "pending_unit_vehicle"
+        private const val PENDING_FOR = "pending_unit_replaces"
         private val RETIRED = listOf("car_gemini_key", "hand_over_gemini")
     }
 }

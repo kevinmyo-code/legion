@@ -133,6 +133,39 @@ class CarLinkStoreTest {
         assertSame(StoredLink.NotPaired, store.load())
     }
 
+    /**
+     * 5.6: a pending renewal belongs to the link key it was minted under. Every pairing writes a
+     * new current key, so deciding it here is what keeps a record from outliving its pairing,
+     * whichever button made the pairing ("Pair again" never goes through Forget).
+     */
+    @Test fun `a key write that changes the current key ends a pending renewal`() {
+        store.write(key, null)
+        assertTrue(store.setPendingUnitToken(PendingUnitToken("id-new", "hu1_waiting", "veh-1", "id-old")))
+        // The same key written again (a confirm) leaves the pairing, and its renewal, alone.
+        assertTrue(store.write(key, null))
+        assertEquals("id-new", store.pendingUnitToken()?.id)
+        // A pairing: a different key is current now, so the renewal before it is over.
+        assertTrue(store.write(old, key))
+        assertNull(store.pendingUnitToken())
+        assertNull(store.pendingUnitId())
+    }
+
+    @Test fun `a pending record with no pairing to belong to is not a record`() {
+        store.write(key, null)
+        assertTrue(store.setPendingUnitToken(PendingUnitToken("id-new", "hu1_waiting", null, "id-old")))
+        file.values.remove("pending_unit_replaces")
+        assertNull(store.pendingUnitToken())
+    }
+
+    @Test fun `a pending token is sealed, never on disk in the clear, and the id is readable`() {
+        store.write(key, null)
+        assertTrue(store.setPendingUnitToken(PendingUnitToken("id-new", "hu1_waiting", "veh-1", "id-old")))
+        assertFalse(file.values.values.joinToString().contains("hu1_waiting"))
+        assertEquals("id-new", store.pendingUnitId())
+        assertEquals("hu1_waiting", store.pendingUnitToken()?.token)
+        assertTrue(redacted.contains("hu1_waiting"))
+    }
+
     @Test fun `sending location defaults off`() {
         assertFalse(store.sendLocation())
     }
