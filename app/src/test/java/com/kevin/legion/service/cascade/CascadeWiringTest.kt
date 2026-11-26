@@ -278,10 +278,12 @@ class CascadeWiringTest {
         for (phase in listOf("open_base_ms=", "open_declarations_ms=", "open_live_context_ms=", "open_prefix_ready_ms=")) {
             assertTrue("buildPrompt no longer logs $phase", prompt.contains(phase))
         }
-        // The cache create waits on the cacheable prefix only, never on the live context.
+        // The prefix never waits on the live context, and the open no longer creates the cache: it is
+        // made from a conversation's second turn (cost cut 4), so a one-turn conversation pays none.
         val prefixPart = prompt.substring(prompt.indexOf("prefixReady ="), prompt.indexOf("preambleReady ="))
-        assertTrue(prefixPart.contains("cache.warm("))
+        assertFalse(prefixPart.contains("cache.warm("))
         assertFalse(prefixPart.contains("buildLiveContext("))
+        assertTrue(bodyOf(s, "newTextLoop").contains("mayCreateCache = { userTurns.get() >= 2 }"))
         // The first turn and the greeting wait for it instead.
         assertTrue(bodyOf(s, "answerTurn").contains("awaitPrompt()"))
         assertTrue(bodyOf(s, "speakGreeting").contains("awaitPrompt(liveContextWaitMs = 0)"))

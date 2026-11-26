@@ -51,11 +51,15 @@ class ContextCacheStore(
      */
     @Volatile var onCreated: ((model: String, tokens: Int?, ttlS: Long) -> Unit)? = null
 
-    /** The usable cache name for [prefix], or null (and creation started) when there is none. */
-    fun peek(prefix: CascadePrefix): String? {
+    /**
+     * The usable cache name for [prefix], or null (and creation started) when there is none. With
+     * [create] false a cache that exists is still used but none is made: a conversation's first turn
+     * (cost cut 4, 2026-11-26), so a one-turn conversation never pays a create.
+     */
+    fun peek(prefix: CascadePrefix, create: Boolean = true): String? {
         val e = entry
         if (e != null && e.key == prefix.key && e.expiresAtMs - now() > MARGIN_MS) return e.name
-        startCreate(prefix)
+        if (create) startCreate(prefix)
         return null
     }
 
@@ -82,7 +86,7 @@ class ContextCacheStore(
         }
     }
 
-    /** Starts creation now (at conversation open), so the first turn can already use it. */
+    /** Starts creation now. The open no longer calls it (the cache is made at the second turn); the voice eval does. */
     fun warm(prefix: CascadePrefix) {
         peek(prefix)
     }

@@ -768,7 +768,7 @@ internal class CascadeSession(
      * (`open_base_ms`, `open_declarations_ms`, `open_live_context_ms`, `open_prefix_ready_ms`) so the
      * next audit can see which one is slow:
      * - the base instruction (cached by [AriaBrain] for its TTL; cold it reads memories and the pack),
-     * - the tool declarations, then the cache create (only for a conversation that listens),
+     * - the tool declarations (the cache is made at his second turn, not here),
      * - the live context for the first turn's preamble (clock, place by reverse geocode, continuity
      *   from the engine's memory list): the slowest and the least needed, so it never holds the
      *   cache, and the first turn waits for it only [CascadeTimings.LIVE_CONTEXT_WAIT_MS].
@@ -806,8 +806,6 @@ internal class CascadeSession(
                 LiveLatency.log(LiveLatency.TAG, "open_prefix_ready_ms=${System.currentTimeMillis() - started}")
                 // Reused across conversations while it lives (same prompt, same key): the line says which.
                 LiveLatency.log(LiveLatency.TAG, "open_cache state=${cache.state(it)}")
-                // A speak-only line makes one round: a cache it would create costs more than it saves.
-                if (listens) cache.warm(it)
             }
         }
         preambleReady = scope.async(Dispatchers.IO) {
@@ -3431,6 +3429,8 @@ internal class CascadeSession(
         transport = OkHttpGemini(),
         // A speak-only line makes one round: no cache (a peek would start a create it never uses).
         cache = cache.takeIf { listens },
+        // The cache is made from his second turn, not at open: a one-turn conversation pays no create.
+        mayCreateCache = { userTurns.get() >= 2 },
         isMutating = CascadeRules::isWrite,
         isReadThrough = CascadeRules::isReadThrough,
         toolTimeoutMs = { TOOL_BACKSTOP_MS },

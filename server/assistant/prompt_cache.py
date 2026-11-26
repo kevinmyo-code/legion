@@ -75,15 +75,18 @@ class CacheStore:
         self._creating: set[str] = set()
         self._failures: dict[str, tuple[int, float]] = {}
 
-    def peek(self, client, model: str, system: str, declarations: list[dict]) -> str | None:
-        """A usable cache name for this prefix, or None (and creation started)."""
+    def peek(
+        self, client, model: str, system: str, declarations: list[dict], create: bool = True
+    ) -> str | None:
+        """A usable cache name for this prefix, or None (and creation started, unless `create` is
+        False: a conversation's first turn may use a cache that exists but never makes one)."""
         key = key_of(model, system, declarations)
         now = self._clock()
         with self._lock:
             entry = self._entries.get(key)
             if entry is not None and entry.expires_at - now > MARGIN_S:
                 return entry.name
-            if key in self._creating:
+            if not create or key in self._creating:
                 return None
             failures, at = self._failures.get(key, (0, 0.0))
             if failures and now - at < min(BASE_BACKOFF_S * 2 ** (failures - 1), MAX_BACKOFF_S):
@@ -124,17 +127,22 @@ STORE = CacheStore()
 class CachingModel:
     """A `ModelClient` that sends a round through the cache when it can. `inner` is the runtime's
     `GeminiClient` (or a test's fake with `stream` and `create_cache`). `used` counts the rounds
-    that went through a cache, for the timing line."""
+    that went through a cache, for the timing line. `allow_create` is False on a conversation's
+    first turn (cost cut 4, 2026-11-26): a one-turn conversation then never pays a cache create;
+    the second turn makes it, and a cache an earlier conversation made is used from turn one."""
 
     def __init__(self, inner, store: CacheStore | None = None):
         self.inner = inner
         self.store = store or STORE
         self.used = 0
+        self.allow_create = True
 
     def stream(self, req: ModelRequest) -> Iterator:
         name = None
         if req.allow_tools and req.declarations and not req.cached_content:
-            name = self.store.peek(self.inner, req.model, req.system, req.declarations)
+            name = self.store.peek(
+                self.inner, req.model, req.system, req.declarations, create=self.allow_create
+            )
         if name is None:
             yield from self.inner.stream(req)
             return
