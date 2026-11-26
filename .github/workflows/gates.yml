@@ -173,6 +173,9 @@ jobs:
         env:
           LEGION_GRADLE: ./gradlew -Pnokey --no-daemon
         run: |
+          # GitHub starts this shell as `bash -e`; leaving -e out of `set` does not turn it off.
+          # Without +e a failed case ends the step at the eval line, before rc, the retry and any message.
+          set +e
           set -uo pipefail
           # Raw console text (model replies, tool calls) stays in RUNNER_TEMP and is never uploaded.
           raw="$RUNNER_TEMP/gate-raw"; mkdir -p "$raw"
