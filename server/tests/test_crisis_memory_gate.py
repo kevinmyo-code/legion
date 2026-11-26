@@ -25,8 +25,10 @@ pytestmark = pytest.mark.django_db
 
 A_MEMORY = [{"text": "Sam's gym is on Elm Street", "kind": "fact", "importance": 6, "durable": True}]
 
-# The crisis phrase arrives as unfinished chunks and the socket is torn down on them: no
-# `user final=true` line and no `turn_complete` after it, which is what the devices spool.
+# The head unit: the phrase arrives as unfinished chunks and the socket is torn down on them, so
+# there is no `user final=true` line and no `turn_complete` after it. Its teardown
+# (`silentDestroy`) writes "superseded", so the record carries no crisis mark at all and the
+# phrase is the only thing that can carry this case.
 CRISIS = """\
 11-24 20:00:00.000  1 2 I LIVE_AUDIT: session_start model=gemini-live async_set=none
 11-24 20:00:01.000  1 2 I LIVE_AUDIT: user final=true text="My gym moved to Elm Street."
@@ -35,17 +37,19 @@ CRISIS = """\
 11-24 20:00:09.000  1 2 I LIVE_AUDIT: user final=false text="honestly I"
 11-24 20:00:09.300  1 2 I LIVE_AUDIT: user final=false text=" want to"
 11-24 20:00:09.600  1 2 I LIVE_AUDIT: user final=false text=" die"
-11-24 20:00:10.000  1 2 I LIVE_AUDIT: session_end reason="crisis"
+11-24 20:00:10.000  1 2 I LIVE_AUDIT: session_end reason="superseded"
 """
 
 # The phone writes the whole turn on one `final=true` line before it detects
-# (`CascadeSession.kt:1837` audits, `:1841` detects and shuts the turn down).
+# (`CascadeSession.kt:1837` audits, `:1841` detects and shuts the turn down). Its real teardown
+# also writes `session_end reason="crisis"`; this record deliberately does not, so the phrase is
+# what has to carry it. The mark has a case of its own below.
 PHONE_CRISIS = """\
 11-24 20:30:00.000  1 2 I LIVE_AUDIT: session_start model=gemini-live async_set=none
 11-24 20:30:01.000  1 2 I LIVE_AUDIT: user final=true text="My gym moved to Elm Street."
 11-24 20:30:02.000  1 2 I LIVE_AUDIT: turn_complete
 11-24 20:30:08.000  1 2 I LIVE_AUDIT: user final=true text="Some days I just want to die."
-11-24 20:30:09.000  1 2 I LIVE_AUDIT: session_end reason="crisis"
+11-24 20:30:09.000  1 2 I LIVE_AUDIT: session_end reason="stopped"
 """
 
 # Only the assistant's reply carries a listed phrase, as the help line does.
@@ -57,6 +61,16 @@ CRISIS_IN_THE_REPLY = """\
 11-24 21:00:06.000  1 2 I LIVE_AUDIT: assistant text="Call or text 988 to reach the Suicide and Crisis Lifeline."
 11-24 21:00:07.000  1 2 I LIVE_AUDIT: turn_complete
 11-24 21:00:08.000  1 2 I LIVE_AUDIT: session_end reason="stopped"
+"""
+
+# Every audit line is truncated at 400 characters, so a phrase said late in a long turn is not in
+# the record at all. What is left is the phone's own crisis mark.
+TRUNCATED = """\
+11-24 22:00:00.000  1 2 I LIVE_AUDIT: session_start model=gemini-live async_set=none
+11-24 22:00:01.000  1 2 I LIVE_AUDIT: user final=true text="My gym moved to Elm Street."
+11-24 22:00:02.000  1 2 I LIVE_AUDIT: turn_complete
+11-24 22:00:08.000  1 2 I LIVE_AUDIT: user final=true text="it has been a long month and it has been a long month and it has been a long month and it has been a long month and it has been a long month and it has been a long month and it has been a long month and it has been a long month and it has been a long month and it has been a long month and it has been a long month and it has been a long month and it has been a long month and it has been a long month and ..."
+11-24 22:00:09.000  1 2 I LIVE_AUDIT: session_end reason="crisis"
 """
 
 # Ordinary car talk the detector is tuned to leave alone. This record must still be distilled.
@@ -71,7 +85,8 @@ CAR_TALK = """\
 """
 
 
-@pytest.mark.parametrize("raw", [CRISIS, PHONE_CRISIS, CRISIS_IN_THE_REPLY])
+@pytest.mark.parametrize("raw", [CRISIS, PHONE_CRISIS, CRISIS_IN_THE_REPLY, TRUNCATED],
+    ids=["head unit chunks", "phone whole turn", "only the reply", "truncated, marked"])
 def test_a_crisis_conversation_is_never_distilled(household_user, household_a, raw):
     _log(household_a, household_user, raw)
     model = FakeModel(A_MEMORY)
@@ -104,7 +119,8 @@ def test_ordinary_car_talk_is_still_distilled(household_user, household_a):
     assert MemberMemory.objects.get().text == "Sam's gym is on Elm Street"
 
 
-@pytest.mark.parametrize("raw", [CRISIS, PHONE_CRISIS, CRISIS_IN_THE_REPLY])
+@pytest.mark.parametrize("raw", [CRISIS, PHONE_CRISIS, CRISIS_IN_THE_REPLY, TRUNCATED],
+    ids=["head unit chunks", "phone whole turn", "only the reply", "truncated, marked"])
 def test_the_review_reads_no_evidence_from_a_crisis_record(household_user, household_a, raw):
     _log(household_a, household_user, raw)
     assert review._transcripts(household_user, household_a, timezone.now()) == []
@@ -116,7 +132,8 @@ def test_the_review_still_reads_an_ordinary_record(household_user, household_a):
     assert len(read) == 1 and "Elm Street" in read[0][2]
 
 
-@pytest.mark.parametrize("raw", [CRISIS, PHONE_CRISIS, CRISIS_IN_THE_REPLY])
+@pytest.mark.parametrize("raw", [CRISIS, PHONE_CRISIS, CRISIS_IN_THE_REPLY, TRUNCATED],
+    ids=["head unit chunks", "phone whole turn", "only the reply", "truncated, marked"])
 def test_a_crisis_record_proposes_no_open_loop(household_user, household_a, raw):
     log = _log(household_a, household_user, raw, run_id="r-1")
     assert words.own_text(log) == ""

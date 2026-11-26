@@ -24,7 +24,9 @@ with no `user final=true` line and no `turn_complete` after it. So:
 - each line on its own as well as the join, because a join can only add words and an exclusion
   reads the word before ("has suicide doors" is car talk, "suicide, doors..." is not);
 - no read-through, redaction or `can_mark_turns` filtering: a turn those rules drop still says the
-  record was a crisis, and none of this text is ever shown to a model.
+  record was a crisis, and none of this text is ever shown to a model;
+- the phone's own `session_end reason="crisis"` mark as well, because every audit line is truncated
+  at 400 characters and the phone writes a whole turn on one line (see `CRISIS_REASON`).
 
 The answer is for the whole record, never for one turn: the turns said BEFORE the phrase are the
 same exchange, which is the rule the head unit settled on in #458.
@@ -37,9 +39,18 @@ from devicelogs import voice_audit
 
 TURN_ENDS = frozenset({"turn_complete", "session_start", "session_end"})
 
+# What the phone's crisis teardown writes: `shutdown("crisis")` ends at
+# `CascadeSession.kt:4019` `audit.sessionEnd(reason)`. The head unit leaves no such mark (its
+# crisis branch calls `silentDestroy`, which writes reason "superseded"), so this is a second
+# way in, never the only one. It earns its line because every audit line is truncated at 400
+# characters (`LiveAudit.MAX_TEXT`), and the phone writes a whole turn on one line: a phrase said
+# past character 400 is a crisis no re-reading of the text can see.
+CRISIS_REASON = "crisis"
+
 
 def has_crisis_turn(raw: str) -> bool:
-    """True when anything said in one record's raw audit lines says a crisis phrase."""
+    """True when anything said in one record's raw audit lines says a crisis phrase, or when the
+    record carries a device's own crisis mark."""
     said: list[str] = []
     heard: list[str] = []
 
@@ -50,6 +61,8 @@ def has_crisis_turn(raw: str) -> bool:
         if tag != voice_audit.AUDIT:
             continue
         event, fields = voice_audit.parse_audit(msg)
+        if event == "session_end" and fields.get("reason") == CRISIS_REASON:
+            return True
         if event in TURN_ENDS:
             if joined_trips():
                 return True
