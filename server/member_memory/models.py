@@ -362,3 +362,71 @@ class MemoryReviewChange(models.Model):
 
     def __str__(self) -> str:
         return f"memory review change {self.id} ({self.action}, {self.status})"
+
+
+# ---------------------------------------------------------------------------------------------
+# The raw recent record (memory chain, ticket 450, 2026-11-26). One row is one TURN, saved when
+# the turn completes: the person's words, the assistant's spoken reply and the tools it ran. It is
+# what lets a chat that closed a minute ago be answered about before the hourly consolidation job
+# has read it. The job and the summary on close (451) distil it; the next chat loads it (452).
+# Private to the member who spoke (`owner_user = member`, `OWNER_PATHS`), kept
+# `member_memory.turns.RETENTION_DAYS`, and written only through `member_memory.turns.save`, which
+# applies CLAUDE.md section 7: read-through content never reaches this table.
+# ---------------------------------------------------------------------------------------------
+
+SURFACE_VOICE = "voice"
+SURFACE_TYPED = "typed"
+SURFACES: tuple[str, ...] = (SURFACE_VOICE, SURFACE_TYPED)
+
+
+class ConversationTurn(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    household = models.ForeignKey("household.Household", on_delete=models.PROTECT, related_name="+")
+    # Who spoke. CASCADE: forgetting a member takes their turns.
+    member = models.ForeignKey("household.User", on_delete=models.CASCADE, related_name="+")
+    # ADR 0052: never null, always equal to `member`.
+    owner_user = models.ForeignKey("household.User", on_delete=models.CASCADE, related_name="+")
+    # One chat (a Live session or a typed chat) and the turn's place in it: the client's own
+    # counter from 0. (household, chat_id, seq) is the idempotency key, so a retry is a no-op.
+    chat_id = models.UUIDField()
+    seq = models.IntegerField()
+    surface = models.TextField(default=SURFACE_VOICE)
+    # Null when there was nothing to keep: no words, a withheld reply, an identity number.
+    user_text = models.TextField(null=True, blank=True)
+    assistant_text = models.TextField(null=True, blank=True)
+    # [{"name": str, "ok": bool, "result": str | null}], the result one clipped line, null for a
+    # read-through tool. Never a payload.
+    tool_calls = models.JSONField(default=list, blank=True)
+    # True when read-through content was dropped from this turn (CLAUDE.md section 7).
+    withheld = models.BooleanField(default=False)
+    # The device's clock, untrusted. `received_at` is the database's and orders retention.
+    spoken_at = models.DateTimeField(null=True, blank=True)
+    received_at = models.DateTimeField(db_default=Now())
+
+    class Meta:
+        db_table = "conversation_turns"
+        indexes = [
+            models.Index(
+                fields=["household", "member", "-received_at"], name="conversation_turns_member_idx"
+            ),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["household", "chat_id", "seq"],
+                name=household_unique_name("conversation_turns", ["chat_id", "seq"]),
+            ),
+            models.CheckConstraint(
+                condition=models.Q(owner_user=models.F("member")),
+                name="conversation_turns_private_to_its_member",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(surface__in=SURFACES), name="conversation_turns_surface_valid"
+            ),
+            models.CheckConstraint(
+                condition=models.Q(seq__gte=0), name="conversation_turns_seq_not_negative"
+            ),
+        ]
+
+    def __str__(self) -> str:
+        # Never the text: admin lists and log lines name the row, not what it says.
+        return f"turn {self.chat_id}#{self.seq}"

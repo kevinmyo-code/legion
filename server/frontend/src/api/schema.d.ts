@@ -5156,6 +5156,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/member-memories/turns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The caller's own recent conversation turns, newest first (oldest first within one `chat_id`). Another member's turns are never returned. Withheld turns carry only the person's words. */
+        get: operations["api_member_memories_turns_list"];
+        put?: never;
+        /** @description Saves one finished turn for the caller. Idempotent on `(chat_id, seq)`: a repeat is a 200 with the stored row, unchanged. Read-through content (mail, the web) is withheld by the engine whatever the sender says. */
+        post: operations["api_member_memories_turns_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/memory/companion_memories/": {
         parameters: {
             query?: never;
@@ -12164,6 +12182,12 @@ export interface components {
             /** Format: date-time */
             deleted_at: string | null;
         };
+        /**
+         * @description * `voice` - voice
+         *     * `typed` - typed
+         * @enum {string}
+         */
+        SurfaceEnum: "voice" | "typed";
         SyncReport: {
             added: number;
             modified: number;
@@ -12212,6 +12236,13 @@ export interface components {
             value?: number | null;
             /** @default USER_REPORTED */
             source: string;
+        };
+        ToolCall: {
+            name: string;
+            /** @default true */
+            ok: boolean;
+            /** @description One clipped line, never a payload. The engine drops it for read-through tools. */
+            result?: string | null;
         };
         ToolResult: {
             call_id: string;
@@ -12330,6 +12361,25 @@ export interface components {
             /** Format: double */
             trend_lbs: number;
         };
+        Turn: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            chat_id: string;
+            seq: number;
+            surface: components["schemas"]["SurfaceEnum"];
+            user_text: string | null;
+            assistant_text: string | null;
+            tool_calls: components["schemas"]["ToolCall"][];
+            withheld: boolean;
+            /** Format: date-time */
+            spoken_at: string | null;
+            /** Format: date-time */
+            received_at: string;
+        };
+        TurnList: {
+            results: components["schemas"]["Turn"][];
+        };
         /**
          * @description A refusal of `POST /api/assistant/turn` (round 3 N8): the words, and the `code` the page
          *     acts on (`TURN_REFUSAL_CODES`).
@@ -12423,6 +12473,33 @@ export interface components {
          * @enum {string}
          */
         TurnRequestKindEnum: "user" | "greeting" | "opener" | "check_in" | "proactive" | "say";
+        TurnSaved: {
+            /** Format: uuid */
+            id: string;
+            /** @description True when read-through content was dropped from the stored turn. */
+            withheld: boolean;
+        };
+        TurnWrite: {
+            /**
+             * Format: uuid
+             * @description One chat: a Live session or a typed chat.
+             */
+            chat_id: string;
+            /** @description The turn's place in the chat, from 0. */
+            seq: number;
+            /** @default voice */
+            surface: components["schemas"]["SurfaceEnum"];
+            user_text?: string | null;
+            assistant_text?: string | null;
+            tool_calls?: components["schemas"]["ToolCall"][];
+            /**
+             * @description The phone marked the turn read-through; the engine withholds it.
+             * @default false
+             */
+            read_through: boolean;
+            /** Format: date-time */
+            spoken_at?: string | null;
+        };
         /**
          * @description * `next_income` - next_income
          *     * `30_days` - 30_days
@@ -24175,6 +24252,97 @@ export interface operations {
                 };
             };
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_member_memories_turns_list: {
+        parameters: {
+            query?: {
+                /** @description Only this chat's turns, oldest first. */
+                chat_id?: string;
+                /** @description Default 50, max 200. */
+                limit?: number;
+                /** @description Only turns the engine received after this ISO time. */
+                since?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TurnList"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_member_memories_turns_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TurnWrite"];
+                "application/x-www-form-urlencoded": components["schemas"]["TurnWrite"];
+                "multipart/form-data": components["schemas"]["TurnWrite"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TurnSaved"];
+                };
+            };
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TurnSaved"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

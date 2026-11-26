@@ -1,6 +1,7 @@
 from django.urls import path
 
 from member_memory import review_views as rv
+from member_memory.turn_views import TurnListCreateView
 from member_memory.views import (
     MemoryDetailView,
     MemoryImportView,
@@ -12,6 +13,8 @@ urlpatterns = [
     path("", MemoryListCreateView.as_view(), name="member-memory-list-create"),
     path("recall", MemoryRecallView.as_view(), name="member-memory-recall"),
     path("import", MemoryImportView.as_view(), name="member-memory-import"),
+    # memory chain ticket 450: each turn saved as it happens.
+    path("turns", TurnListCreateView.as_view(), name="member-memory-turns"),
     # memory-review tickets 06, 08 and 15.
     path("review/context", rv.ReviewContextView.as_view(), name="member-memory-review-context"),
     path("review/changes", rv.ReviewChangesView.as_view(), name="member-memory-review-changes"),

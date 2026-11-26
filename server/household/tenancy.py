@@ -192,6 +192,8 @@ TENANT_TABLES: tuple[str, ...] = (
     # the memories they judge (`OWNER_PATHS`).
     "memory_reviews",
     "memory_review_changes",
+    # memory chain ticket 450: each conversation turn, private to the member who spoke.
+    "conversation_turns",
     # memory-and-vault map (ADR 0076): the ID vault and its reveal audit, always private to one
     # member (`id_vault/models.py`).
     "vault_items",
@@ -319,6 +321,7 @@ DJANGO_MANAGED_TENANT_TABLES: frozenset[str] = frozenset(
         "memory_consolidations",
         "memory_reviews",
         "memory_review_changes",
+        "conversation_turns",
         "vault_items",
         "vault_reveals",
         "body_profiles",
@@ -569,6 +572,7 @@ OWNER_PATHS: dict[str, str] = {
     # memory-review ticket 05: never null, always the member the review judged.
     "memory_reviews": "owner_user",
     "memory_review_changes": "owner_user",
+    "conversation_turns": "owner_user",
     # ADR 0076: never null, so `visible()` gives a member their own vault items and no one else's.
     "vault_items": "owner_user",
     "vault_reveals": "owner_user",

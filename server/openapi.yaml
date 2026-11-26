@@ -12175,6 +12175,99 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: ''
+  /api/member-memories/turns:
+    get:
+      operationId: api_member_memories_turns_list
+      description: The caller's own recent conversation turns, newest first (oldest
+        first within one `chat_id`). Another member's turns are never returned. Withheld
+        turns carry only the person's words.
+      parameters:
+      - in: query
+        name: chat_id
+        schema:
+          type: string
+        description: Only this chat's turns, oldest first.
+      - in: query
+        name: limit
+        schema:
+          type: integer
+        description: Default 50, max 200.
+      - in: query
+        name: since
+        schema:
+          type: string
+        description: Only turns the engine received after this ISO time.
+      tags:
+      - member-memories
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TurnList'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+    post:
+      operationId: api_member_memories_turns_create
+      description: 'Saves one finished turn for the caller. Idempotent on `(chat_id,
+        seq)`: a repeat is a 200 with the stored row, unchanged. Read-through content
+        (mail, the web) is withheld by the engine whatever the sender says.'
+      tags:
+      - member-memories
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TurnWrite'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TurnWrite'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TurnWrite'
+        required: true
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TurnSaved'
+          description: ''
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TurnSaved'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
   /api/memory/companion_memories/:
     get:
       operationId: api_memory_companion_memories_list
@@ -27504,6 +27597,14 @@ components:
       - id
       - updated_at
       - user_id
+    SurfaceEnum:
+      enum:
+      - voice
+      - typed
+      type: string
+      description: |-
+        * `voice` - voice
+        * `typed` - typed
     SyncReport:
       type: object
       properties:
@@ -27607,6 +27708,22 @@ components:
           default: USER_REPORTED
       required:
       - day
+    ToolCall:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 80
+        ok:
+          type: boolean
+          default: true
+        result:
+          type: string
+          nullable: true
+          description: One clipped line, never a payload. The engine drops it for
+            read-through tools.
+      required:
+      - name
     ToolResult:
       type: object
       properties:
@@ -27846,6 +27963,58 @@ components:
       - day
       - trend_lbs
       - weight_lbs
+    Turn:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        chat_id:
+          type: string
+          format: uuid
+        seq:
+          type: integer
+        surface:
+          $ref: '#/components/schemas/SurfaceEnum'
+        user_text:
+          type: string
+          nullable: true
+        assistant_text:
+          type: string
+          nullable: true
+        tool_calls:
+          type: array
+          items:
+            $ref: '#/components/schemas/ToolCall'
+        withheld:
+          type: boolean
+        spoken_at:
+          type: string
+          format: date-time
+          nullable: true
+        received_at:
+          type: string
+          format: date-time
+      required:
+      - assistant_text
+      - chat_id
+      - id
+      - received_at
+      - seq
+      - spoken_at
+      - surface
+      - tool_calls
+      - user_text
+      - withheld
+    TurnList:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Turn'
+      required:
+      - results
     TurnRefusal:
       type: object
       description: |-
@@ -27981,6 +28150,58 @@ components:
         * `check_in` - check_in
         * `proactive` - proactive
         * `say` - say
+    TurnSaved:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        withheld:
+          type: boolean
+          description: True when read-through content was dropped from the stored
+            turn.
+      required:
+      - id
+      - withheld
+    TurnWrite:
+      type: object
+      properties:
+        chat_id:
+          type: string
+          format: uuid
+          description: 'One chat: a Live session or a typed chat.'
+        seq:
+          type: integer
+          minimum: 0
+          description: The turn's place in the chat, from 0.
+        surface:
+          allOf:
+          - $ref: '#/components/schemas/SurfaceEnum'
+          default: voice
+        user_text:
+          type: string
+          nullable: true
+          maxLength: 4000
+        assistant_text:
+          type: string
+          nullable: true
+          maxLength: 4000
+        tool_calls:
+          type: array
+          items:
+            $ref: '#/components/schemas/ToolCall'
+        read_through:
+          type: boolean
+          default: false
+          description: The phone marked the turn read-through; the engine withholds
+            it.
+        spoken_at:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - chat_id
+      - seq
     UntilReasonEnum:
       enum:
       - next_income
