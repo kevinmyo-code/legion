@@ -556,7 +556,9 @@ private fun LegionShell(
     // After an update lands, the notes of the new version open once (ticket 467). The screen
     // records the version as seen, so a restart does not open it again.
     LaunchedEffect(Unit) {
-        val installed = com.kevin.legion.update.AndroidUpdatePlatform(context.applicationContext as android.app.Application).installed()
+        val app = context.applicationContext as android.app.Application
+        val updates = com.kevin.legion.update.AndroidUpdatePlatform(app)
+        val installed = updates.installed()
         val seen = com.kevin.legion.update.WhatsNewSeen(context).code
         if (com.kevin.legion.update.WhatsNew.due(installed.versionCode, seen)) {
             navController.navigate(LegionRoute.SETTINGS_WHATS_NEW) { launchSingleTop = true }
