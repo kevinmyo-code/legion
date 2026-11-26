@@ -85,13 +85,16 @@ class EngineCarLinkSignInTest {
         val id = "0c2f5b4a-1111-4222-8333-444455556666"
         server.enqueue(MockResponse().setResponseCode(200).setBody("""{"url":"https://x/y"}"""))
         assertTrue(http.get("/api/releases/$id/download").isSuccess)
-        assertEquals(2, server.requestCount)
+        server.enqueue(MockResponse().setResponseCode(200).setBody("[]"))
+        assertTrue(http.get("/api/releases/history", mapOf("app" to "headunit")).isSuccess)
+        assertEquals(3, server.requestCount)
         // Publishing, and anything that is not one of those two reads, still never leaves.
         assertTrue(http.post("/api/releases/", "{}").isFailure)
         assertTrue(http.get("/api/releases/").isFailure)
         assertTrue(http.get("/api/releases/$id/download/extra").isFailure)
         assertTrue(http.get("/api/releases/not-a-uuid/download").isFailure)
-        assertEquals(2, server.requestCount)
+        assertTrue(http.get("/api/releases/history/extra").isFailure)
+        assertEquals(3, server.requestCount)
     }
 
     @Test fun aFenceRouteIsSentAndA401NeitherLoopsNorSignsOut() = runBlocking {

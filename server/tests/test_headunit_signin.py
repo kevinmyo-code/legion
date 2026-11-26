@@ -747,6 +747,8 @@ def test_each_allow_listed_route_accepts_a_unit_token(phone, monkeypatch):
     # `latest` stops at its own "no release" answer, past authentication and the household fence.
     latest = unit.get("/api/releases/latest?app=headunit")
     assert latest.status_code == 404 and "No release has been published" in latest.data["detail"]
+    history = unit.get("/api/releases/history?app=headunit")
+    assert history.status_code == 200 and history.data == []
     download = unit.get(f"/api/releases/{uuid.uuid4()}/download")
     assert download.status_code == 404 and "no such release" in download.data["detail"]
     assert {name for name, _m in scope.ROUTES} == {
@@ -755,6 +757,7 @@ def test_each_allow_listed_route_accepts_a_unit_token(phone, monkeypatch):
         "device-logs-upload",
         "fleet-obd-samples-batch",
         "releases-latest",
+        "releases-history",
         "releases-download",
     }
 
@@ -788,6 +791,10 @@ def test_a_unit_token_reads_only_its_own_apps_releases(phone):
     assert theirs.status_code == 403 and theirs.data["detail"] == scope.RELEASE_OTHER_APP
     # The default `app` is "phone", so asking with no parameter at all is refused too.
     assert unit.get("/api/releases/latest").status_code == 403
+    assert unit.get("/api/releases/history?app=phone").status_code == 403
+    assert unit.get("/api/releases/history").status_code == 403
+    own = unit.get("/api/releases/history?app=headunit")
+    assert [r["version_code"] for r in own.data] == [hu.version_code]
     byid = unit.get(f"/api/releases/{ph.id}/download")
     assert byid.status_code == 403 and byid.data["detail"] == scope.RELEASE_OTHER_APP
     # Publishing is not on the list at any app.
