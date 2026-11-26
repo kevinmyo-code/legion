@@ -59,10 +59,22 @@ class UnitTokenRenewal(
     @Volatile private var sentAt: Long? = null
     @Volatile private var job: Job? = null
 
-    /** A new socket's life begins: this session may hand the pending token over again. */
+    /**
+     * A new socket's life begins: this session may hand the pending token over again.
+     *
+     * The record is re-read here, and that is what keeps "Forget" honest. Forget and a new pairing
+     * both clear the store's pending record without going through this object, and both close the
+     * feed, so a socket's start is the one moment where memory can be made to agree with the store
+     * again. Without it a re-pair in the same process handed the NEW unit the old, revoked token
+     * and then revoked the fresh credential, leaving a just-made pairing dead (RED review blocker 2,
+     * 2026-11-25). Re-read rather than cleared: [ask] and [onTokenStored] read [pending] directly,
+     * and a null they did not expect would mint over a token that may already be on the unit.
+     */
     override fun session() {
         sends = 0
         sentAt = null
+        pending = store.pendingUnitToken()
+        read = true
     }
 
     /**
@@ -111,7 +123,10 @@ class UnitTokenRenewal(
         if (store.setPendingUnitToken(null)) pending = null
     }
 
-    /** The pending record, read from the store once per process (its token is encrypted). */
+    /**
+     * The pending record. Read from the store at most once before the first [session] (its token is
+     * encrypted, so it is not re-read per step); from then on [session] keeps it in agreement.
+     */
     private fun loaded(): PendingUnitToken? {
         if (!read) {
             read = true
@@ -137,6 +152,13 @@ class UnitTokenRenewal(
         val expires = row.expiresAtMs ?: return
         if (expires - wallClock() > RENEW_BEFORE_MS) return
         val minted = tokens.mint(HandoverPlan.UNIT_NAME, row.vehicleId) ?: return
+        // Forget clears the unit's id, and this job may have been in flight across it: a pending
+        // record written now would belong to a pairing that no longer exists, and the next pairing
+        // would hand it over. Nothing has been sent, so the credential goes instead.
+        if (store.unitDeviceId() != id) {
+            tokens.revoke(minted.id)
+            return
+        }
         val next = PendingUnitToken(minted.id, minted.token, row.vehicleId)
         if (store.setPendingUnitToken(next)) {
             pending = next
