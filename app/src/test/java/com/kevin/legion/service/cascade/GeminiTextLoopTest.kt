@@ -386,6 +386,20 @@ class GeminiTextLoopTest {
     }
 
     @Test
+    fun `a chat-set turn is sent inline and never makes or uses a cache (tool gating)`() = runBlocking<Unit> {
+        var creates = 0
+        val store = ContextCacheStore({ creates++; CacheCreateOutcome.Created("cachedContents/full") }, CoroutineScope(Dispatchers.Unconfined))
+        store.warm(prefix)
+        assertEquals(1, creates)
+        val chat = ToolGate.chatPrefix(CascadePrefix("model-x", "Invented instruction.", decls.put(JSONObject().put("name", "end_conversation"))))
+        val t = Scripted(ok(textEv("Hello.")))
+        loop(t, cache = store).answer(chat, contents, okTool, Collect())
+        assertEquals("no create for the chat set", 1, creates)
+        assertFalse(t.bodies[0].has("cachedContent"))
+        assertEquals(1, t.bodies[0].getJSONArray("tools").getJSONObject(1).getJSONArray("functionDeclarations").length())
+    }
+
+    @Test
     fun `a cache not ready yet means inline now, never a wait`() = runBlocking<Unit> {
         val gate = CompletableDeferred<Unit>()
         val store = ContextCacheStore({ gate.await(); CacheCreateOutcome.Created("cachedContents/late") }, CoroutineScope(Dispatchers.Default))

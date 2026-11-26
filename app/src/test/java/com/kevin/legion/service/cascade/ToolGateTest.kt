@@ -43,6 +43,18 @@ class ToolGateTest {
         "what's the weather", "is it going to rain", "what time is it", "what day is it",
         "what's the latest news", "what's the score of the game", "is the pharmacy nearby",
         "what is this", "what does it say",
+        // review of ba49fc72: third person, weekdays, named things, mail-backed, car by name
+        "what's on friday", "what's happening on saturday", "is there anything on monday", "what about friday",
+        "when's the dentist", "when is soccer practice", "when is garbage pickup", "when does the lease end",
+        "when is mia's flight", "who is mia", "what's mia's number", "how old is mia", "who's picking up the kids",
+        "what's the gate code", "where are the keys", "what's the confirmation number",
+        "how much was dinner last night", "how much did the plumber cost", "when does netflix renew",
+        "is the civic ok", "how many miles has the civic done", "is there a check engine code", "what's the vin",
+        "where is the ups package", "what's the status of united 1234", "when does flight aa 100 land",
+        "why did you say that", "stop saying that", "is the neighborhood safe",
+        // general knowledge is no longer chat: the open set never closes
+        "who won the world cup in 2018", "what's the capital of France", "why is the sky blue",
+        "tell me a joke", "that's funny", "ok", "thanks, what's on friday", "hi, remind me to call the vet",
         // bare or ambiguous: no chat shape, so full
         "yes", "okay", "sure do it", "no", "and tomorrow", "the second one", "do that again", "send it",
         "", "   ", "um",
@@ -50,16 +62,12 @@ class ToolGateTest {
         "tell me about the history of the roman empire and then ".repeat(5),
     )
 
-    /** Small talk and general knowledge with nothing of his in it. */
+    /** The closed allowlist: pleasantries and closers, whole utterance. */
     private val chat = listOf(
         "hi", "hello there", "hey", "good morning", "good night", "thanks", "thank you so much",
-        "thanks a lot", "how are you", "how are you doing today", "how's it going", "what's up",
-        "bye", "goodbye", "see you later", "that's all", "never mind", "stand down",
-        "tell me a joke", "tell me another story", "that's funny", "wow", "lol", "are you there",
-        "who won the world cup in 2018", "what's the capital of France", "how far is the moon",
-        "why is the sky blue", "who wrote Dune", "explain how a transistor amplifies a signal",
-        "what can you do", "translate good evening into Spanish", "tell me about the Apollo missions",
-        "how do you say thank you in Japanese", "is a tomato a fruit", "what's a haiku",
+        "thanks a lot", "ok thanks", "okay, thank you", "how are you", "how are you doing today",
+        "how's it going", "what's up", "bye", "goodbye", "see you later", "that's all", "never mind",
+        "stand down",
     )
 
     @Test
@@ -69,7 +77,7 @@ class ToolGateTest {
     }
 
     @Test
-    fun `plain chat and general knowledge get the chat set`() {
+    fun `pleasantries and closers get the chat set`() {
         val wrong = chat.filter { set(it) != ToolGate.Set.CHAT }
         assertEquals("these were sent the full set: $wrong", emptyList<String>(), wrong)
     }
@@ -83,7 +91,7 @@ class ToolGateTest {
     @Test
     fun `the companion's name in front does not hide the shape`() {
         assertEquals(ToolGate.Set.CHAT, set("hey Jarvis, how are you", companion = "Jarvis"))
-        assertEquals(ToolGate.Set.CHAT, set("Jarvis, why is the sky blue", companion = "Jarvis"))
+        assertEquals(ToolGate.Set.CHAT, set("Jarvis, thanks", companion = "Jarvis"))
         assertEquals(ToolGate.Set.FULL, set("hey Jarvis, what's on my calendar", companion = "Jarvis"))
         // Unknown name: the words after it are not guessed at.
         assertEquals(ToolGate.Set.FULL, set("hey Jarvis, how are you", companion = null))
@@ -96,14 +104,12 @@ class ToolGateTest {
     }
 
     @Test
-    fun `a trigger beats a chat shape and the reason names the row`() {
-        assertEquals("trigger_first_person", ToolGate.choose("what do I owe", false).why)
-        assertEquals("trigger_memory", ToolGate.choose("why do you forget things", false).why)
+    fun `a pleasantry with anything else in it is full, and the reason is logged`() {
         assertEquals(ToolGate.Set.FULL, set("how are you, and remind me about the vet"))
         assertEquals(ToolGate.Set.FULL, set("thanks, now what's on tomorrow"))
         assertEquals("pleasantry", ToolGate.choose("thanks", false).why)
-        assertEquals("knowledge", ToolGate.choose("why is the sky blue", false).why)
-        assertEquals("no_chat_shape", ToolGate.choose("yes", false).why)
+        assertEquals("not_a_pleasantry", ToolGate.choose("yes", false).why)
+        assertEquals("empty", ToolGate.choose("  ", false).why)
     }
 
     @Test
@@ -120,7 +126,9 @@ class ToolGateTest {
         assertEquals(listOf("end_conversation"), names)
         assertEquals(full.systemInstruction, cut.systemInstruction)
         assertEquals(true, cut.search)
-        assertFalse("each set needs a cache of its own", cut.key == full.key)
+        assertFalse("the chat prefix never has a cache", cut.cacheable)
+        assertEquals(true, full.cacheable)
+        assertFalse("a different key, so it can never pick up the full set's cache", cut.key == full.key)
         assertEquals("the full prefix is not changed", 4, full.functionDeclarations.length())
         assertEquals(full, ToolGate.prefixFor(full, ToolGate.Verdict(ToolGate.Set.FULL, "x")))
         assertEquals(cut.key, ToolGate.prefixFor(full, ToolGate.Verdict(ToolGate.Set.CHAT, "x")).key)

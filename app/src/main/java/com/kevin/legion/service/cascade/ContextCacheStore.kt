@@ -14,10 +14,9 @@ import kotlinx.coroutines.launch
  * "cache missing or create fails" row: about 0.1 s and a fraction of a cent more, nothing heard).
  * A cache that a request reports broken is dropped by [invalidate] and recreated on a later turn.
  *
- * Keyed by [CascadePrefix.key]. [memo] holds the names; production keeps them across restarts. It
- * holds one entry per prefix variant (tool gating, #453: the chat set and the full set each have a
- * prefix of their own), so a turn that switches set reuses that set's cache instead of replacing the
- * other one. A failed create backs off per key: a set too small to cache must not delay the other.
+ * Keyed by [CascadePrefix.key]. [memo] holds the name; production uses the in-memory one, so the
+ * cache is reused for the life of the app process (a restart creates a new one; the old one
+ * expires on its own TTL).
  */
 class ContextCacheStore(
     private val api: CacheApi,
@@ -29,24 +28,22 @@ class ContextCacheStore(
     data class Entry(val key: String, val name: String, val expiresAtMs: Long)
 
     interface Memo {
-        fun load(): List<Entry>
-        fun save(entries: List<Entry>)
+        fun load(): Entry?
+        fun save(entry: Entry?)
 
         class InMemory : Memo {
-            @Volatile private var e: List<Entry> = emptyList()
-            override fun load(): List<Entry> = e
-            override fun save(entries: List<Entry>) {
-                e = entries
+            @Volatile private var e: Entry? = null
+            override fun load(): Entry? = e
+            override fun save(entry: Entry?) {
+                e = entry
             }
         }
     }
 
-    // Immutable snapshots, replaced whole: the newest [MAX_ENTRIES] caches, one per prefix key.
-    @Volatile private var entries: Map<String, Entry> = memo.load().associateBy { it.key }
+    @Volatile private var entry: Entry? = memo.load()
     @Volatile private var creating: Job? = null
-    @Volatile private var failed: Map<String, Failure> = emptyMap()
-
-    private data class Failure(val count: Int, val atMs: Long)
+    @Volatile private var failures = 0
+    @Volatile private var lastFailureAtMs = 0L
 
     /**
      * Told of each cache this store creates (model, tokens or null, TTL seconds), for the cost
@@ -60,8 +57,8 @@ class ContextCacheStore(
      * (cost cut 4, 2026-11-26), so a one-turn conversation never pays a create.
      */
     fun peek(prefix: CascadePrefix, create: Boolean = true): String? {
-        val e = entries[prefix.key]
-        if (e != null && e.expiresAtMs - now() > MARGIN_MS) return e.name
+        val e = entry
+        if (e != null && e.key == prefix.key && e.expiresAtMs - now() > MARGIN_MS) return e.name
         if (create) startCreate(prefix)
         return null
     }
@@ -71,14 +68,10 @@ class ContextCacheStore(
      * cache exists for a different prompt; a new one will be created), `expiring`, `creating`, `none`.
      */
     fun state(prefix: CascadePrefix): String {
-        val e = entries[prefix.key]
-            ?: return when {
-                entries.isNotEmpty() -> "other_prompt"
-                creating?.isActive == true -> "creating"
-                else -> "none"
-            }
+        val e = entry ?: return if (creating?.isActive == true) "creating" else "none"
         val left = e.expiresAtMs - now()
         return when {
+            e.key != prefix.key -> "other_prompt"
             left <= MARGIN_MS -> "expiring"
             else -> "live left_s=${left / MS_PER_S}"
         }
@@ -86,10 +79,9 @@ class ContextCacheStore(
 
     /** Drops [name] if it is the one held: a request said it is gone or unusable. */
     fun invalidate(name: String) {
-        val held = entries.filterValues { it.name == name }
-        if (held.isNotEmpty()) {
-            entries = entries - held.keys
-            memo.save(entries.values.toList())
+        if (entry?.name == name) {
+            entry = null
+            memo.save(null)
             log("cache_invalidated")
         }
     }
@@ -103,18 +95,15 @@ class ContextCacheStore(
     private fun startCreate(prefix: CascadePrefix) {
         if (creating?.isActive == true) return
         // Back off after failures so a key that cannot create caches does not pay a POST per turn.
-        val f = failed[prefix.key]
-        if (f != null && now() - f.atMs < backoffMs(f.count)) return
+        if (failures > 0 && now() - lastFailureAtMs < backoffMs(failures)) return
         creating = scope.launch {
             val started = now()
             when (val r = api.create(CascadeRequests.cacheCreate(prefix))) {
                 is CacheCreateOutcome.Created -> {
                     val e = Entry(prefix.key, r.name, started + CascadeRequests.CACHE_TTL_S * MS_PER_S)
-                    // The newest MAX_ENTRIES stay; an older one is left to expire on its own TTL.
-                    entries = (entries + (e.key to e)).values.sortedByDescending { it.expiresAtMs }
-                        .take(MAX_ENTRIES).associateBy { it.key }
-                    memo.save(entries.values.toList())
-                    failed = failed - prefix.key
+                    entry = e
+                    memo.save(e)
+                    failures = 0
                     log("cache_create_ms=${now() - started} result=created")
                     val usage = CallUsage(
                         kind = CallUsage.CACHE_CREATE,
@@ -128,7 +117,8 @@ class ContextCacheStore(
                     onCreated?.invoke(prefix.model, r.tokens, CascadeRequests.CACHE_TTL_S)
                 }
                 is CacheCreateOutcome.Failed -> {
-                    failed = failed + (prefix.key to Failure((failed[prefix.key]?.count ?: 0) + 1, now()))
+                    failures++
+                    lastFailureAtMs = now()
                     log("cache_create_ms=${now() - started} result=failed code=${r.code}")
                 }
             }
@@ -138,9 +128,6 @@ class ContextCacheStore(
     companion object {
         /** A cache this close to expiry is treated as gone: a turn must not race its expiry. */
         const val MARGIN_MS = 120_000L
-
-        /** One cache per tool-set variant ([ToolGate]): chat and full. */
-        const val MAX_ENTRIES = 2
         private const val MS_PER_S = 1_000L
         private const val BASE_BACKOFF_MS = 60_000L
         private const val MAX_BACKOFF_MS = 30 * 60_000L

@@ -1939,6 +1939,14 @@ internal class CascadeSession(
             return
         }
         val voice = backend!!
+        // The tool set this turn goes out with, logged for a drafted turn too (the draft chose the same
+        // way, from the same words). A turn the engine answers may have used any tool: later turns stay full.
+        val sent = if (engineStart != null) {
+            fullToolsUsed = true
+            null
+        } else {
+            toolsFor(checkNotNull(pfx), heard, record.fromUser, log = true)
+        }
         var reply = newSpeaker(eotAtMs)
         var outcome: ReplySpeaker.Outcome = ReplySpeaker.Outcome.Interrupted
         try {
@@ -1948,7 +1956,7 @@ internal class CascadeSession(
                     brain?.answer(it, record.engineUtt, executorFor(record, seq), listenerFor(record, reply))
                 }
                 ?: textLoop!!.answer(
-                    toolsFor(checkNotNull(pfx), heard, record.fromUser, log = true),
+                    sent ?: checkNotNull(pfx),
                     turnContentsFor(heard),
                     executorFor(record, seq),
                     listenerFor(record, reply),

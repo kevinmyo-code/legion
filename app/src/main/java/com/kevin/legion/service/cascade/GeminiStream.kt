@@ -125,6 +125,11 @@ data class CascadePrefix(
     val systemInstruction: String,
     val functionDeclarations: JSONArray,
     val search: Boolean = true,
+    /**
+     * False for the chat tool set ([ToolGate]): sent inline, never given a cache of its own. Not part
+     * of [key]: that names what a cache holds, and this prefix never has one.
+     */
+    val cacheable: Boolean = true,
 ) {
     fun tools(force: Boolean = false): JSONArray {
         val t = JSONArray()

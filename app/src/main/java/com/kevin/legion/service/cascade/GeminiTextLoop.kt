@@ -249,7 +249,7 @@ class GeminiTextLoop(
             val prefix = if (searchRejected) basePrefix.copy(search = false) else basePrefix
             val force = round > maxRounds || toolFree
             val cacheName = if (!force && !cacheBroken && !searchRejected) {
-                cache?.peek(prefix, create = mayCreateCache())
+                cache?.peek(prefix, create = mayCreateCache() && prefix.cacheable)
             } else {
                 null
             }
