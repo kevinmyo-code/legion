@@ -14,7 +14,7 @@
 # capped one, so nothing outside this file caps the spend: this file bounds it itself (below). Do not
 # dispatch it until `gh secret list --env gates` shows the key (it would only fail at its first step).
 #
-# Spend, bounded here: about $0.10 to $0.20 of Gemini per full run. The phone eval runs the 36 named
+# Spend, bounded here: about $0.10 to $0.20 of Gemini per full run. The phone eval runs the 38 named
 # cases once, retries at most 5 failed cases once each (more than 5 failures = fail, no retry); the
 # engine gate is capped by REALRUN_BUDGET_USD=0.09 (its tests stop at the cap and that counts as a
 # fail); the chip turn is about half a cent; job time limits 45 and 30 minutes. One run at a time for
