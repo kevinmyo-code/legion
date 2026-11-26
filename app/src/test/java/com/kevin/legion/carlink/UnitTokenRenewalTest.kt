@@ -1,5 +1,6 @@
 package com.kevin.legion.carlink
 
+import com.kevin.legion.carlink.protocol.LinkKeyRing
 import com.kevin.legion.carlink.protocol.Mnai2
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -307,6 +308,111 @@ class UnitTokenRenewalTest {
         // pass. That cannot hurt it: a pairing's own credential has 30 days and the window to renew
         // one opens at 10 days left, so a 6-hour wait is never the thing in the way.
         assertEquals(1, engine.minted.size)
+    }
+
+    /**
+     * Blocker, RED review round 3. "Pair again" is a first-class button on the car-link screen and
+     * does NOT go through Forget, so the pending record used to survive it: the next pass handed
+     * the NEW unit the OLD pairing's token, which rebound the car to the old pairing's car and
+     * revoked the credential the new pairing had just minted. The record now goes with the link key
+     * it was minted under, which is the one write every pairing makes.
+     */
+    @Test fun `Pair again ends the old pairing's renewal and never hands its token on`() {
+        val oldKey = ByteArray(32) { 7 }
+        assertTrue(store.write(oldKey, null))
+        store.setUnitDeviceId("id-old")
+        val engine = FakeEngine(dueSoon())
+        val r = renewal(engine)
+        r.session()
+        r.step(FakeLink())
+        val stale = engine.minted.single()
+        assertEquals(stale.id, store.pendingUnitToken()?.id)
+
+        // "Pair again": the pairing's own key write, through the ring the controller pairs with.
+        assertTrue(LinkKeyRing(oldKey, null, store).commit(ByteArray(32) { 9 }))
+        store.setUnitDeviceId("id-new")
+        assertNull("the record goes with the pairing that minted it", store.pendingUnitToken())
+
+        val next = FakeLink()
+        r.session()
+        r.step(next)
+        assertTrue("the old pairing's token must never reach the new unit", next.handed.isEmpty())
+        assertTrue("and that credential is revoked, not left live", stale.id in engine.revoked)
+
+        // A unit still holding it from before cannot take the fresh pairing down with it either.
+        r.onTokenStored(Mnai2.fingerprint(stale.token))
+        assertEquals("id-new", store.unitDeviceId())
+        assertTrue("the fresh credential must not be revoked", "id-new" !in engine.revoked)
+    }
+
+    /** The same, on a socket that outlived the re-pair, so nothing re-read the store for it. */
+    @Test fun `Pair again hands nothing on even while the socket that mints it is still up`() {
+        val oldKey = ByteArray(32) { 7 }
+        assertTrue(store.write(oldKey, null))
+        store.setUnitDeviceId("id-old")
+        val engine = FakeEngine(dueSoon())
+        val link = FakeLink()
+        val r = renewal(engine)
+        r.session()
+        r.step(link)
+        val stale = engine.minted.single()
+        val handedBefore = link.handed.size
+
+        assertTrue(LinkKeyRing(oldKey, null, store).commit(ByteArray(32) { 9 }))
+        store.setUnitDeviceId("id-new")
+
+        link.clock += UnitTokenRenewal.SEND_EVERY_MS
+        r.step(link)
+        assertEquals("nothing more goes over this socket", handedBefore, link.handed.size)
+        assertTrue(stale.id in engine.revoked)
+    }
+
+    /**
+     * A pending token is handed over only while the engine has lately listed it. A record outlives
+     * the process on purpose, and in the meantime it can expire or be revoked by hand from the
+     * member's device list; a unit that stored a dead one 401s on its next upload and the screen
+     * asks for the re-pair this exists to remove.
+     */
+    @Test fun `an expired pending token is dropped instead of handed to the unit`() {
+        store.setUnitDeviceId("id-old")
+        val engine = FakeEngine(dueSoon())
+        val first = renewal(engine)
+        first.session()
+        first.step(FakeLink())
+        assertNotNull(store.pendingUnitToken())
+        // It ran out its own 30 days while the phone and the car were apart: the engine lists only
+        // live credentials, so it is gone from the list.
+        engine.rows = dueSoon()
+
+        val link = FakeLink()
+        val later = renewal(engine)
+        later.session()
+        later.step(link)
+        assertTrue("a dead token must never reach the unit", link.handed.isEmpty())
+        assertNull(store.pendingUnitToken())
+    }
+
+    @Test fun `nothing is handed over until the engine has answered about it`() {
+        store.setUnitDeviceId("id-old")
+        val engine = FakeEngine(dueSoon())
+        val first = renewal(engine)
+        first.session()
+        first.step(FakeLink())
+        val waiting = engine.minted.single()
+
+        // A new process, and no engine to ask: the record is good, but nothing says so yet.
+        engine.listFails = true
+        val link = FakeLink()
+        val later = renewal(engine)
+        later.session()
+        later.step(link)
+        assertTrue(link.handed.isEmpty())
+
+        // The engine comes back minutes later, not hours, and the hand-over goes.
+        engine.listFails = false
+        now += UnitTokenRenewal.ASK_RETRY_MS
+        later.step(link)
+        assertEquals(waiting.token, link.handed.single().first)
     }
 
     @Test fun `a mint that lands after Forget revokes itself instead of arming the next pairing`() {
