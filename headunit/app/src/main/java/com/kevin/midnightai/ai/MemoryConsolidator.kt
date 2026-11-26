@@ -58,9 +58,10 @@ object MemoryConsolidator {
             // A crisis conversation is dropped whole, never distilled (ticket #458,
             // [CrisisMemoryGate]). The session's write gate already keeps one out of this buffer;
             // this is what reaches rows a unit recorded before that gate existed, and what catches
-            // one that raced the teardown. Deleted even while a conversation is live, unlike the
-            // ordinary delete below: those turns are kept back in case the live conversation still
-            // needs them, and these are exactly the turns nothing may be given again.
+            // one that raced the teardown. The sweep has already bailed if a conversation is live,
+            // so this never runs under one; what it drops is the re-check the ordinary delete below
+            // makes, which holds turns back for a conversation that started mid-sweep. These are
+            // exactly the turns nothing may be given again, so they go either way.
             if (CrisisMemoryGate.forgetsSession(turns)) {
                 Log.w(TAG, "crisis session $sessionId dropped, not consolidated")
                 turnDao.deleteSession(sessionId)
