@@ -245,3 +245,27 @@ def test_a_failed_create_backs_off():
     now[0] += 61
     list(model.stream(_req()))
     assert inner.created == ["x", "x"]
+
+
+# ---- the cache is made at a conversation's second turn, never at its first (cost cut 4) ------
+
+
+def test_a_model_that_may_not_create_sends_inline_and_makes_no_cache():
+    inner = CacheFake()
+    model = CachingModel(inner, _store())
+    model.allow_create = False
+    list(model.stream(_req()))
+    list(model.stream(_req()))
+    assert inner.created == []
+    assert [r.cached_content for r in inner.requests] == [None, None]
+
+
+def test_a_model_that_may_not_create_still_uses_a_cache_that_exists():
+    inner = CacheFake()
+    store = _store()
+    list(CachingModel(inner, store).stream(_req()))  # an earlier conversation made it
+    first_turn = CachingModel(inner, store)
+    first_turn.allow_create = False
+    list(first_turn.stream(_req()))
+    assert inner.requests[1].cached_content == "cachedContents/1"
+    assert inner.created == ["BODY"]

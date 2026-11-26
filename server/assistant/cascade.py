@@ -981,6 +981,9 @@ def run_turn(
     if hasattr(model, "inner") and hasattr(model, "store"):
         counted = CountingModel(model.inner)
         model.inner = counted
+        # `turn` counts the user turns already in the record: 0 is the first (or the greeting).
+        # A cache is made from the second turn on, so a one-turn conversation never pays one.
+        model.allow_create = turn >= 1
     else:
         counted = CountingModel(model)
         model = counted

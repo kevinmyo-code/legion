@@ -84,9 +84,15 @@ class GeminiTextLoopTest {
 
     private fun ok(vararg ev: JSONObject) = StreamOutcome.Ok to ev.toList()
 
-    private fun loop(t: GeminiStreamTransport, cache: ContextCacheStore? = null, maxRounds: Int = 6) = GeminiTextLoop(
+    private fun loop(
+        t: GeminiStreamTransport,
+        cache: ContextCacheStore? = null,
+        maxRounds: Int = 6,
+        mayCreateCache: () -> Boolean = { true },
+    ) = GeminiTextLoop(
         transport = t,
         cache = cache,
+        mayCreateCache = mayCreateCache,
         classify = { e -> if (e.code == 429) AgentResult.RateLimited else AgentResult.Failed },
         isMutating = { name, _ -> name == "add_item" },
         // The production predicate: what the cascade model actually sends is a folded call.
@@ -359,6 +365,24 @@ class GeminiTextLoopTest {
         assertEquals("cachedContents/c1", t.bodies[0].getString("cachedContent"))
         assertEquals(1, r.usage.cachedRounds)
         assertEquals(13_500, r.usage.cached)
+    }
+
+    @Test
+    fun `a first turn makes no cache, the second does, and the third reuses it (cost cut 4)`() = runBlocking<Unit> {
+        var creates = 0
+        val store = ContextCacheStore({ creates++; CacheCreateOutcome.Created("cachedContents/c2") }, CoroutineScope(Dispatchers.Unconfined))
+        val first = Scripted(ok(textEv("One.")))
+        loop(first, cache = store, mayCreateCache = { false }).answer(prefix, contents, okTool, Collect())
+        assertEquals(0, creates)
+        assertFalse(first.bodies[0].has("cachedContent"))
+        val second = Scripted(ok(textEv("Two.")))
+        loop(second, cache = store).answer(prefix, contents, okTool, Collect())
+        assertEquals(1, creates)
+        assertFalse(second.bodies[0].has("cachedContent"))
+        val third = Scripted(ok(textEv("Three.")))
+        loop(third, cache = store, mayCreateCache = { false }).answer(prefix, contents, okTool, Collect())
+        assertEquals(1, creates)
+        assertEquals("cachedContents/c2", third.bodies[0].getString("cachedContent"))
     }
 
     @Test
