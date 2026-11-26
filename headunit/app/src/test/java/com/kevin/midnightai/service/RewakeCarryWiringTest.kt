@@ -83,16 +83,34 @@ class RewakeCarryWiringTest {
         assertEquals("one reset site", 1, Regex("rewake\\?\\.running\\(\\)").findAll(s).count())
     }
 
+    /**
+     * The wipe goes AFTER the teardown, and the order is the whole guarantee.
+     *
+     * It used to go before, so that no later event could re-stamp the holder. [carryTurn]'s lock
+     * changed that premise: once `silentDestroy` has set `closed`, nothing can be admitted at all.
+     * What the old order could NOT stop was a pair admitted in the instructions between the wipe and
+     * the destroy, which this handler's own `parkWarm` then stamped and `abandoned()` kept. Destroy
+     * first and the admission door is already shut; wipe last and anything admitted or stamped
+     * before it goes with it, stamp or no stamp. The phone's controller already reads in this order.
+     */
     @Test
-    fun `a crisis teardown wipes the carry, so nothing of it is replayed`() {
+    fun `a crisis tears the socket down first and wipes the carry after, so nothing survives`() {
         val c = controller()
         val crisis = c.substring(c.indexOf("is LiveEvent.CrisisDetected ->"))
         assertTrue(crisis.contains("rewakeCarry.wipe()"))
+        assertTrue("the teardown is still here", crisis.contains("session?.silentDestroy()"))
         assertTrue(
-            "before the socket goes, so no later event can re-stamp it",
-            crisis.indexOf("rewakeCarry.wipe()") < crisis.indexOf("session?.silentDestroy()"),
+            "after the socket goes, so the wipe is the last word on this conversation",
+            crisis.indexOf("session?.silentDestroy()") < crisis.indexOf("rewakeCarry.wipe()"),
         )
         assertEquals("one wipe site", 1, Regex("rewakeCarry\\.wipe\\(\\)").findAll(c).count())
+        // A statement of the branch's own, never inside a `session?.let` or an `if`: a socket that
+        // was already gone must not cost the wipe. Pinned by its indent; these files are CRLF, so
+        // the newline after the call is matched loosely rather than as a bare \n.
+        assertTrue(
+            "the wipe is a statement of the crisis branch, at the branch's own indent",
+            Regex("\\n {16}rewakeCarry\\.wipe\\(\\)\\s*?\\n").containsMatchIn(crisis),
+        )
     }
 
     @Test

@@ -769,10 +769,10 @@ class GeminiLiveSession(
      * turn that got in first is wiped by the `abandoned()` waiting behind it (nothing has stamped an
      * end), and one that arrives after is refused here.
      *
-     * One hairline window is left and is not this function's to close: the controller wipes and only
-     * then calls `silentDestroy`, so a turn admitted in those few instructions could still be
-     * stamped by a `parkWarm` later in this same handler and kept. That gap is in the controller's
-     * two statements, not in the close.
+     * This closes the crisis case together with the controller's order, not alone: the controller
+     * tears the socket down FIRST, so this door is already shut, and wipes LAST, so a pair admitted
+     * a moment before the teardown goes even if this handler's own `parkWarm` stamped it in between
+     * (`LiveSessionController`'s crisis branch says the same from its side).
      */
     private fun carryTurn(heard: String, spoken: String) {
         val holder = rewake ?: return
