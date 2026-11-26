@@ -34,7 +34,7 @@ import okhttp3.Request
  * which `ask_engine`, the drive-log upload and the fleet upload already use. Both routes need only
  * a household member; no new credential.
  */
-class DjangoUpdateBackend(private val http: EngineHttp) : UpdateBackend {
+class DjangoUpdateBackend(private val http: EngineHttp) : UpdateBackend, ReleaseHistorySource {
 
     override suspend fun latest(): Result<ReleaseInfo?> {
         if (!http.isUsable()) return Result.failure(IOException("this unit is not signed in to an engine"))
@@ -52,6 +52,13 @@ class DjangoUpdateBackend(private val http: EngineHttp) : UpdateBackend {
                 }
             },
         )
+    }
+
+    override suspend fun history(): Result<List<ReleaseNote>> {
+        if (!http.isUsable()) return Result.failure(IOException("this unit is not signed in to an engine"))
+        return http.get("/api/releases/history", mapOf("app" to APP_KEY)).mapCatching { ok ->
+            ReleaseHistoryJson.parse(ok.body) ?: throw IOException("the engine's release list was not readable")
+        }
     }
 
     override suspend fun downloadLink(release: ReleaseInfo): Result<DownloadLink> =
@@ -246,6 +253,19 @@ class AndroidPackageInstallerGateway(private val app: Application) : PackageInst
     }
 }
 
+/** The version whose notes were last put in front of the driver, so the Cruise chip shows once per update. */
+class WhatsNewSeen(private val prefs: SharedPreferences) {
+    constructor(context: Context) : this(context.getSharedPreferences(SharedUpdatePrefs.FILE, Context.MODE_PRIVATE))
+
+    var code: Long
+        get() = prefs.getLong(KEY, 0L)
+        set(value) { prefs.edit().putLong(KEY, value).apply() }
+
+    private companion object {
+        const val KEY = "whats_new_seen_code"
+    }
+}
+
 /** [UpdatePrefs] on SharedPreferences. */
 class SharedUpdatePrefs(private val prefs: SharedPreferences) : UpdatePrefs {
     constructor(context: Context) : this(context.getSharedPreferences(FILE, Context.MODE_PRIVATE))
@@ -260,7 +280,7 @@ class SharedUpdatePrefs(private val prefs: SharedPreferences) : UpdatePrefs {
         get() = prefs.getLong(KEY_APPROVED, 0L)
         set(value) { prefs.edit().putLong(KEY_APPROVED, value).apply() }
 
-    private companion object {
+    internal companion object {
         const val FILE = "midnight_updates"
         const val KEY_METERED = "allow_metered"
         const val KEY_PENDING = "pending_install_at_ms"

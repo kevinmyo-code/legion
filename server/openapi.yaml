@@ -14056,6 +14056,39 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: No link could be made, said in words.
+  /api/releases/history:
+    get:
+      operationId: api_releases_history_list
+      summary: Every release of one app with its notes, newest first
+      parameters:
+      - in: query
+        name: app
+        schema:
+          type: string
+          enum:
+          - headunit
+          - phone
+      tags:
+      - releases
+      security:
+      - headUnitToken: []
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ReleaseHistory'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
   /api/releases/latest:
     get:
       operationId: api_releases_latest_retrieve
@@ -25649,6 +25682,29 @@ components:
       - intro
       - stats
       - title
+    ReleaseHistory:
+      type: object
+      description: 'One line of "What''s new": the words and the version, nothing
+        that fetches or verifies.'
+      properties:
+        version_name:
+          type: string
+          readOnly: true
+        version_code:
+          type: integer
+          readOnly: true
+        notes:
+          type: string
+          readOnly: true
+        published_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - notes
+      - published_at
+      - version_code
+      - version_name
     Rendered:
       type: object
       properties:

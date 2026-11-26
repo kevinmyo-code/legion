@@ -239,6 +239,11 @@ ROUTES = {
             ("text", "Allow installs", "the install-unknown-apps grant; opens system settings - refused"),
         ],
     ),
+    "settings/whats-new": dict(
+        name="What's new",
+        what="The notes of the installed version and every earlier release, newest first, the "
+             "installed one marked. Opens by itself once after an update (ticket 467). Reads only.",
+    ),
     "settings/dumb-mode": dict(name="Matrix mode settings",
                                what="Turn Matrix mode on or off, kept apps, chosen people. `tools/phone` "
                                     "never toggles it: it changes Do Not Disturb."),

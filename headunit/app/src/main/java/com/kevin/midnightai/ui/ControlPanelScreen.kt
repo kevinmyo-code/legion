@@ -170,6 +170,7 @@ private enum class Section {
     SYSTEM_LOGS,
     SYSTEM_DEVELOPER_TOOLS,
     SYSTEM_UPDATES,
+    SYSTEM_WHATS_NEW,
     CONN_CAR_LINK,
 }
 
@@ -284,6 +285,7 @@ fun ControlPanel(
             Section.SYSTEM_LOGS -> SystemLogsSection { section = null }
             Section.SYSTEM_DEVELOPER_TOOLS -> DeveloperToolsSection(context) { section = null }
             Section.SYSTEM_UPDATES -> SystemUpdatesSection(context) { section = null }
+            Section.SYSTEM_WHATS_NEW -> SystemWhatsNewSection(context) { section = null }
             Section.CONN_CAR_LINK -> CarLinkSection(context) { section = null }
         }
     } else {
@@ -445,6 +447,7 @@ private fun settingsRows(
         SettingsCategory.SYSTEM -> systemRows().map { row ->
             when (row) {
                 SystemRow.UPDATES -> openRow("Updates", updateStatus.line, Section.SYSTEM_UPDATES, settingsChip(updateStatus))
+                SystemRow.WHATS_NEW -> openRow("What's new", "What each version changed, this one and every earlier one", Section.SYSTEM_WHATS_NEW)
                 SystemRow.CLOCK -> openRow("Clock & time zone", clockRowSubtitle(), Section.SYSTEM_CLOCK)
                 SystemRow.PERMISSIONS -> openRow("Permissions", "Microphone, media access", Section.SYSTEM_PERMISSIONS)
                 SystemRow.PREFERENCES -> openRow("Preferences", "Music app, home screen, subtitles, recalls", Section.SYSTEM_PREFERENCES)

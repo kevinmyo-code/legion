@@ -27,6 +27,7 @@ object CarLinkScope {
     const val DEVICE_LOGS = "/api/device-logs/"
     const val OBD_BATCH = "/api/fleet/obd_samples/batch/"
     const val RELEASES_LATEST = "/api/releases/latest"
+    const val RELEASES_HISTORY = "/api/releases/history"
 
     /** `/api/releases/<uuid>/download` exactly: the one release path the updater builds. */
     private val RELEASE_DOWNLOAD =
@@ -36,9 +37,9 @@ object CarLinkScope {
     private fun isOwnUpload(method: String, path: String): Boolean =
         method == "POST" && (path == DEVICE_LOGS || path == OBD_BATCH)
 
-    /** The two reads `update/DjangoUpdateBackend` makes, and nothing else under `/api/releases`. */
+    /** The three reads `update/DjangoUpdateBackend` makes (latest, history, download), and nothing else under `/api/releases`. */
     private fun isReleaseRead(method: String, path: String): Boolean =
-        method == "GET" && (path == RELEASES_LATEST || RELEASE_DOWNLOAD.matches(path))
+        method == "GET" && (path == RELEASES_LATEST || path == RELEASES_HISTORY || RELEASE_DOWNLOAD.matches(path))
 
     fun allows(method: String, path: String): Boolean =
         isOwnUpload(method, path) || isReleaseRead(method, path)

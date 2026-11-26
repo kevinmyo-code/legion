@@ -5959,6 +5959,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/releases/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every release of one app with its notes, newest first */
+        get: operations["api_releases_history_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/releases/latest": {
         parameters: {
             query?: never;
@@ -11293,6 +11310,14 @@ export interface components {
             diagram_svg: string;
             diagram_caption: string;
             cards: components["schemas"]["RecruiterTitleBody"][];
+        };
+        /** @description One line of "What's new": the words and the version, nothing that fetches or verifies. */
+        ReleaseHistory: {
+            readonly version_name: string;
+            readonly version_code: number;
+            readonly notes: string;
+            /** Format: date-time */
+            readonly published_at: string;
         };
         Rendered: {
             /** Format: uuid */
@@ -25729,6 +25754,35 @@ export interface operations {
             };
             /** @description No link could be made, said in words. */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_releases_history_list: {
+        parameters: {
+            query?: {
+                app?: "headunit" | "phone";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReleaseHistory"][];
+                };
+            };
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };
