@@ -470,7 +470,7 @@ object LegionRoute {
      */
     const val SETTINGS_UPDATES = "settings/updates"
 
-    /** What's new: notes of the installed version and every earlier release (ticket 467). Opens once after an update. */
+    /** What's new: every release's notes, installed one marked (ticket 467). Opens once after an update. */
     const val SETTINGS_WHATS_NEW = "settings/whats-new"
 
     /**
