@@ -39,6 +39,8 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+import tts_cache
+
 REPO = Path(__file__).resolve().parents[1]
 OUT = REPO / "app" / "src" / "main" / "assets" / "fixed_clips"
 API = "https://generativelanguage.googleapis.com/v1beta"
@@ -116,6 +118,11 @@ def render(key: str, text: str) -> tuple[bytes, dict]:
     return strip_wav(bytes(pcm)), usage
 
 
+def _paid(key: str, text: str) -> tuple[bytes, int, dict]:
+    pcm, usage = render(key, text)
+    return pcm, RATE, usage
+
+
 def strip_wav(b: bytes) -> bytes:
     """A WAV header, if the voice sent one, dropped (CloudSpeechWire.wavHeaderLength); whole samples only."""
     if b[:4] == b"RIFF":
@@ -170,6 +177,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--force", action="store_true", help="render every clip, not only missing ones")
     ap.add_argument("--dry-run", action="store_true", help="estimate the spend and stop")
+    ap.add_argument("--no-cache", action="store_true",
+                    help="pay for every render again (default: replay what tools/tts_cache.py holds)")
     ap.add_argument("--cap-usd", type=float, default=0.30, help="stop before spending more than this")
     args = ap.parse_args()
 
@@ -195,12 +204,20 @@ def main() -> int:
     for c in todo:
         for attempt in range(1, MAX_TRIES + 1):
             try:
-                raw, usage = render(key, c["line"])
+                # Each take and each retry is its own cache entry: the two takes are meant to differ,
+                # and a re-run replays the same sequence for nothing.
+                got = tts_cache.cached(
+                    MODEL, VOICE, c["line"],
+                    lambda: _paid(key, c["line"]),
+                    variant=f"take{c['take']}-try{attempt}", no_cache=args.no_cache,
+                )
+                raw, usage = got.pcm, got.extra
             except (urllib.error.URLError, OSError, ValueError) as e:
                 detail = e.code if isinstance(e, urllib.error.HTTPError) else type(e).__name__
                 print(f"  {c['id']}: try {attempt} failed ({detail})")
                 continue
-            spent += cost(usage)
+            if not got.hit:
+                spent += cost(usage)
             if fits(c, raw):
                 (OUT / f"{c['id']}.wav").write_bytes(wav(cut(raw, PAD_MS, FADE_MS)))
                 print(f"  {c['id']}: ok, try {attempt}, {ms(cut(raw, APP_PAD_MS, FADE_MS))} ms as played")

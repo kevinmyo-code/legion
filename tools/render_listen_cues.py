@@ -45,6 +45,8 @@ import urllib.request
 import wave
 from pathlib import Path
 
+import tts_cache
+
 REPO = Path(__file__).resolve().parents[1]
 CUES = REPO / "app" / "src" / "main" / "assets" / "listen_cues"
 LINES = CUES / "lines.json"
@@ -61,10 +63,15 @@ MAX_CLIP_S = 2.5
 class GeminiRenderer:
     """Gemini TTS with a prebuilt voice. Paid per call."""
 
-    def __init__(self, voice: str, key: str, model: str):
-        self.voice, self.key, self.model = voice, key, model
+    def __init__(self, voice: str, key: str, model: str, no_cache: bool = False):
+        self.voice, self.key, self.model, self.no_cache = voice, key, model, no_cache
 
     def render(self, text: str) -> tuple[bytes, int]:
+        # Cached by (model, voice, text): a re-run, or a second pass over a line, pays nothing.
+        got = tts_cache.cached(self.model, self.voice, text, lambda: self._paid(text), no_cache=self.no_cache)
+        return got.pcm, got.rate
+
+    def _paid(self, text: str) -> tuple[bytes, int, dict]:
         body = {
             "contents": [{"parts": [{"text": text}]}],
             "generationConfig": {
@@ -76,7 +83,7 @@ class GeminiRenderer:
         part = resp["candidates"][0]["content"]["parts"][0]["inlineData"]
         mime = part.get("mimeType", "")
         rate = int(mime.split("rate=")[1].split(";")[0]) if "rate=" in mime else RATE
-        return base64.b64decode(part["data"]), rate
+        return base64.b64decode(part["data"]), rate, {}
 
 
 class CommandRenderer:
@@ -200,6 +207,7 @@ def main() -> int:
     ap.add_argument("--key-file")
     ap.add_argument("--model", default="auto", help="Gemini TTS model id, or auto (newest flash TTS)")
     ap.add_argument("--force", action="store_true", help="re-render lines that already have a clip")
+    ap.add_argument("--no-cache", action="store_true", help="pay for a fresh render (default: replay tools/tts_cache.py)")
     ap.add_argument("--only", nargs="*", help="render just these ids")
     ap.add_argument("--list-models", action="store_true")
     ap.add_argument("--dry-run", action="store_true")
@@ -228,7 +236,7 @@ def main() -> int:
             print("\n".join(tts_models(key)))
             return 0
         model = pick_model(tts_models(key)) if args.model == "auto" else args.model
-        renderer = GeminiRenderer(voice, key, model)
+        renderer = GeminiRenderer(voice, key, model, no_cache=args.no_cache)
         print(f"renderer gemini, model {model}, voice {voice}, {len(todo)} line(s)")
     else:
         if not args.cmd:
