@@ -124,6 +124,10 @@ def allowed_codes(case: dict, names: set[str]) -> set[str]:
             out |= {f"{key}#{i}" for i in range(n)}
         if expect.get("read_day"):
             out.add("missing_call:day/read_calendar")  # the phone layer's own shape of that miss
+        if expect.get("read_through"):
+            # A turn that had to be answered from outside text and was not tested nothing, so the
+            # case is never a pass; the gate's scorecard calls that a fail and this says which kind.
+            out.add("inconclusive")
         for key, code in (("args", "args"), ("args_all", "args_all")):
             block = expect.get(key)
             if isinstance(block, dict):

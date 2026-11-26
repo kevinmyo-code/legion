@@ -10,6 +10,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -74,6 +75,17 @@ def test_every_failure_the_scorer_raises_carries_a_code():
         assert f.code
 
 
+def test_no_failure_site_in_the_scorer_bypasses_the_code():
+    """Static, over the whole file, so this does not rest on the one plant above: every append to a
+    failure list goes through `Fail` or the `bad` helper that wraps it."""
+    source = (ROOT / "tools" / "voice_eval.py").read_text(encoding="utf-8")
+    sites = re.findall(r"fails\.append\(([^\n]*)", source)
+    assert len(sites) >= 3, sites
+    for site in sites:
+        assert site.startswith("Fail(") or site.startswith("x.at_turn"), site
+    assert "bad(" in source and re.search(r"def bad\(code: str, text: str\)", source)
+
+
 def test_a_failures_words_still_read_as_a_plain_string():
     """Every existing reader of `failures` treats them as text; `Fail` must not change that."""
     v = _score(COMMITTED[0], [("manage_item", {"action": "read_list"}, '{"success":true}')], "")
@@ -95,6 +107,9 @@ def test_the_turn_prefix_keeps_the_code():
 # ------------------------------------------------- the validator accepts every code a real run can give
 
 
+REACHED: set[str] = set()
+
+
 @pytest.mark.parametrize("case", COMMITTED, ids=[c["id"] for c in COMMITTED])
 def test_a_real_failure_of_a_committed_case_is_accepted(case):
     """Drive the real scorer into failing each committed case, then ask the real validator. A code the
@@ -114,17 +129,36 @@ def test_a_real_failure_of_a_committed_case_is_accepted(case):
         assert not seen
         return
     assert seen, "no plant broke this case, so nothing was checked"
+    REACHED.update(seen)
     for code in sorted(seen):
         assert vgr.check(code, case, NAMES) == code, f"the validator would drop a real code: {code}"
 
 
-def test_the_allowed_set_is_small_enough_to_carry_almost_no_choice():
-    """The set is per case so a malicious commit picks from a handful, not from free text. The three
-    codes that must name a tool nobody wrote down in advance are the stated exception."""
+def test_the_plants_reach_more_than_one_kind_of_code(capsys):
+    """What the sweep above actually exercises. Four plants cannot reach every failure site in the
+    scorer, so the kinds they do reach are printed rather than claimed."""
+    assert REACHED, "run the parametrized sweep first (pytest runs this file in order)"
+    kinds = sorted({c.split(":")[0].split("#")[0] for c in REACHED})
+    assert len(kinds) >= 6, kinds
+    with capsys.disabled():
+        print(f"\nreason kinds the plants reach ({len(kinds)}): {', '.join(kinds)}")
+
+
+def test_the_allowed_set_is_small_enough_to_carry_little_choice(capsys):
+    """The set is per case, so a malicious commit picks from a short list rather than writing free
+    text. The three codes that must name a tool nobody wrote down in advance are the exception, and
+    are excluded here and stated in the script's own docstring. The measured sizes are printed so
+    the claim in the report is a number somebody can re-read, not an adjective."""
     wide = {"chat_called", "write_on_read", "write_in_test_mode"}
+    sizes = {}
     for case in COMMITTED:
         narrow = {c for c in vgr.allowed_codes(case, NAMES) if c.split(":")[0] not in wide}
-        assert len(narrow) <= 40, (case["id"], len(narrow))
+        sizes[case["id"]] = len(narrow)
+        assert len(narrow) <= 24, (case["id"], sorted(narrow))
+    counts = sorted(sizes.values())
+    with capsys.disabled():
+        print(f"\nnarrow allowed-set size over {len(counts)} committed cases: "
+              f"min {counts[0]}, median {counts[len(counts) // 2]}, max {counts[-1]}")
 
 
 @pytest.mark.parametrize("forged", [
@@ -162,6 +196,36 @@ def test_a_code_from_another_case_is_rejected_but_right_at_home_in_its_own():
 
 def test_an_unknown_case_id_can_say_nothing():
     assert vgr.check("len:max_words", None, NAMES) == "unclassified"
+
+
+def test_an_inconclusive_case_says_so_instead_of_reading_as_a_mystery():
+    """An inconclusive case has no failures by design, but the gate's scorecard still reports it as
+    not passed, so without this it would upload as `fail` with `unclassified`. No case on today's
+    gate list can go inconclusive; `web_answer_then_new_topic` is the one committed case that can,
+    and it is the shape used here."""
+    case = next(c for c in COMMITTED if c["id"] == "web_answer_then_new_topic")
+    def L(tag, msg):
+        return f"11-15 10:00:00.000  4242  4242 I {tag}: {msg}"
+
+    lines = [L("LIVE_TEST", f"case_begin id={case['id']}"),
+             L("LIVE_AUDIT", "session_start model=eval+gemini-3.5-flash-lite async_set=none")]
+    for i, t in enumerate(ve.case_turns(case)):
+        lines.append(L("LIVE_AUDIT", f"user final=true text={json.dumps(t['say'])}"))
+        if i == 0:  # the search ran, but nothing marked the turn as answered from outside text
+            lines.append(L("LIVE_AUDIT", 'tool_call id=e0 name=look_up async=false args={"action":"ask_web"}'))
+            lines.append(L("LIVE_AUDIT", 'tool_result id=e0 name=look_up success=true ms=40 '
+                                         'scheduling=none sent=true response={"success":true}'))
+        lines.append(L("LIVE_AUDIT", f"assistant text={json.dumps('Here is what I found.')}"))
+        lines.append(L("LIVE_AUDIT", "turn_complete"))
+    lines.append(L("LIVE_AUDIT", 'session_end reason="eval"'))
+    lines.append(L("LIVE_TEST", f"case_end id={case['id']} ms=1500"))
+    _, runs = ve.parse_run(lines, 2026)
+    v = ve.score_case(case, runs[0], phone=False)
+    assert v.inconclusive and not v.passed and not v.failures
+    _, summary = ve.scorecard([case], runs, {}, phone=False, verbose=False)
+    assert summary["cases"][0]["reason"] == "inconclusive"
+    assert vgr.check("inconclusive", case, NAMES) == "inconclusive"
+    assert vgr.check("inconclusive", {"id": "x", "say": "hi"}, NAMES) == "unclassified"
 
 
 def test_an_index_is_bounded_by_the_patterns_the_trusted_case_really_has():
@@ -304,24 +368,42 @@ def test_a_function_name_with_no_def_in_the_gated_file_is_unclassified():
         == ["node: unclassified"]
 
 
+def test_the_shape_it_parses_is_the_shape_the_real_gate_test_has():
+    """`gate_fail_where.py` only believes a name it can find a `def` for in the file the gate ran. If
+    the real gate test were a method or an `async def` this would print `unclassified` on every real
+    failure, which is the incident this slice exists for."""
+    real = ROOT / "server" / "tests" / "realrun_web_cascade.py"
+    if not real.exists():
+        pytest.skip("no server tree in this checkout")
+    source = real.read_text(encoding="utf-8")
+    assert "test_realrun_gate" in gfw.where(
+        f"_____ test_realrun_gate _____\n{GATE_FILE}:1: AssertionError\n", GATE_FILE, source)[0]
+
+
+FAILING_TEST = f'''def test_realrun_gate():
+    heard = []
+    assert heard, ("no amount heard in a spending answer", "{CANARY}")
+'''
+
+
 @pytest.mark.skipif(not _bash(), reason="needs bash to run the real engine gate script")
 def test_the_engine_gate_script_writes_the_node_id_into_its_summary(tmp_path):
-    """The real `engine_live_gate.sh`, with a fake pytest that fails the standard gate the way a
-    non-heard-back assert does. Its summary must say where, and carry no canary, and pass the scrub."""
+    """The real `engine_live_gate.sh` over REAL pytest on a test that fails the way a non-heard-back
+    assert does, so the output shape is pytest's and not my guess. Its summary must say where it
+    broke, carry no canary, and pass the real scrub."""
     server = tmp_path / "server"
     (server / "tests").mkdir(parents=True)
-    (server / "tests" / "realrun_web_cascade.py").write_text(SOURCE, encoding="utf-8")
-    fake = tmp_path / "fakepytest.py"
-    fake.write_text("import sys\nprint(r'''" + PYTEST_OUT + "''')\nprint('1 failed')\nsys.exit(1)\n",
-                    encoding="utf-8")
+    (server / "tests" / "realrun_web_cascade.py").write_text(FAILING_TEST, encoding="utf-8")
     out = tmp_path / "gate-raw"
-    env = {**os.environ, "PYTEST": f"{sys.executable} {fake}", "PYTHON3": sys.executable}
+    env = {**os.environ, "PYTEST": f"{sys.executable} -m pytest", "PYTHON3": sys.executable}
     r = subprocess.run([_bash(), str(SCRIPTS / "engine_live_gate.sh"), str(server), str(out), "", "0.12"],
                        capture_output=True, text=True, env=env)
     summary = (out / "summary.txt").read_text(encoding="utf-8")
+    raw = (out / "raw" / "gate" / "pytest.txt").read_text(encoding="utf-8")
     assert r.returncode == 1
+    assert CANARY in raw, "the plant must really fail, or this test proves nothing"
     assert f"node: {GATE_FILE}::test_realrun_gate" in summary
-    assert "assert_line: 214" in summary
+    assert "assert_line: 3" in summary, summary
     assert "RESULT: FAIL" in summary
     assert CANARY not in summary
 

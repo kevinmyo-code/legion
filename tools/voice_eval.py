@@ -756,7 +756,10 @@ def scorecard(cases: list[dict], runs: list[CaseRun], run_facts: dict, *, phone:
         tools = " ".join(c.key + ("[refused]" if c.refused_for_test else "") for t in run.turns for c in t.calls) or "-"
         turn_ms = [t.timings.get("test_turn_ms") or t.timings.get("eot_reply_ms") for t in run.turns]
         ms = "/".join(str(x) for x in turn_ms if x is not None) or (str(run.ms) if run.ms else "-")
-        row = {"id": case["id"], "pass": v.passed, "reason": reason_of(v.failures), "proves_nothing": na, "inconclusive": v.inconclusive, "known_limit": v.known_limit, "llm": v.llm, "tools": tools, "ms": ms,
+        # An inconclusive case has no failures by design, but the gate's scorecard still reports it as
+        # not passed, so it owes the reader a word of its own rather than `unclassified`.
+        row = {"id": case["id"], "pass": v.passed,
+               "reason": "inconclusive" if v.inconclusive else reason_of(v.failures), "proves_nothing": na, "inconclusive": v.inconclusive, "known_limit": v.known_limit, "llm": v.llm, "tools": tools, "ms": ms,
                "tokens": tok, "usd": str(cost), "priced": not any("no price" in n for n in notes), "failures": v.failures, "warnings": v.warnings,
                "answer": " | ".join(t.answer for t in run.turns), "notes": run.notes,
                "timings": run.timings}

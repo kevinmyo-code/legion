@@ -37,7 +37,9 @@ AT_LINE = re.compile(r"^([^\s:]+\.py):(\d{1,6}): ")
 def where(output: str, test_file: str, source: str) -> list[str]:
     """The `node:` and `assert_line:` lines for this failure, as strict as the docstring says."""
     base = Path(test_file).name
-    names = set(re.findall(r"^\s*def ([a-z][a-z0-9_]*)\s*\(", source, re.M))
+    # A plain function, an `async def`, and a method of a test class all count: what matters is that
+    # the name is really written in this file at the gated commit.
+    names = set(re.findall(r"^\s*(?:async\s+)?def ([a-z][a-z0-9_]*)\s*\(", source, re.M))
     found = None
     for line in output.splitlines():
         m = HEADER.match(line.strip()) or SUMMARY.match(line.strip())
