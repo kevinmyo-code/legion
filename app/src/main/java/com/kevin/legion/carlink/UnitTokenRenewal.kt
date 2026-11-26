@@ -127,13 +127,9 @@ class UnitTokenRenewal(
         if (job?.isActive == true) return
         nextAskAt = wallClock() + ASK_EVERY_MS
         job = scope.launch(io) {
-            if (withTimeoutOrNull(ENGINE_TIMEOUT_MS) { ask() } == null) askAgainSoon()
+            // Too slow to answer is the same as not answering: ask again in minutes, not hours.
+            if (withTimeoutOrNull(ENGINE_TIMEOUT_MS) { ask() } == null) nextAskAt = wallClock() + ASK_RETRY_MS
         }
-    }
-
-    /** The engine said nothing (unreachable, or too slow): ask again in minutes, not in hours. */
-    private fun askAgainSoon() {
-        nextAskAt = wallClock() + ASK_RETRY_MS
     }
 
     /**
@@ -187,7 +183,8 @@ class UnitTokenRenewal(
         if (store.pendingUnitId() != p.id || p.replaces != old) return
         if (!store.setUnitDeviceId(p.id)) return
         clearPending()
-        if (old != null) scope.launch(io) { tokens.revoke(old) }
+        // Non-null: the check above matched it against the record's own non-null `replaces`.
+        scope.launch(io) { tokens.revoke(old) }
     }
 
     /** A record the store will not clear is kept in memory, so the next step tries the write again. */
@@ -215,7 +212,13 @@ class UnitTokenRenewal(
      * the car's own is near its end. An engine that cannot be reached says nothing at all. */
     private suspend fun ask() {
         val id = store.unitDeviceId() ?: return
-        val live = directory.list() ?: return askAgainSoon()
+        val live = directory.list()
+        if (live == null) {
+            // An engine that cannot be reached says nothing, and nothing is handed over on
+            // nothing: ask again in minutes, so a car in range is not kept waiting six hours.
+            nextAskAt = wallClock() + ASK_RETRY_MS
+            return
+        }
         val p = mine()
         if (p != null) {
             // The engine no longer has it, so no device can be using it: there is nothing to lose
