@@ -11,27 +11,59 @@ to the phone's but for its package line). No second phrase list is written here,
 is a phrase. `agents/voice/crisis.py` imports nothing of the engine's, so reading it here crosses
 no layer.
 
-**What it reads, and why it is not the consolidation transcript.** The devices audit each
-transcript chunk BEFORE they detect (head unit `GeminiLiveSession.kt:920-922` appends the chunk to
-`userTurnText` and audits it, `:923` detects), and the crisis teardown kills the socket on the
-partial transcript, so the phrase can be spooled with no whole-turn line and no `turn_complete`
-after it. So:
+**Why this does not try to rebuild a turn.** The obvious shape, concatenating the lines of one
+turn the way the device does (`userTurnText.append(chunk)`), was tried twice and was wrong twice,
+because the audit stream does not say where a turn ends and the same event does not mean the same
+thing on both clients:
 
-- every `user` line, final or not, rebuilt into the turn the way the device builds it
-  (`userTurnText.append(chunk)`, no separator), because a phrase can be split across two chunks;
-- the turn is judged **when it closes**, never per line and never on a growing prefix. A chunk
-  boundary is not the start or the end of an utterance, and the detector keeps a hit when an
-  excluded phrase has no car-talk word in front of it or runs off the end of the text: judged
-  apart, "does the wagon have" + " suicide doors" reads as a crisis, and so does the prefix "does
-  the wagon have suicide", while the whole sentence does not (RED review B2). The live detector on
-  the car does read each prefix (`checkForCrisis()` on the accumulated `userTurnText`), and
-  deliberately so: there, firing early on a half-said sentence costs one unneeded help line, and
-  the next chunk settles it. Here it would cost the whole record, kept out of memory for good, so
-  the completed turn is the only honest unit;
-- every `assistant` line too, rebuilt the same way, as the head unit's
-  `CrisisMemoryGate.forgetsSession` does: a reply carrying the line is as much a memory of the
-  distress as the line is;
-- **never the head unit's whole-turn repeat on top of the chunks it repeats** (see `_repeats`);
+- the phone writes `turn_complete` only through `afterReply()` (`CascadeSession.kt:2926`), and a
+  barge-in or a cut-off reply cancels that path (`:2982-2997`, `:2044`), so two whole turns sit
+  next to each other with only `interrupted` between them;
+- `interrupted` is a turn end on the phone and MID-turn on the head unit (`ConvoAudit.kt:100`,
+  written at `GeminiLiveSession.kt:509`, `:540`, `:992`, with that turn's own `turn_complete` still
+  to come);
+- the head unit writes the whole trimmed turn AGAIN at `turn_complete` (`:1035`), and a real chunk
+  carries the same `final=true` flag when Gemini sets `finished` (`LiveTranscript.kt:15-19`), so
+  neither the content nor the flag tells a repeat from a chunk;
+- the conversation spool uploads on the periodic tick, not only at session end
+  (`DriveLogLoop.kt:33`, `:75-78`), so a record can begin or end mid-turn.
+
+Each of those made the same bug: joining two pieces of DIFFERENT provenance with nothing between
+them turns two words into one ("...suicide doors" + "does the wagon..." = `doorsdoes`), which
+destroys the `suicide doors` car-talk exclusion and lets the `suicide` stem fire on ordinary car
+talk. The cost of that false positive is a whole conversation record dropped from memory for good.
+
+Joining with a space instead does not work either, and the sweeps say so: a chunk boundary inside
+a word makes `have` into `h ave`, which loses the car-talk word the exclusion needs in front of
+`suicide doors`, so ordinary car talk fires again (6 of the 33 boundaries of one car-talk
+sentence). An inserted separator is as much the engine's invention as a fused word.
+
+**So nothing of different provenance is ever joined.** A run is the consecutive lines of one
+speaker, joined exactly as the device joins them (no separator, `userTurnText.append(chunk)`), and
+a run ENDS at:
+
+- a `final=true` line, which every client writes only for a whole utterance it has finished (the
+  phone's whole turn, the head unit's last chunk or its repeat). This is what makes a barge-in
+  harmless: two phone turns can never share a run, whatever lies between them;
+- a change of speaker, a turn end, or the end of the record.
+
+**The one device fact this rests on, and it is pinned by a test:** the head unit's whole-turn
+repeat is the last `user` line before `turn_complete` (`GeminiLiveSession.kt:1035`, then
+`audit.turnComplete()`). At a `turn_complete` that line is judged on its own and left out of the
+run it repeats, so the repeat can never fuse onto its own chunks and no content test is needed to
+spot it (which is what a stutter defeated).
+
+A chunk is therefore never judged alone, a whole utterance always is, and the text judged is
+always text a device really held.
+
+The rest of what it reads:
+
+- every `user` line, final or not, and every `assistant` line, because a reply carrying the line is
+  as much a memory of the distress as the line is (as the head unit's
+  `CrisisMemoryGate.forgetsSession` decided in #458);
+- no line is ever judged on its own, only a closed run: a chunk is not an utterance, and the
+  detector keeps a hit when an excluded phrase has no car-talk word in front of it, so "does the
+  wagon have" and " suicide doors" judged apart read as a crisis while the sentence does not;
 - no read-through, redaction or `can_mark_turns` filtering: a turn those rules drop still says the
   record was a crisis, and none of this text is ever shown to a model;
 - the phone's own `session_end reason="crisis"` mark as well, because every audit line is truncated
@@ -47,6 +79,9 @@ from agents.voice.crisis import detect
 from devicelogs import voice_audit
 
 TURN_ENDS = frozenset({"turn_complete", "session_start", "session_end"})
+ROLES = ("user", "assistant")
+
+# What `ConvoAudit`/`LiveAudit` append to a line they cut at 400 characters.
 TRUNCATION_MARK = "..."
 
 # What the phone's crisis teardown writes: `shutdown("crisis")` ends at
@@ -58,36 +93,34 @@ TRUNCATION_MARK = "..."
 CRISIS_REASON = "crisis"
 
 
-def _repeats(built: str, text: str) -> bool:
-    """Is `text` the turn `built` already holds, written again?
-
-    The head unit audits every transcript chunk and then, at `turn_complete`, the whole trimmed
-    turn once more (`GeminiLiveSession.kt:1035`). Appending that line to the chunks it repeats
-    would fuse its first word onto the turn's last one, and a fused word breaks the car-talk
-    exclusion the detector exists to honour: "...suicide doors" + "does the wagon..." becomes the
-    one word "doorsdoes", `suicide doors` stops matching and the `suicide` stem fires on ordinary
-    car talk (RED review B1).
-
-    The repeat is `userTurnText.toString().trim()`, so it equals what we have, except that an audit
-    line over 400 characters is cut and marked (`ConvoAudit.MAX_TEXT`), which leaves a prefix.
-    """
-    if not built:
-        return False
-    said = text.strip()
-    if not said:
-        return False
-    if said == built:
-        return True
-    return said.endswith(TRUNCATION_MARK) and built.startswith(said[: -len(TRUNCATION_MARK)])
-
-
 def has_crisis_turn(raw: str) -> bool:
-    """True when a turn in one record's raw audit lines says a crisis phrase, or when the record
-    carries a device's own crisis mark."""
-    turns: dict[str, list[str]] = {"user": [], "assistant": []}
+    """True when what one speaker said in one run of one record says a crisis phrase, or when the
+    record carries a device's own crisis mark."""
+    # Per speaker, the lines said since their last run ended, each with its `final` flag.
+    runs: dict[str, list[tuple[str, bool]]] = {role: [] for role in ROLES}
 
-    def closes() -> bool:
-        return any(detect("".join(said)) for said in turns.values())
+    def closes(role: str) -> bool:
+        """Judge what that speaker said in this run, and start them over.
+
+        A run that ends on a `final=true` line ends on a whole utterance, and the lines before it
+        are either the chunks that utterance repeats or an earlier fragment. Either way the two
+        are judged APART, never joined, which is what stops a repeat fusing onto its own chunks
+        and needs no test of the line's content to spot one.
+        """
+        said, runs[role] = runs[role], []
+        if not said:
+            return False
+        whole, final = said[-1]
+        if not final or len(said) == 1:
+            return detect("".join(text for text, _ in said))
+        chunks = "".join(text for text, _ in said[:-1])
+        if whole.rstrip().endswith(TRUNCATION_MARK):
+            # Cut at 400 characters (`ConvoAudit.MAX_TEXT`), so this line is not a whole utterance
+            # and a phrase can be cut in half by it. The chunks are the text the device held.
+            return detect(chunks)
+        if chunks.strip() in whole:
+            return detect(whole)  # the chunks are inside it; judging them again says nothing new
+        return detect(whole) or detect(chunks)
 
     for _date, _time, tag, msg in voice_audit._records(raw.splitlines()):
         if tag != voice_audit.AUDIT:
@@ -96,20 +129,25 @@ def has_crisis_turn(raw: str) -> bool:
         if event == "session_end" and fields.get("reason") == CRISIS_REASON:
             return True
         if event in TURN_ENDS:
-            if closes():
+            if any(closes(role) for role in ROLES):
                 return True
-            turns = {"user": [], "assistant": []}
             continue
-        if event not in turns:
+        if event not in runs:
             continue
         text = fields.get("text")
         if not isinstance(text, str):
             continue
-        turn = turns[event]
-        if _repeats("".join(turn).strip(), text):
-            continue
-        turn.append(text)
-    return closes()
+        # The other speaker starting means this one has stopped.
+        if any(closes(role) for role in ROLES if role != event):
+            return True
+        # A line the device calls final is a whole utterance it has finished, so nothing said
+        # after it belongs to it. This is what keeps two phone turns out of one run, whatever
+        # lies between them. The run is closed when the NEXT line arrives rather than at once,
+        # because only the following event says whether this line was a whole-turn repeat.
+        if runs[event] and runs[event][-1][1] and closes(event):
+            return True
+        runs[event].append((text, fields.get("final") == "true"))
+    return any(closes(role) for role in ROLES)
 
 
 def log_has_crisis_turn(log, raw: str | None = None) -> bool:

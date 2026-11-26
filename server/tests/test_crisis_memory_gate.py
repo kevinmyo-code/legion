@@ -7,6 +7,9 @@ The three engine paths that turn a device conversation record into something dur
 consolidation (`member_memory.consolidate`), the nightly memory review's evidence
 (`member_memory.review`) and open-loop proposals (`open_loops.words`). The model is never reached:
 the consolidation tests hand the job their own transport and read whether it was called at all.
+
+The second half of the file is what two RED review rounds cost: every shape the two apps can
+really write, read as the ordinary speech it is. They are pure predicates over a string.
 """
 
 from __future__ import annotations
@@ -16,24 +19,25 @@ import datetime
 import pytest
 from django.utils import timezone
 
+from agents.voice import crisis as detector
 from devicelogs import crisis
 from member_memory import consolidate, review
 from member_memory.models import MemberMemory, MemoryConsolidation
 from open_loops import words
 from tests.test_member_memory_consolidate import FakeModel, _log
 
-# No module-wide `django_db`: the boundary sweeps and the repeat test are pure predicates, and a
-# test that opens a database connection it does not need is not free. `test_turn_cancel`'s
+# No module-wide `django_db`: most of this file is a pure predicate, and a test that opens a
+# database connection it does not need is not free. `test_turn_cancel`'s
 # `test_the_model_reader_thread_leaves_no_database_session_open` counts every session in
-# `pg_stat_activity`, so sixty-five needless connections earlier in the run are enough to move it
-# (CI run 45799926479). Each test that really needs a record marks itself.
+# `pg_stat_activity`, and needless connections earlier in the run are the likeliest reason it moved
+# in CI run 45799926479. Each test that really needs a record marks itself.
 
 A_MEMORY = [{"text": "Sam's gym is on Elm Street", "kind": "fact", "importance": 6, "durable": True}]
 
 # The head unit: the phrase arrives as unfinished chunks and the socket is torn down on them, so
-# there is no `user final=true` line and no `turn_complete` after it. Its teardown
-# (`silentDestroy`) writes "superseded", so the record carries no crisis mark at all and the
-# phrase is the only thing that can carry this case.
+# there is no whole-turn line and no `turn_complete` after it. Its teardown (`silentDestroy`)
+# writes "superseded", so the record carries no crisis mark at all and the phrase is the only thing
+# that can carry this case.
 CRISIS = """\
 11-24 20:00:00.000  1 2 I LIVE_AUDIT: session_start model=gemini-live async_set=none
 11-24 20:00:01.000  1 2 I LIVE_AUDIT: user final=true text="My gym moved to Elm Street."
@@ -146,48 +150,192 @@ def test_ordinary_car_talk_is_still_distilled(household_user, household_a, raw):
     assert MemberMemory.objects.get().text == "Sam's gym is on Elm Street"
 
 
-# ----------------------------------------------------------- chunk boundaries
+# --------------------------------------------- what the gate may never invent
 #
-# The head unit cuts a turn at whatever boundary the transcript arrives on, so the gate has to read
-# the same sentence identically at every one of them. Two things could break that, and both did
-# (RED review B1 and B2): judging a chunk on its own, where an excluded phrase has no car-talk word
-# in front of it, and appending the whole-turn repeat to the chunks it repeats, which fuses its
-# first word onto the turn's last one. These are pure-predicate sweeps, no model and no record.
+# Three RED review blockers were one bug: joining two audit lines of DIFFERENT provenance makes one
+# word out of two ("...suicide doors" + "does the wagon..." = "doorsdoes"), the `suicide doors`
+# exclusion dies, and the `suicide` stem fires on ordinary car talk. Joining with a space instead
+# breaks the exclusion the other way, by making `have` into `h ave`. So nothing of different
+# provenance is joined at all, and these sweeps are what hold that. Each one is a shape the apps
+# really write.
 
 CAR_SENTENCE = "does the wagon have suicide doors"
 CRISIS_SENTENCE = "some days I just want to die"
 
 
-def _head_unit_turn(text: str, split: int) -> str:
-    """One turn as the head unit writes it: the chunks, then the whole trimmed turn once more."""
-    lines = ["session_start model=gemini-live async_set=none"]
-    lines += [f'user final=false text="{chunk}"' for chunk in (text[:split], text[split:]) if chunk]
-    lines += [f'user final=true text="{text}"', "turn_complete", 'session_end reason="stopped"']
+def _line(text: str, *, final: bool | None = True, role: str = "user") -> str:
+    if role == "assistant":
+        return f'assistant text="{text}"'
+    return f'user final={"true" if final else "false"} text="{text}"'
+
+
+def _record(*lines: str) -> str:
     return "".join(
-        f"11-24 07:{index // 60:02d}:{index % 60:02d}.000  1 2 I LIVE_AUDIT: {line}\n"
+        f"11-24 06:{index // 60:02d}:{index % 60:02d}.000  1 2 I LIVE_AUDIT: {line}\n"
         for index, line in enumerate(lines)
+    )
+
+
+def _split_run(text: str, at: int) -> str:
+    """One unfinished run of two chunks, as the spool holds a turn that never closed."""
+    return _record(*[_line(part, final=False) for part in (text[:at], text[at:]) if part])
+
+
+def _chunked_turn(text: str, split: int) -> str:
+    """One turn as the head unit writes it: the chunks, then the whole trimmed turn once more."""
+    return _record(
+        "session_start model=gemini-live async_set=none",
+        *[_line(chunk, final=False) for chunk in (text[:split], text[split:]) if chunk],
+        _line(text),
+        "turn_complete",
+        'session_end reason="stopped"',
     )
 
 
 @pytest.mark.parametrize("split", range(len(CAR_SENTENCE) + 1))
 def test_car_talk_is_quiet_at_every_chunk_boundary(split):
-    assert not crisis.has_crisis_turn(_head_unit_turn(CAR_SENTENCE, split))
+    assert not crisis.has_crisis_turn(_chunked_turn(CAR_SENTENCE, split))
 
 
 @pytest.mark.parametrize("split", range(len(CRISIS_SENTENCE) + 1))
 def test_a_crisis_phrase_is_caught_at_every_chunk_boundary(split):
-    assert crisis.has_crisis_turn(_head_unit_turn(CRISIS_SENTENCE, split))
+    assert crisis.has_crisis_turn(_chunked_turn(CRISIS_SENTENCE, split))
 
 
-def test_the_whole_turn_repeat_is_not_read_as_more_words():
-    """The repeat is the turn we already have, so it adds nothing and fuses nothing."""
-    chunks = '11-24 07:30:01.000  1 2 I LIVE_AUDIT: user final=false text="does the wagon have suicide doors"\n'
-    repeat = '11-24 07:30:02.000  1 2 I LIVE_AUDIT: user final=true text="does the wagon have suicide doors"\n'
-    assert not crisis.has_crisis_turn(chunks)
-    assert not crisis.has_crisis_turn(chunks + repeat)
-    # Truncated at the 400-character cap, the repeat is a marked prefix of the same turn.
-    cut = '11-24 07:30:02.000  1 2 I LIVE_AUDIT: user final=true text="does the wagon have suicide..."\n'
-    assert not crisis.has_crisis_turn(chunks + cut)
+# B3: the phone writes `turn_complete` only through `afterReply()` (`CascadeSession.kt:2926`), so a
+# barge-in or a cut-off reply leaves two whole turns next to each other with only `interrupted`
+# between them, or with nothing at all.
+CUT_OFF = ("interrupted source=barge_in", "interrupted source=tap", "nudge reason=still_checking tool=none")
+
+
+@pytest.mark.parametrize("between", CUT_OFF)
+def test_two_car_talk_turns_across_a_cut_off_reply_are_quiet(between):
+    assert not crisis.has_crisis_turn(_record(
+        _line("does the wagon have suicide doors"),
+        _line("It does not", role="assistant"),
+        between,
+        _line("what time is it"),
+        "turn_complete",
+    ))
+
+
+@pytest.mark.parametrize("between", CUT_OFF)
+def test_a_crisis_turn_across_a_cut_off_reply_is_still_caught(between):
+    assert crisis.has_crisis_turn(_record(
+        _line("does the wagon have suicide doors"),
+        between,
+        _line("some days I just want to die"),
+        "turn_complete",
+    ))
+
+
+def test_two_car_talk_turns_with_no_event_between_them_are_quiet():
+    assert not crisis.has_crisis_turn(_record(
+        _line("got suicide doors"),
+        _line("whats next"),
+    ))
+
+
+# B3's other half: `interrupted` is MID-turn on the head unit, between a turn's chunks and the
+# whole-turn repeat they belong to, with that turn's own `turn_complete` still to come.
+def test_a_head_unit_turn_interrupted_mid_turn_is_quiet():
+    assert not crisis.has_crisis_turn(_record(
+        _line("does the wagon have", final=False),
+        "interrupted source=server",
+        _line(" suicide doors", final=False),
+        _line("does the wagon have suicide doors"),
+        "turn_complete",
+    ))
+
+
+# B4: a stuttered or re-emitted opening chunk is ordinary speech-to-text output.
+@pytest.mark.parametrize("stutter", [
+    ("does", " does", " the wagon have suicide doors"),
+    ("it", " it", " has a suicide knob"),
+    ("my", " my", " truck has suicide doors"),
+    (" it", " has", " a", " a", " suicide knob"),
+])
+def test_a_stuttered_chunk_is_quiet(stutter):
+    assert not crisis.has_crisis_turn(_record(
+        *[_line(chunk, final=False) for chunk in stutter],
+        _line("".join(stutter).strip()),
+        "turn_complete",
+    ))
+
+
+# The spool uploads on the periodic tick (`DriveLogLoop.kt:75-78`), not only at session end, so a
+# record can begin or end mid-turn: no `session_start`, no `turn_complete`, a partial chunk at
+# either edge.
+def test_a_record_cut_mid_turn_is_quiet_on_car_talk():
+    assert not crisis.has_crisis_turn(_record(
+        _line(" suicide doors", final=False),
+        _line("does the wagon have suicide doors"),
+        "turn_complete",
+        _line("my gym moved to", final=False),
+    ))
+
+
+def test_a_record_cut_mid_crisis_turn_is_still_caught():
+    assert crisis.has_crisis_turn(_record(
+        "turn_complete",
+        _line("honestly I", final=False),
+        _line(" want to", final=False),
+        _line(" die", final=False),
+    ))
+
+
+def test_the_speakers_never_bridge_each_other():
+    """An assistant line between two user chunks does not join them, and the reverse."""
+    assert not crisis.has_crisis_turn(_record(
+        _line("I want to", final=False),
+        _line("hold on", role="assistant"),
+        _line(" diet soda", final=False),
+    ))
+
+
+# -------------------------------------------- the repeat, by shape not by place
+#
+# A run that ends on a `final=true` line ends on a whole utterance, so that line and the chunks
+# before it are judged apart. Nothing has to recognise a repeat by its content, which is what a
+# stutter defeated, and nothing depends on where `turn_complete` sits.
+
+
+def test_the_repeat_is_quiet_with_or_without_a_turn_end():
+    chunks_then_repeat = (
+        _line("does the wagon have suicide doors", final=False),
+        _line("does the wagon have suicide doors"),
+    )
+    assert not crisis.has_crisis_turn(_record(*chunks_then_repeat, "turn_complete"))
+    assert not crisis.has_crisis_turn(_record(*chunks_then_repeat))
+
+
+def test_a_phrase_in_the_whole_turn_line_is_caught_either_way():
+    lines = (_line("some days I just", final=False), _line("some days I just want to die"))
+    assert crisis.has_crisis_turn(_record(*lines, "turn_complete"))
+    assert crisis.has_crisis_turn(_record(*lines))
+
+
+def test_a_truncated_whole_turn_line_does_not_speak_for_the_turn():
+    """Cut at the 400-character cap, that line can hold half a word, so the chunks are the text."""
+    assert not crisis.has_crisis_turn(_record(
+        _line("does the wagon have suicide doors", final=False),
+        _line("does the wagon have suicide..."),
+        "turn_complete",
+    ))
+    assert crisis.has_crisis_turn(_record(
+        _line("some days I just want to die", final=False),
+        _line("some days I just want to..."),
+        "turn_complete",
+    ))
+
+
+@pytest.mark.parametrize("phrase", detector.PHRASES)
+def test_every_phrase_survives_every_chunk_boundary(phrase):
+    """No split of any phrase, mid-word included, loses it: the run is joined as the device joins
+    it, so the text judged is the text the device held."""
+    said = f"honestly {phrase} today"
+    missed = [i for i in range(1, len(said)) if not crisis.has_crisis_turn(_split_run(said, i))]
+    assert missed == []
 
 
 @pytest.mark.django_db
