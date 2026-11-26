@@ -32,6 +32,17 @@ class VoiceEvalOfflineTest {
         /** The expect keys that NAME a tool, whether they require the call or forbid it. */
         val NAMING_KEYS = listOf("calls", "not_calls", "succeeded", "not_succeeded")
         const val TOOL_TAG = "tool:"
+
+        /**
+         * Names a case may use bare that the model is never offered directly: they are resolved
+         * behind a router and reached through [LiveToolbox.dispatch], so they are on no declaration.
+         * A CLOSED list on purpose. Until 2026-11-26 any bare name was skipped, so a typo in a
+         * `not_calls` (`memry` for `memory`) forbade a tool nobody has and the case tested nothing.
+         * Adding a name here is a deliberate act a reviewer sees; a typo is not.
+         */
+        val RESOLVED_BEHIND_A_ROUTER = setOf(
+            "navigate", "control_music", "play_music", "list_vehicles", "get_monthly_spend",
+        )
     }
 
     private val context = RuntimeEnvironment.getApplication()
@@ -68,6 +79,10 @@ class VoiceEvalOfflineTest {
      * Every tool a case NAMES must exist, whichever key names it. Until v2 only `calls` was checked,
      * so a typo in `not_calls` forbade a tool nobody has and the case quietly tested nothing; the
      * same held for `succeeded` / `not_succeeded` and now for the `tool:<spec>` tags.
+     *
+     * A BARE name (no `/action`) is resolved too, against the declared tools, every declared action
+     * value, and [RESOLVED_BEHIND_A_ROUTER]. It used to be skipped outright, which left exactly the
+     * typo this test exists to catch uncaught on the form the memory cases use.
      */
     @Test
     fun `every tool the committed cases name is on the voice surface`() {
@@ -114,10 +129,16 @@ class VoiceEvalOfflineTest {
             val tool = alt.substringBefore('/')
             val action = alt.substringAfter('/', "")
             val names = surface[tool]
-            // A bare name may be a resolved tool (e.g. list_vehicles behind a router): skip.
-            if (names == null && action.isEmpty()) continue
-            assertTrue("$id ($key): $tool is not on the voice surface", names != null)
-            if (action.isNotEmpty()) {
+            if (action.isEmpty()) {
+                // A bare name is a declared tool, a declared action value, or one the router resolves.
+                val known = names != null || alt in surface.values.flatten() || alt in RESOLVED_BEHIND_A_ROUTER
+                assertTrue(
+                    "$id ($key): $alt is not a tool, an action or a name the router resolves. " +
+                        "If it is genuinely reached behind a router, add it to RESOLVED_BEHIND_A_ROUTER.",
+                    known,
+                )
+            } else {
+                assertTrue("$id ($key): $tool is not on the voice surface", names != null)
                 assertTrue("$id ($key): $tool has no action $action", action in names!!)
             }
             checked++

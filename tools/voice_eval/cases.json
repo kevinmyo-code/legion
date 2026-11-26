@@ -635,7 +635,7 @@
       "id": "codes_in_passing",
       "tags": ["chat", "save:none"],
       "say": "my cousin's bakery put up a new menu board, the discount codes are printed so small now, anyway the bread was great",
-      "why": "2026-11-19 phone audit: talk that mentioned codes in passing became clear_codes, and code then read the car's stored codes aloud",
+      "why": "2026-11-19 phone audit: talk that mentioned codes in passing became clear_codes, and code then read the car's stored codes aloud. Tagged `chat` 2026-11-26, deliberately a tightening: nothing in the sentence asks for anything, so no tool is right, not merely `car`. The `not_calls` stays for the sharper message on the exact regression this case was written for. Not on the gate list, so the tightening reaches a hand-run laptop pass and no ship gate",
       "expect": {"not_calls": ["car"]}
     },
     {
@@ -953,7 +953,7 @@
       "write": true,
       "why": "He asked in so many words, so the save is his. No `succeeded`: MemoryController sends writes to the engine only and refuses them in words offline, VoiceEvalRun refuses to start with an engine configured, and nothing in the harness fakes the controller, so a memory write never comes back successful on layer 1. The refusal is what the laptop check rides on: the save did not land, so nothing may say it did",
       "expect": {"calls": ["memory/remember"]},
-      "fixture": {"answer_not": ["(?i)(i'?ve|i have|that'?s) (remembered|saved|been saved)", "(?i)\bi'?ll remember that\b"]}
+      "fixture": {"answer_not": ["(?i)(i'?ve|i have|that'?s) (remembered|saved|been saved)", "(?i)\\bi'?ll remember that\\b"]}
     },
     {
       "id": "save_forget_asked",
