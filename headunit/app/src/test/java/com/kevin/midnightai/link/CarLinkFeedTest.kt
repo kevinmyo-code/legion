@@ -181,6 +181,55 @@ class CarLinkFeedTest {
         )
     }
 
+    /**
+     * Blocker 1 (RED review, 2026-11-25). Every other hand-over case above goes through
+     * [BeaconClient.handleForTest], which hands the reply BACK to its caller: the one hop the
+     * feature depends on, the send on the running socket, is the one hop none of them crosses.
+     * Here a real phone socket sends a real TOKEN to the running receiver's own port and must hear
+     * TOKEN_OK back, with the app's own listener registered (`install` above wires exactly what
+     * `MidnightApplication` wires). Telling [CarLink] before the send closed this socket under the
+     * reply, so the send threw, the loop ended and the phone heard nothing for ever.
+     */
+    @Test fun aHandOverIsAnsweredOnTheLiveSocketAlthoughStoringItRestartsTheReceiver() {
+        store.committed = keyA.copyOf()
+        BeaconClient.start(context)
+        waitFor("MNAI2 with a socket") {
+            BeaconClient.feedsForTest() != null && BeaconClient.localPortForTest() != null
+        }
+        val set = BeaconClient.feedsForTest()!!
+        val unitPort = BeaconClient.localPortForTest()!!
+        val hello = synchronized(set) { set.committed!!.hello(1000) }
+        val heard = PhoneLinkWire.decodeHello(PhoneLinkWire.unitToPhoneKey(keyA), hello, hello.size)!!
+        val token = "hu1_renewed-on-a-live-socket"
+        val frame = PhoneLinkWire.encodeToken(
+            PhoneLinkWire.phoneToUnitKey(keyA), ByteArray(16) { 11 }, 1, heard.challenge, token, "veh-11",
+        )
+        val phone = java.net.DatagramSocket()
+        try {
+            phone.soTimeout = 5_000
+            phone.send(
+                java.net.DatagramPacket(frame, frame.size, java.net.InetAddress.getLoopbackAddress(), unitPort),
+            )
+            val buffer = ByteArray(PhoneLinkWire.MAX_PACKET_BYTES)
+            val back = java.net.DatagramPacket(buffer, buffer.size)
+            // Red before the fix: the socket is closed by the restart before the reply is sent, so
+            // this times out.
+            phone.receive(back)
+            assertArrayEquals(
+                "the phone must hear the fingerprint of what the car stored",
+                PhoneLinkWire.fingerprint(token),
+                PhoneLinkWire.decodeTokenOk(PhoneLinkWire.unitToPhoneKey(keyA), back.data, back.length),
+            )
+        } finally {
+            phone.close()
+        }
+        assertEquals(token to "veh-11", store.handed.single())
+        // And the restart really did fire, so this test cannot pass with no listener registered.
+        waitFor("the receiver restarted under the new sign-in") {
+            BeaconClient.localPortForTest().let { it != null && it != unitPort }
+        }
+    }
+
     @Test fun aHandOverThisUnitCouldNotStoreIsNotAnswered() {
         store.committed = keyA.copyOf()
         store.takeToken = false

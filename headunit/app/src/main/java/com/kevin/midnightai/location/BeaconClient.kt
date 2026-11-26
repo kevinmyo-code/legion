@@ -378,15 +378,18 @@ object BeaconClient {
                 continue
             }
             // One bad datagram must never end the loop (review L10).
-            val reply = runCatching { handle(context, packet) }
+            val answer = runCatching { handle(context, packet) }
                 .onFailure { Log.w(TAG, "Beacon datagram dropped", it) }.getOrNull()
             // Rev 9: the only datagram this unit sends in reply to one. Sent from here, not from
             // inside handle(), so the send path stays in one place beside the HELLO loop's.
-            if (reply != null) {
+            if (answer?.reply != null) {
                 runCatching {
-                    sock.send(DatagramPacket(reply, reply.size, packet.address, packet.port))
+                    sock.send(DatagramPacket(answer.reply, answer.reply.size, packet.address, packet.port))
                 }.onFailure { Log.v(TAG, "TOKEN_OK send failed: ${it.message}") }
             }
+            // AFTER the send, never before: see [Answer]. The write already happened, so the
+            // receiver is rebuilt even when the send threw.
+            answer?.afterSend?.invoke()
         }
     }
 
@@ -397,12 +400,30 @@ object BeaconClient {
     @Volatile internal var rereadBaseMs = 5_000L
     private const val MAX_REREADS = 6
 
-    internal fun handleForTest(context: Context, data: ByteArray): ByteArray? =
-        handle(context, DatagramPacket(data, data.size, java.net.InetAddress.getLoopbackAddress(), BeaconProtocol.PORT))
+    internal fun handleForTest(context: Context, data: ByteArray): ByteArray? {
+        val answer = handle(context, DatagramPacket(data, data.size, java.net.InetAddress.getLoopbackAddress(), BeaconProtocol.PORT))
+        answer?.afterSend?.invoke()
+        return answer?.reply
+    }
 
-    /** What to send straight back, if anything (rev 9's TOKEN_OK and nothing else). */
-    private fun handle(context: Context, packet: DatagramPacket): ByteArray? {
-        var reply: ByteArray? = null
+    /** The local port this run's socket is listening on, or null when it is not running. */
+    internal fun localPortForTest(): Int? = socket?.takeIf { !it.isClosed }?.localPort
+
+    /**
+     * What this unit sends straight back (rev 9's TOKEN_OK and nothing else), and what may happen
+     * only once that datagram has LEFT.
+     *
+     * [afterSend] exists because telling [com.kevin.midnightai.link.CarLink] inside [handle] threw
+     * the reply away: a pairing change restarts the receiver (review H2) and [stop] closes the very
+     * socket the reply has not been sent on yet, so the send threw, the loop ended, and the phone
+     * never heard that the car had stored the token. It then handed the same one over for ever and
+     * retired nothing.
+     */
+    private class Answer(val reply: ByteArray?, val afterSend: (() -> Unit)? = null)
+
+    /** What to send straight back and what to do after it has gone, if anything. */
+    private fun handle(context: Context, packet: DatagramPacket): Answer? {
+        var answer: Answer? = null
         run {
             val set = feeds
             if (set != null) {
@@ -427,7 +448,7 @@ object BeaconClient {
                         // A credential that arrived under the PENDING key is not acted on: the
                         // commit below would overwrite the very token an answer would be about.
                         if (!result.underPending) {
-                            reply = keepHandedToken(context, set, out)
+                            answer = keepHandedToken(context, set, out)
                         }
                     }
                     is PhoneFeed.Outcome.Rejected -> Unit
@@ -452,7 +473,7 @@ object BeaconClient {
                     com.kevin.midnightai.link.CarLink.store.dropPending()
                     com.kevin.midnightai.link.CarLink.changed(context)
                 }
-                return reply
+                return answer
             }
             if (mode != com.kevin.midnightai.link.FeedMode.MNAI1) return null
             // The phone's zone (trusted clock, 2026-10-13): same pinning rule as a fix, and
@@ -488,7 +509,7 @@ object BeaconClient {
             _linkUp.value = true
             LocationController.acceptExternal(fix)
         }
-        return reply
+        return answer
     }
 
     /**
@@ -496,12 +517,14 @@ object BeaconClient {
      * stored. Null (no answer) when the write did not happen, so the phone keeps the credential the
      * car is using and hands this one over again at the next contact. On the IO thread the receive
      * loop runs on: the write decrypts and commits.
+     *
+     * The receiver is rebuilt under the new state only AFTER the answer has gone (see [Answer]).
      */
-    private fun keepHandedToken(context: Context, set: LinkFeedSet, out: PhoneFeed.Outcome.Credential): ByteArray? {
+    private fun keepHandedToken(context: Context, set: LinkFeedSet, out: PhoneFeed.Outcome.Credential): Answer? {
         val stored = com.kevin.midnightai.link.CarLink.store.acceptHandedToken(out.token, out.vehicleId)
         if (!stored) return null
-        com.kevin.midnightai.link.CarLink.changed(context)
-        return synchronized(set) { set.tokenOk(PhoneLinkWire.fingerprint(out.token)) }
+        val reply = synchronized(set) { set.tokenOk(PhoneLinkWire.fingerprint(out.token)) }
+        return Answer(reply) { com.kevin.midnightai.link.CarLink.changed(context) }
     }
 
     /**
