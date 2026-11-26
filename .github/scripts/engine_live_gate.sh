@@ -18,17 +18,29 @@
 #  3. Extra checks a ship names (at most 3): repo files server/tests/realrun_<name>.py AT THE GATED
 #     COMMIT (never passed in as code), each with its own folder and the extra cap; a pass is pytest
 #     exit 0 AND a line "<WORDS> VERDICT: PASS" (the carry checks print "CARRY VERDICT: PASS").
-# Writes <out dir>/summary.txt: one line per step, verdicts and spend estimates only (no model words).
+# Writes <out dir>/summary.txt: one line per step, verdicts and spend estimates only (no model words),
+# plus, on a failure, WHERE it broke: the pytest node id and the assert's line number, each backed by
+# code that is public at the gated commit (gate_fail_where.py; v2 slice 3). Never an assert's text.
 # Raw pytest output stays in <out dir>/raw/ on the runner and is never uploaded.
 set -uo pipefail
 SERVER=${1:?server dir}; OUT=${2:?out dir}; EXTRAS=${3:-}; EXTRA_CAP=${4:-0.12}
 PYTEST=${PYTEST:-uv run --no-sync pytest}
+HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 RAW=$OUT/raw
 mkdir -p "$RAW"
 SUMMARY=$OUT/summary.txt
 : > "$SUMMARY"
 note() { echo "$*"; echo "$*" >> "$SUMMARY"; }
 fail() { note "RESULT: FAIL ($*)"; exit 1; }
+# where <pytest output> <test file as this script ran it>: the node id and assert line, or
+# `node: unclassified`. Reads no other line of that output, which the gated commit's tests wrote.
+# PYTHON3 is for a machine whose interpreter is not called python3 (the laptop's ship scripts).
+where() {
+  local got
+  got=$("${PYTHON3:-python3}" "$HERE/gate_fail_where.py" "$1" "$2" "$SERVER" 2>/dev/null) || got=""
+  [ -n "$got" ] || got="node: unclassified (nothing read the output)"
+  while IFS= read -r l; do note "$l"; done <<<"$got"
+}
 spent() { cat "$1/spent.txt" 2>/dev/null || echo "?"; }
 
 [[ "$EXTRA_CAP" =~ ^0\.[0-9]{1,3}$ ]] || fail "extra cap must look like 0.12"
@@ -62,9 +74,13 @@ if gate_passed "$rc" "$G1"; then
 elif [ "$(gate_class "$G1")" = HEARD_BACK ]; then
   note "gate: first run FAIL on a heard-back assert only; whole gate once more (fail_twice)"
   G2=$RAW/gate-retry; gate_run "$G2"; rc=$?
-  gate_passed "$rc" "$G2" || fail "gate failed twice"
+  if ! gate_passed "$rc" "$G2"; then
+    where "$G2/pytest.txt" tests/realrun_web_cascade.py
+    fail "gate failed twice"
+  fi
   note "gate: PASS on the retry (spent about \$$(spent "$G1") + \$$(spent "$G2"))"
 else
+  where "$G1/pytest.txt" tests/realrun_web_cascade.py
   fail "gate: first run FAIL, not a heard-back assert: no retry"
 fi
 
@@ -74,6 +90,7 @@ rc=$?
 if [ "$rc" = 0 ] && grep -qE '(^| )1 passed' "$RAW/chip.txt" && ! grep -qE '[0-9]+ skipped' "$RAW/chip.txt"; then
   note "chip turn: PASS"
 else
+  where "$RAW/chip.txt" tests/realrun_demo_suggestions.py
   fail "chip turn did not pass (exit $rc, or skipped)"
 fi
 
@@ -94,6 +111,7 @@ for name in "${NAMES[@]}"; do
   if [ "$rc" = 0 ] && grep -qE '^[A-Z][A-Z _]* VERDICT: PASS$' "$X/pytest.txt"; then
     note "extra $name: PASS (spent about \$$(spent "$X"), cap \$$EXTRA_CAP)"
   elif [ "$rc" != 0 ]; then
+    where "$X/pytest.txt" "tests/$name.py"
     fail "extra $name: FAIL (a rule broken or a crash; exit $rc)"
   else
     fail "extra $name: NO VERDICT (no 'VERDICT: PASS' line; a budget skip?)"

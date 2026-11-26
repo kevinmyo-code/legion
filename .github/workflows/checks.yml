@@ -46,12 +46,12 @@ jobs:
         run: python -m pip install --quiet pytest==8.4.2
 
       # The checks' own tests, the tier script's tests, and the voice eval's free no-key half (the
-      # scorer's rules and the committed case files' shape). The voice eval tests live here rather
-      # than in android.yml because this workflow has no path filter, so they run on every PR, and
-      # because they need no Gradle, no key and no network: stdlib and pytest only.
-      # Verdict from the XML, never the console.
+      # scorer's rules, the committed case files' shape, and which failure reasons the paid gate may
+      # upload). The voice eval tests live here rather than in android.yml because this workflow has
+      # no path filter, so they run on every PR, and because they need no Gradle, no key and no
+      # network: stdlib and pytest only. Verdict from the XML, never the console.
       - name: Tests for the checks, the tier script and the voice eval cases
-        run: python -m pytest tools/checks tools/tests/test_blast_radius.py tools/tests/test_voice_eval.py tools/tests/test_voice_eval_cases.py --junitxml=checks-junit.xml || echo "pytest exited $? (verdict comes from the XML below)"
+        run: python -m pytest tools/checks tools/tests/test_blast_radius.py tools/tests/test_voice_eval.py tools/tests/test_voice_eval_cases.py tools/tests/test_gate_reasons.py --junitxml=checks-junit.xml || echo "pytest exited $? (verdict comes from the XML below)"
 
       - name: Totals from the JUnit XML
         if: ${{ !cancelled() }}

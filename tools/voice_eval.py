@@ -366,6 +366,38 @@ def arg_ok(value, matcher, today: datetime.date) -> bool:
     return ok
 
 
+class Fail(str):
+    """One failure's own words, carrying its reason CODE (v2 slice 3).
+
+    A `str` subclass on purpose: every reader of `Verdict.failures` keeps working, the words still go
+    in the local scorecard, and the code rides along for the one place the words may not go, the
+    gate's uploaded artifact. The code set's grammar is NOT defined here: the gate validates it in
+    its own trusted checkout (`.github/scripts/validate_gate_reasons.py`), because the commit under
+    test owns this file and must not be able to write its own passport. `tools/tests/test_gate_reasons.py`
+    holds the two honest: every code this file can emit is one that validator accepts.
+    """
+
+    code: str
+
+    def __new__(cls, code: str, text: str) -> "Fail":
+        f = super().__new__(cls, text)
+        f.code = code
+        return f
+
+    def at_turn(self, prefix: str) -> "Fail":
+        return Fail(self.code, prefix + self) if prefix else self
+
+
+def reason_of(failures: list) -> str | None:
+    """The first failure's reason code, or None when nothing failed. One code a case: the gate's row
+    says what broke first, which is what a reader acts on; the local scorecard still prints them all."""
+    for f in failures:
+        code = getattr(f, "code", None)
+        if code:
+            return code
+    return "unclassified" if failures else None
+
+
 @dataclass
 class Verdict:
     passed: bool
@@ -379,134 +411,142 @@ class Verdict:
 def check_turn(turn: Turn, expect: dict, today: datetime.date, *, phone: bool, write: bool,
                allow_writes: bool) -> tuple[list[str], list[str]]:
     fails, warns = [], []
+
+    def bad(code: str, text: str) -> None:
+        """Every failure goes through here, so none can exist without a reason code (v2 slice 3)."""
+        fails.append(Fail(code, text))
+
     seen = ", ".join(c.key for c in turn.calls) or "no tool"
     for spec in expect.get("calls", []):
         if not any(matches(c, spec) for c in turn.calls):
-            fails.append(f"expected call {spec}; saw {seen}")
+            bad(f"missing_call:{spec}", f"expected call {spec}; saw {seen}")
     for spec in expect.get("not_calls", []):
         if any(matches(c, spec) for c in turn.calls):
-            fails.append(f"called {spec}, which it must not")
+            bad(f"forbidden_call:{spec}", f"called {spec}, which it must not")
     for spec, params in expect.get("args", {}).items():
         cands = [c for c in turn.calls if matches(c, spec)]
         if not cands:
             continue  # already reported by calls
         if not any(all(arg_ok(window_args(c).get(k), mt, today) for k, mt in params.items()) for c in cands):
             got = "; ".join(json.dumps(c.args, sort_keys=True) for c in cands)
-            fails.append(f"{spec} args {json.dumps(params)} not met (today {today}); got {got}")
+            bad(f"args:{spec}.{'+'.join(sorted(params))}",
+                f"{spec} args {json.dumps(params)} not met (today {today}); got {got}")
     # `args_all`: EVERY matching call must fit, so a wrong first call that the model later corrects
     # still fails (2026-11-15: "and tomorrow?" asked for today+2 first, then today+1).
     for spec, params in expect.get("args_all", {}).items():
         for c in (c for c in turn.calls if matches(c, spec)):
             if not all(arg_ok(window_args(c).get(k), mt, today) for k, mt in params.items()):
-                fails.append(f"{spec} call {json.dumps(c.args, sort_keys=True)} misses {json.dumps(params)} (today {today})")
+                bad(f"args_all:{spec}.{'+'.join(sorted(params))}",
+                    f"{spec} call {json.dumps(c.args, sort_keys=True)} misses {json.dumps(params)} (today {today})")
     answer = turn.answer
     # Reply length bounds (2026-11-19, T13): varied, never long.
     if "max_words" in expect and len(answer.split()) > expect["max_words"]:
-        fails.append(f"answer has {len(answer.split())} words, over {expect['max_words']}")
+        bad("len:max_words", f"answer has {len(answer.split())} words, over {expect['max_words']}")
     if "max_sentences" in expect and len(sentences(answer)) > expect["max_sentences"]:
-        fails.append(f"answer has {len(sentences(answer))} sentences, over {expect['max_sentences']}")
-    for rx in expect.get("answer_has", []):
+        bad("len:max_sentences", f"answer has {len(sentences(answer))} sentences, over {expect['max_sentences']}")
+    # A regex is the case's own text, so the code names its INDEX in the list, never the pattern.
+    for n, rx in enumerate(expect.get("answer_has", [])):
         if not re.search(rx, answer, re.I):
-            fails.append(f"answer lacks /{rx}/")
-    for rx in expect.get("answer_not", []):
+            bad(f"answer_has#{n}", f"answer lacks /{rx}/")
+    for n, rx in enumerate(expect.get("answer_not", [])):
         if re.search(rx, answer, re.I):
-            fails.append(f"answer has /{rx}/")
+            bad(f"answer_not#{n}", f"answer has /{rx}/")
     # The holding line said as the tool started (laptop harness only; the phone logs no words for it).
     if not phone:
         heard_fillers = " | ".join(turn.fillers)
-        for rx in expect.get("filler_has", []):
+        for n, rx in enumerate(expect.get("filler_has", [])):
             if not any(re.search(rx, f, re.I) for f in turn.fillers):
-                fails.append(f"no holding line matches /{rx}/; heard {heard_fillers or 'none'}")
+                bad(f"filler_has#{n}", f"no holding line matches /{rx}/; heard {heard_fillers or 'none'}")
         if expect.get("no_filler") and turn.fillers:
-            fails.append(f"a holding line was said: {heard_fillers}")
+            bad("no_filler", f"a holding line was said: {heard_fillers}")
     # The day a calendar read covered (2026-11-17): on the laptop, graded on what was READ, so a wrong
     # date the model sent and the phone corrected to the day he said is right. The phone logs no read
     # window, so there every calendar call's own from/to ARGUMENT must cover the day (2026-11-18 review:
     # the phone layer graded no date at all).
-    for day in expect.get("read_day", []):
+    for n, day in enumerate(expect.get("read_day", [])):
         want = expand(day, today)
         if phone:
             reads = [c for c in turn.calls if matches(c, "day/read_calendar")]
             if not reads:
-                fails.append(f"no calendar call; wanted {want}")
+                bad("missing_call:day/read_calendar", f"no calendar call; wanted {want}")
             for c in reads:
                 span = [_arg_day(window_args(c).get(k), today) for k in ("from", "to")]
                 if not (span[0] and span[1] and span[0] <= want <= span[1]):
-                    fails.append(f"a calendar call asked for {json.dumps(c.args, sort_keys=True)}, not {want}")
+                    bad(f"read_day#{n}", f"a calendar call asked for {json.dumps(c.args, sort_keys=True)}, not {want}")
             continue
         if not turn.read_windows:
-            fails.append(f"no calendar read; wanted {want}")
+            bad("missing_call:day/read_calendar", f"no calendar read; wanted {want}")
         elif not all(_window_covers(w, want) for w in turn.read_windows):
-            fails.append(f"a calendar read missed {want}: read {', '.join(turn.read_windows)}")
+            bad(f"read_day#{n}", f"a calendar read missed {want}: read {', '.join(turn.read_windows)}")
     # Expression tags (2026-11-17): never in what he reads or what is kept, never read aloud as words.
     if re.search(r"<\s*[a-z]|\bchuckles?\b|\bsighs\b", answer, re.I):
-        fails.append("the answer text carries an expression tag or its word")
+        bad("expression_tag", "the answer text carries an expression tag or its word")
     if not phone:
-        for rx in expect.get("tts_not", []):
+        for n, rx in enumerate(expect.get("tts_not", [])):
             if re.search(rx, turn.to_voice, re.I):
-                fails.append(f"the voice was handed /{rx}/: {turn.to_voice[:120]}")
+                bad(f"tts_not#{n}", f"the voice was handed /{rx}/: {turn.to_voice[:120]}")
     # A lone word may not change anything without his yes (2026-11-19, lone_word_write): the write
     # is refused in code and the answer asks.
     if expect.get("asks_yes"):
         if any(c.success and _looks_write(c) for c in turn.calls):
-            fails.append("a write went through on a lone word")
+            bad("asks_yes:wrote", "a write went through on a lone word")
         if any(_looks_write(c) for c in turn.calls) and not any(c.needs_yes for c in turn.calls):
-            fails.append("a write was tried on a lone word and not held for a yes")
+            bad("asks_yes:not_held", "a write was tried on a lone word and not held for a yes")
     # The yes after a held lone word reaches the controller: nothing in the turn is held again.
     if expect.get("not_held") and any(c.needs_yes for c in turn.calls):
-        fails.append("a write was held again after his yes")
+        bad("not_held", "a write was held again after his yes")
     if expect.get("no_empty_claim"):
         # An open task in the result: a task row not done, or a non-empty `due` block (fix/greet-and-due).
         # The `due` block leads with its counts, so `"open":N` survives the audit line's 400-character cut.
         open_task = any('"done":false' in c.response or re.search(r'"due":\[\{|"due":\{"open":[1-9]', c.response)
                         for c in turn.calls)
         if open_task and EMPTY_CLAIM.search(answer):
-            fails.append("said nothing is due while a tool result shows an open task")
+            bad("no_empty_claim", "said nothing is due while a tool result shows an open task")
     # The spoken miss came from the transcript guard, not from the model's own words (2026-11-18 review:
     # `answer_has catch` passed on the model saying it did not catch something).
     if expect.get("missed") and not phone and not turn.missed:
-        fails.append("the transcript reached the model; wanted the spoken miss")
+        bad("missed", "the transcript reached the model; wanted the spoken miss")
     if expect.get("ends") and not phone and not turn.ended:
-        fails.append("the conversation did not end on a stop or goodbye")
+        bad("ends:not_ended", "the conversation did not end on a stop or goodbye")
     if expect.get("ends") is False and turn.ended:
-        fails.append("the conversation ended on words that are not a stop or goodbye")
+        bad("ends:ended", "the conversation ended on words that are not a stop or goodbye")
     if expect.get("silent") or expect.get("ends"):
         # Nothing was heard, so nothing is said and nothing runs (2026-11-17: no-voice audio is silence).
         if answer:
-            fails.append(f"said something on silence: {answer[:80]}")
+            bad("silent:said", f"said something on silence: {answer[:80]}")
         if turn.calls:
-            fails.append("called a tool on silence")
+            bad("silent:called", "called a tool on silence")
     elif not answer:
-        fails.append("no answer text")
+        bad("no_answer", "no answer text")
     # Outcome checks (2026-11-15): the change landed, whichever tool the model reached it by. Not
     # on a phone write that test mode refuses (nothing can land there).
     if not (phone and write and not allow_writes):
         for spec in expect.get("succeeded", []):
             if not any(matches(c, spec) and c.success for c in turn.calls):
-                fails.append(f"no successful call {spec}; saw {seen}")
-        for rx in (expand(r, today) for r in expect.get("result_has", [])):
+                bad(f"missing_success:{spec}", f"no successful call {spec}; saw {seen}")
+        for n, rx in enumerate(expand(r, today) for r in expect.get("result_has", [])):
             if not any(c.success and re.search(rx, c.response or "", re.I) for c in turn.calls):
-                fails.append(f"no successful tool result has /{rx}/")
+                bad(f"result_has#{n}", f"no successful tool result has /{rx}/")
     # The change must NOT land in this turn (2026-11-22: a calendar entry's remove asks first and
     # removes only on his yes in the next turn). Holds on every layer: a refused write never succeeds.
     for spec in expect.get("not_succeeded", []):
         if any(matches(c, spec) and c.success for c in turn.calls):
-            fails.append(f"a call {spec} succeeded in a turn where nothing may change")
+            bad(f"not_succeeded:{spec}", f"a call {spec} succeeded in a turn where nothing may change")
     # A question that only reads must not change anything (2026-11-15: "which cars do I have"
     # called car/switch_vehicle on the laptop eval).
     if not write:
         for c in turn.calls:
             if _looks_write(c) and not c.needs_yes:
-                fails.append(f"changed something on a question that only reads: {c.key}")
+                bad(f"write_on_read:{c.name}", f"changed something on a question that only reads: {c.key}")
     # Writes on the phone: refused unless the case allows them, and never claimed.
     for c in turn.calls:
         if phone and not allow_writes and c.success and not c.refused_for_test and _looks_write(c):
-            fails.append(f"WRITE WENT THROUGH in test mode: {c.key}")
+            bad(f"write_in_test_mode:{c.name}", f"WRITE WENT THROUGH in test mode: {c.key}")
     if phone and write and not allow_writes:
         if not any(c.refused_for_test for c in turn.calls):
             warns.append("write case: no test-mode refusal seen (the model may not have called the tool)")
         if CLAIM.search(answer) and not NOT_DONE.search(answer):
-            fails.append("claimed a write that test mode refused")
+            bad("claimed_refused_write", "claimed a write that test mode refused")
     return fails, warns
 
 
@@ -571,13 +611,14 @@ def score_case(case: dict, run: CaseRun, *, phone: bool) -> Verdict:
     fails, warns = [], []
     turns = case_turns(case)
     if not run.ended:
-        fails.append("case did not finish (timed out or aborted)")
+        fails.append(Fail("timeout", "case did not finish (timed out or aborted)"))
     if len(run.turns) < len(turns):
-        fails.append(f"{len(run.turns)} of {len(turns)} turns answered")
+        fails.append(Fail(f"turns:{len(run.turns)}_of_{len(turns)}",
+                          f"{len(run.turns)} of {len(turns)} turns answered"))
     # A spoken case whose voice made no audio proves nothing: an empty clip is heard as silence and
     # would pass a `silent` case (2026-11-18 review).
     if case.get("stt_audio") and not phone and (not run.voiced_ms or 0 in run.voiced_ms):
-        fails.append("the voice made no audio for a spoken turn; nothing was tested")
+        fails.append(Fail("no_audio", "the voice made no audio for a spoken turn; nothing was tested"))
     for i, (spec, got) in enumerate(zip(turns, run.turns)):
         expect = dict(spec.get("expect", {}))
         if not phone:
@@ -588,7 +629,7 @@ def score_case(case: dict, run: CaseRun, *, phone: bool) -> Verdict:
         f, w = check_turn(got, expect, run.day, phone=phone, write=bool(case.get("write")),
                           allow_writes=bool(case.get("allow_writes")))
         prefix = f"turn {i + 1}: " if len(turns) > 1 else ""
-        fails += [prefix + x for x in f]
+        fails += [x.at_turn(prefix) for x in f]
         warns += [prefix + x for x in w]
     # The `chat` tag is a CHECK, not a label (v2 slice 2): the case said nothing that asks for a
     # tool, so no tool may run. It is scored off the calls the row already carries, never off a
@@ -597,7 +638,11 @@ def score_case(case: dict, run: CaseRun, *, phone: bool) -> Verdict:
     if "chat" in case.get("tags", []):
         called = sorted({c.key for t in run.turns for c in t.calls})
         if called:
-            fails.append(f"a chat case called {', '.join(called)}; a chat case calls no tool")
+            # The code names the FIRST tool, by tool name alone: an action is the model's own
+            # argument, so it is not a name this repo already says in public. The words below keep
+            # the full list for whoever reads the local scorecard.
+            fails.append(Fail(f"chat_called:{sorted({c.name for t in run.turns for c in t.calls})[0]}",
+                              f"a chat case called {', '.join(called)}; a chat case calls no tool"))
     # `read_through: true` is a precondition, not a check: a turn that had to be answered from outside
     # text (a search) and carries no read-through mark tested nothing, so the case is inconclusive,
     # never a pass (review 1121 EVAL). Only for a run that finished with every turn answered.
@@ -711,7 +756,7 @@ def scorecard(cases: list[dict], runs: list[CaseRun], run_facts: dict, *, phone:
         tools = " ".join(c.key + ("[refused]" if c.refused_for_test else "") for t in run.turns for c in t.calls) or "-"
         turn_ms = [t.timings.get("test_turn_ms") or t.timings.get("eot_reply_ms") for t in run.turns]
         ms = "/".join(str(x) for x in turn_ms if x is not None) or (str(run.ms) if run.ms else "-")
-        row = {"id": case["id"], "pass": v.passed, "proves_nothing": na, "inconclusive": v.inconclusive, "known_limit": v.known_limit, "llm": v.llm, "tools": tools, "ms": ms,
+        row = {"id": case["id"], "pass": v.passed, "reason": reason_of(v.failures), "proves_nothing": na, "inconclusive": v.inconclusive, "known_limit": v.known_limit, "llm": v.llm, "tools": tools, "ms": ms,
                "tokens": tok, "usd": str(cost), "priced": not any("no price" in n for n in notes), "failures": v.failures, "warnings": v.warnings,
                "answer": " | ".join(t.answer for t in run.turns), "notes": run.notes,
                "timings": run.timings}

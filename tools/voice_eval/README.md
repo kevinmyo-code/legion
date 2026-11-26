@@ -42,8 +42,26 @@ The no-key half runs in CI on every change, and costs nothing:
 
 - `VoiceEvalOfflineTest` (android.yml, which watches `tools/voice_eval/**`): every call a case names
   exists on the voice surface, and the real tools read the fixture.
-- `python -m pytest tools/tests/test_voice_eval.py tools/tests/test_voice_eval_cases.py` (checks.yml,
-  no path filter, so every PR): the scorer's own rules, and the committed case files' shape.
+- `python -m pytest tools/tests/test_voice_eval.py tools/tests/test_voice_eval_cases.py
+  tools/tests/test_gate_reasons.py` (checks.yml, no path filter, so every PR): the scorer's own
+  rules, the committed case files' shape, and which failure reasons the paid gate may upload.
+
+## Why a failed case failed
+
+Every failure the scorer raises carries a short reason CODE beside its words (`Fail` in
+`tools/voice_eval.py`), and a case's row carries the first one as `reason`: `missing_call:<tool>`,
+`chat_called:<tool>`, `args:<tool>.<key>`, `answer_not#<n>` (the pattern's INDEX, never the pattern),
+`len:max_words`, `turns:1_of_2`, `timeout` and so on. Locally you get the words; the codes matter for
+the paid cloud gate, whose artifact is public:
+
+- `.github/workflows/gates.yml` builds the uploaded scorecard with NO reason, then the TRUSTED
+  checkout's `.github/scripts/validate_gate_reasons.py` adds one per failed case, and only a code the
+  TRUSTED copy of that case could have produced. Anything else is `unclassified`, so the commit under
+  test cannot write its own passport. A brand new case reads `unclassified` until it lands on dev.
+- The engine's half (`.github/scripts/engine_live_gate.sh`) says WHERE it broke: the pytest node id
+  and the assert's LINE number (`.github/scripts/gate_fail_where.py`), each backed by code that is
+  public at the gated commit. Never the assert's text, never the model's words. Its `summary.txt`
+  starts life as `RESULT: UNKNOWN (gate did not start)`, so an empty artifact is impossible.
 
 ## Layer 2: the phone over adb
 

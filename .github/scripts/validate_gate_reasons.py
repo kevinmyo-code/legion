@@ -1,0 +1,174 @@
+#!/usr/bin/env python3
+"""validate_gate_reasons.py <raw voice.json> <scorecard.json> [trusted root]  (gates.yml, v2 slice 3)
+
+Why this file exists. A failed paid gate run used to say only which case ids failed, so nobody could
+tell WHY without paying for another run. The phone scorer now gives every failure a short reason code
+(`tools/voice_eval.py`, class `Fail`). But the scorer, the cases and the model's own words all live in
+the COMMIT UNDER TEST, and a gate artifact on a public repo is readable by any signed-in GitHub user
+and is not masked. So a reason may not be copied up on the word of the commit being gated.
+
+This script runs from the workflow's TRUSTED checkout (this run's own dev commit). For each failed
+case it works out, from the TRUSTED copy of that case, the closed set of codes that case could
+possibly produce, and uploads the gated commit's reason only if it is one of them. Anything else
+becomes `unclassified`. So the artifact says either something the trusted tree already says in
+public, or nothing.
+
+The set is per case, not one set for the whole run, and that is the point: a case with no reply-length
+bound cannot report `len:max_words`, and a case naming one tool cannot report a failure about another.
+Typically two to six codes are possible for a case, so a malicious commit's choice carries a couple of
+bits rather than free text. The widest sets are the ones that have to name a tool nobody wrote down in
+advance: `chat_called:`, `write_on_read:` and `write_in_test_mode:` take any name on the published
+voice surface (about 140), because the whole point of those three is to say which tool wrongly ran.
+That residual channel is named here on purpose rather than left for a reader to find.
+
+Fail-safe by construction: the scorecard it is handed holds NO reason, and this script only ever adds
+one. On any trouble it prints a note, adds nothing, and exits 0, which leaves exactly today's
+artifact. It is never the reason an artifact is lost.
+
+A legitimate reason naming a tool or a bound that exists only in the gated commit (a brand new case)
+comes out `unclassified` until that commit lands on dev. That is the price of a trusted list, and it
+is the right way round.
+"""
+from __future__ import annotations
+
+import json
+import re
+import sys
+from pathlib import Path
+
+MAX_ROWS = 500
+MAX_REASON = 120
+WORD = re.compile(r"^[a-z0-9_]{1,40}$")
+
+# Codes no case definition can rule out: a run can always break off, answer nothing, or carry an
+# expression tag, and a case the gate could not score at all gets `unclassified`.
+ALWAYS = {"unclassified", "timeout", "no_answer", "expression_tag"}
+# expect key -> the code(s) it makes possible, for the bounds that are a plain flag.
+FLAG_CODES = {
+    "max_words": ["len:max_words"],
+    "max_sentences": ["len:max_sentences"],
+    "no_filler": ["no_filler"],
+    "no_empty_claim": ["no_empty_claim"],
+    "missed": ["missed"],
+    "not_held": ["not_held"],
+    "asks_yes": ["asks_yes:wrote", "asks_yes:not_held"],
+    "silent": ["silent:said", "silent:called"],
+    "ends": ["ends:not_ended", "ends:ended", "silent:said", "silent:called"],
+}
+# expect key -> the code that names an index into its list of patterns (never the pattern itself).
+INDEX_CODES = ["answer_has", "answer_not", "filler_has", "tts_not", "result_has", "read_day"]
+# expect key -> the code that quotes the tool spec the case itself wrote down.
+SPEC_CODES = {"calls": "missing_call", "not_calls": "forbidden_call",
+              "succeeded": "missing_success", "not_succeeded": "not_succeeded"}
+
+
+def surface_names(root: Path) -> set[str]:
+    """Every tool name the TRUSTED tree publishes. `tools/voice_guide.py` scans the voice surface for
+    `docs/voice.html`, so these names are public already; a failure to read it narrows this set,
+    never widens it."""
+    names: set[str] = set()
+    sys.path.insert(0, str(root / "tools"))
+    try:
+        import voice_guide  # noqa: PLC0415 - the TRUSTED tree's copy, found through sys.path above
+
+        names |= set(voice_guide.declared_tools())
+    except Exception as e:  # noqa: BLE001
+        print(f"reason check: no tool surface from the trusted tree ({type(e).__name__})")
+    return {n for n in names if WORD.match(n)}
+
+
+def trusted_cases(root: Path) -> dict[str, dict]:
+    """The committed cases at the TRUSTED commit, by id."""
+    out: dict[str, dict] = {}
+    for name in ("cases.json", "reply_length.json"):
+        try:
+            doc = json.loads((root / "tools" / "voice_eval" / name).read_text(encoding="utf-8"))
+            for case in doc.get("cases", []) if isinstance(doc, dict) else doc:
+                if isinstance(case, dict) and isinstance(case.get("id"), str):
+                    out[case["id"]] = case
+        except Exception as e:  # noqa: BLE001
+            print(f"reason check: could not read trusted {name} ({type(e).__name__})")
+    return out
+
+
+def _turns(case: dict) -> list[dict]:
+    if "turns" in case and isinstance(case["turns"], list):
+        return [t for t in case["turns"] if isinstance(t, dict)]
+    return [case]
+
+
+def allowed_codes(case: dict, names: set[str]) -> set[str]:
+    """Every reason code the TRUSTED copy of this case could produce. Nothing else may be uploaded."""
+    out = set(ALWAYS)
+    turns = _turns(case)
+    out |= {f"turns:{k}_of_{len(turns)}" for k in range(len(turns))}
+    if case.get("stt_audio"):
+        out.add("no_audio")
+    if "chat" in (case.get("tags") or []):
+        out |= {f"chat_called:{n}" for n in names}
+    if not case.get("write"):
+        out |= {f"write_on_read:{n}" for n in names}
+    if not case.get("allow_writes"):
+        out |= {f"write_in_test_mode:{n}" for n in names}
+        out.add("claimed_refused_write")
+    for turn in turns:
+        expect = dict(turn.get("expect") or {})
+        fixture = turn.get("fixture") or {}
+        for key, code in SPEC_CODES.items():
+            out |= {f"{code}:{s}" for s in expect.get(key, []) if isinstance(s, str)}
+        for key, codes in FLAG_CODES.items():
+            if key in expect:
+                out |= set(codes)
+        for key in INDEX_CODES:
+            n = len(expect.get(key) or []) + len(fixture.get(key) or [])
+            out |= {f"{key}#{i}" for i in range(n)}
+        if expect.get("read_day"):
+            out.add("missing_call:day/read_calendar")  # the phone layer's own shape of that miss
+        for key, code in (("args", "args"), ("args_all", "args_all")):
+            block = expect.get(key)
+            if isinstance(block, dict):
+                for spec, params in block.items():
+                    if isinstance(spec, str) and isinstance(params, dict):
+                        out.add(f"{code}:{spec}.{'+'.join(sorted(k for k in params if isinstance(k, str)))}")
+    return out
+
+
+def check(reason, case: dict | None, names: set[str]) -> str:
+    """The reason to upload for a FAILED case: the one given, or `unclassified`."""
+    if case is None or not isinstance(reason, str) or not reason or len(reason) > MAX_REASON:
+        return "unclassified"
+    return reason if reason in allowed_codes(case, names) else "unclassified"
+
+
+def main(argv: list[str]) -> int:
+    raw_path, card_path = Path(argv[1]), Path(argv[2])
+    root = Path(argv[3]) if len(argv) > 3 else Path(__file__).resolve().parents[2]
+    raw = json.loads(raw_path.read_text(encoding="utf-8"))
+    card = json.loads(card_path.read_text(encoding="utf-8"))
+    rows = card.get("cases")
+    if not isinstance(rows, list) or len(rows) > MAX_ROWS:
+        print("reason check: the scorecard has no usable case list; no reason is added")
+        return 0
+    names = surface_names(root)
+    cases = trusted_cases(root)
+    reasons = {r["id"]: r.get("reason") for r in raw.get("cases", [])[:MAX_ROWS]
+               if isinstance(r, dict) and isinstance(r.get("id"), str)}
+    kept = dropped = 0
+    for row in rows:
+        if not isinstance(row, dict) or row.get("status") != "fail":
+            continue
+        verdict = check(reasons.get(row.get("id")), cases.get(row.get("id")), names)
+        row["reason"] = verdict
+        kept += verdict != "unclassified"
+        dropped += verdict == "unclassified"
+    card_path.write_text(json.dumps(card, indent=1), encoding="utf-8")
+    print(f"reason check: {len(cases)} trusted cases, {kept} reason(s) kept, {dropped} unclassified")
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main(sys.argv))
+    except Exception as e:  # noqa: BLE001 - this script never costs the run its artifact
+        print(f"reason check: skipped ({type(e).__name__}); the scorecard keeps no reason")
+        sys.exit(0)
