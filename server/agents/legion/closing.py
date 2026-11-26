@@ -16,6 +16,7 @@ from collections.abc import Callable
 from agents.legion.lines import (
     CHANGE_MADE,
     CHANGE_NOT_MADE,
+    CRISIS_NOTHING_SAVED,
     NO_TEXT,
     NOTHING_CHANGED,
     READ_THROUGH_NOTHING_CHANGED,
@@ -24,20 +25,28 @@ from agents.legion.lines import (
     READ_THROUGH_WAIT_AFTER_WRITE,
     READ_THROUGH_WAIT_CARRIED,
 )
-from assistant import read_through
+from assistant import crisis_memory, read_through
 
 
 def guard_refused(calls) -> bool:
-    """A change ADR 0090 held back: a write refused by the outside-text rule, or `remember`'s own
-    refusal (round 2 finding 5: that one was missed, so "Noted." passed with nothing saved)."""
+    """A change a guard held back: a write refused by ADR 0090's outside-text rule, `remember`'s
+    own refusal (round 2 finding 5: that one was missed, so "Noted." passed with nothing saved),
+    or `remember` refused because the conversation turned into a crisis (#462)."""
     return any(
         not c.ok
         and (
             (c.text.startswith("Nothing was") and "read outside text" in c.text)
-            or c.text in (read_through.REFUSAL, read_through.CARRY_REFUSAL)
+            or c.text
+            in (read_through.REFUSAL, read_through.CARRY_REFUSAL, crisis_memory.REFUSAL)
         )
         for c in calls
     )
+
+
+def refused_by_crisis(calls) -> bool:
+    """A `remember` in `calls` was refused by the crisis gate (#462), so the closing line says
+    nothing was saved rather than ADR 0090's line about reading the web."""
+    return any(not c.ok and c.text == crisis_memory.REFUSAL for c in calls)
 
 
 def refused_by_carry(calls) -> bool:
@@ -69,11 +78,16 @@ def closing_line(
     tainted: Callable[[], bool],
     carried: bool = False,
     promise: bool = True,
+    crisis: bool = False,
 ) -> str | None:
     """The line about a change, or None. `refused` is `guard_refused(calls)`; `unbacked` the held
     claims no write backed; `tainted` whether the turn read outside text, asked only when needed;
     `carried`: the refusals were the carry's (`refused_by_carry`); `promise`: the turn may say
-    "ask me again" (False where the carry will refuse his next message: re-check R1)."""
+    "ask me again" (False where the carry will refuse his next message: re-check R1);
+    `crisis`: a `remember` was refused by the crisis gate (`refused_by_crisis`, #462)."""
+    if refused and crisis:
+        # First: this one never promises, and it is true whatever else the turn read.
+        return CRISIS_NOTHING_SAVED
     if refused and carried:
         return READ_THROUGH_WAIT_CARRIED
     if refused:

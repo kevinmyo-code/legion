@@ -334,6 +334,8 @@ class SpokenTurn:
             carried=closing.refused_by_carry(self.gateway.calls),
             # "Ask me again" only when the exception's mark was written (re-check R1).
             promise=carry.REFUSED_HERE in state.taint,
+            # A `remember` the crisis gate refused (#462): nothing was saved, and no promise.
+            crisis=closing.refused_by_crisis(self.gateway.calls),
         )
         if line is not None:
             yield self._say(line)

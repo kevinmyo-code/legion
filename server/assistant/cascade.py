@@ -156,7 +156,15 @@ from agents.voice.stage import (  # noqa: F401 - prices read as cascade.X
     transcribe,
     turn_cost_usd,
 )
-from assistant import echo, fillers, read_through, speech_tags, spoken_figures, web_greeting
+from assistant import (
+    crisis_memory,
+    echo,
+    fillers,
+    read_through,
+    speech_tags,
+    spoken_figures,
+    web_greeting,
+)
 from assistant.models import AssistantCall
 from assistant.surface import off_registry_tool, refusal_for, tools_for
 from demo import suggestions
@@ -1120,6 +1128,14 @@ def _answer(
     report.heard = words
     # Whether HIS words ask for a change (the carry's exception, ADR 0090 amended 2026-11-21).
     read_through.heard(request, words)
+    # This door says a crisis turn's words to a model that holds `remember`, where the voice door
+    # answers by code and calls none (`agents/voice/pipeline.py`). So the conversation is marked as
+    # soon as the words are known, before any early return and before the model, and `remember`
+    # refuses for the rest of it (#462, `assistant/crisis_memory.py`). The reply path itself is
+    # unchanged: the turn runs exactly as it did.
+    in_crisis = crisis.detect(words)
+    if in_crisis:
+        crisis_memory.mark(request, conversation_id_of(door))
     # A shop's prices are said exactly, never rounded for speech (`demo/shop/`).
     speaker.exact = spoken_figures.wants_exact(words) or door.shop()
     heard_at = datetime.now(UTC)
@@ -1185,7 +1201,7 @@ def _answer(
         words=words,
         # The phone says nothing light over words of distress (`Backchannel.kt` wordsSkip CRISIS),
         # and nothing here handles a crisis before this point, so the check belongs here.
-        crisis=crisis.detect(words),
+        crisis=in_crisis,
         goodbye=is_stop_utterance(words),
         # The phone takes the companion's name off either end before judging a goodbye, so
         # "Alfred, bye" is one (`Farewells.withoutCourtesy`).
@@ -1641,6 +1657,7 @@ def _answer(
         tainted=tainted,
         carried=closing.refused_by_carry(door.calls),
         promise=read_through.promised(request),
+        crisis=closing.refused_by_crisis(door.calls),
     )
     if closing_line is not None:
         yield say(closing_line)

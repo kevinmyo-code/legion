@@ -68,7 +68,7 @@ from jsonschema import Draft202012Validator
 
 from api.event_columns import KIND_SUGGESTION
 from api.registry import SYNCED_VIEWSETS
-from assistant import read_through
+from assistant import crisis_memory, read_through
 from diagrams.catalogue import ALL_VIEW_IDS as DIAGRAM_VIEW_IDS
 from diagrams.catalogue import HIGHLIGHT_MAX as DIAGRAM_HIGHLIGHT_MAX
 from diagrams.catalogue import VIEWS as DIAGRAM_VIEWS
@@ -2756,6 +2756,12 @@ def _remember(request, args) -> ToolResult:
     after_web = read_through.remember_refusal(request, args["text"])
     if after_web:
         return refused(after_web)
+    # Nothing from a conversation that turned into a crisis is saved, this turn or any later turn
+    # of it (#462). Before the write, like the read-through gate, and for the same reason: the
+    # refusal must be what the model hears instead of a confirmation.
+    in_crisis = crisis_memory.refusal(request)
+    if in_crisis:
+        return refused(in_crisis)
     # The door the call came through: the web assistant's tool door, or `/mcp` (Claude Code).
     source = SOURCE_WEB if request.path.startswith("/api/assistant") else SOURCE_CLAUDE
     try:

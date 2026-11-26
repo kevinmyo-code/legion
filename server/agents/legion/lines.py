@@ -42,6 +42,10 @@ READ_THROUGH_WAIT_CARRIED = (
 # Where the carry is on and his words did not ask for the change (re-check R1): what happened, with
 # no promise, because his next message is carried too.
 READ_THROUGH_NOTHING_CHANGED = "I haven't changed anything: this turn read text from the web."
+# A memory `remember` refused because this conversation turned into a crisis (#462). Said instead
+# of the model's "Noted.", which was the shape round 2 finding 5 caught on the read-through gate.
+# No promise, because the gate does not lift next turn, and no word about what he said.
+CRISIS_NOTHING_SAVED = "I haven't saved anything to memory."
 READ_THROUGH_NOTHING_MORE = (
     "The first change went through. Nothing else was changed, because this turn read text from "
     "the web."

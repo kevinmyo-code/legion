@@ -400,6 +400,18 @@ def engine_read_through_line(at: datetime.datetime, source: str) -> tuple:
     return (at, line(at, TID_ENGINE, AUDIT, f"read_through source={source}"))
 
 
+# A turn of this conversation tripped the crisis pre-check (`assistant/crisis_memory.py`, ticket
+# #462), so `remember` refuses for the rest of it. The marker only: never his words, and never
+# which turn, so reading it back never reads his distress.
+CRISIS_MARK = "crisis source=words"
+
+
+def engine_crisis_line(at: datetime.datetime) -> tuple:
+    """`crisis source=words`: a turn of this conversation tripped the crisis pre-check. A durable
+    per-conversation fact for `assistant.crisis_memory`, carrying no text of its own."""
+    return (at, line(at, TID_ENGINE, AUDIT, CRISIS_MARK))
+
+
 def engine_latency_line(at: datetime.datetime, msg: str) -> tuple:
     """A timing line: numbers and names only, never words."""
     return (at, line(at, TID_ENGINE, LATENCY, msg))
