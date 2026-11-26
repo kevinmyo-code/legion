@@ -148,6 +148,17 @@ def rule_a_chat_case_is_never_a_known_limit(cs: list[dict]) -> list[str]:
             for c in cs if "chat" in c.get("tags", []) and c.get("known_limit")]
 
 
+def rule_a_chat_case_is_never_excused_on_a_layer(cs: list[dict]) -> list[str]:
+    """`proves_nothing_on` takes a passing case out of the count on that layer.
+
+    Round-2 review, 2026-11-26: `known_limit` was forbidden beside `chat` and this was not, though
+    it is the same hole one step along. A chat case is a zero-tool check and zero tools means zero
+    tools on every layer, so no layer can be the reason it proves nothing.
+    """
+    return [f"{c['id']}: tagged chat and carries proves_nothing_on, but a zero-tool check holds on every layer"
+            for c in cs if "chat" in c.get("tags", []) and c.get("proves_nothing_on")]
+
+
 def rule_a_tool_tag_names_an_expected_call(cs: list[dict]) -> list[str]:
     """A `tool:` tag that matches nothing is a label nobody checks: the usual way a tag goes stale."""
     bad = []
@@ -196,6 +207,12 @@ def rule_regexes_are_alive(cs: list[dict]) -> list[str]:
     match. It compiled, it ran, and it tested nothing. That is the same defect as a `not_calls`
     list that forbids a tool nobody has, which is what this whole change exists to remove, so it
     gets a check rather than a fixed typo.
+
+    Its limit, so nobody over-trusts it (round-2 review, 2026-11-26): it catches a control character
+    and a pattern that does not compile. It cannot catch a pattern that compiles, holds no control
+    character and still never matches. The over-escaped twin of the defect above, `"(?i)\\\\bnope\\\\b"`
+    (a literal backslash then `b`), passes this rule. "Can this pattern ever match" is not decidable
+    in general, so reading a new pattern is still a reviewer's job.
     """
     bad = []
     for c in cs:
@@ -235,6 +252,7 @@ CASE_RULES = (
     rule_tags_are_in_the_vocabulary,
     rule_a_chat_case_expects_no_call,
     rule_a_chat_case_is_never_a_known_limit,
+    rule_a_chat_case_is_never_excused_on_a_layer,
     rule_a_tool_tag_names_an_expected_call,
     rule_save_none_rests_on_a_check,
     rule_surfaces_and_moose_are_well_formed,
@@ -315,6 +333,23 @@ def test_known_limit_really_does_swallow_the_chat_failure():
     both = dict(CHAT_CASE, known_limit="an invented limit")
     assert ve.score_case(both, chat_run(A_CALL), phone=False).passed
     assert rule_a_chat_case_is_never_a_known_limit([both]) != []
+
+
+def test_proves_nothing_on_really_does_take_a_chat_case_out_of_the_count():
+    """Why `rule_a_chat_case_is_never_excused_on_a_layer` exists, proved against the real scorer:
+    the pair still FAILS, but a passing one would be reported apart and counted nowhere."""
+    excused = dict(CHAT_CASE, proves_nothing_on="laptop: an invented reason")
+    _, summary = ve.scorecard([excused], [chat_run([])], {}, phone=False, verbose=False)
+    assert summary["not_counted"] == [excused["id"]] and summary["passed"] == 0
+    assert rule_a_chat_case_is_never_excused_on_a_layer([excused]) != []
+
+
+def test_the_excused_chat_rule_rejects_the_pair_and_allows_either_alone():
+    assert one(rule_a_chat_case_is_never_excused_on_a_layer,
+               {"id": "x", "tags": ["chat"], "say": "hi", "proves_nothing_on": "laptop: why"})
+    assert one(rule_a_chat_case_is_never_excused_on_a_layer,
+               {"id": "x", "tags": ["guard"], "say": "hi", "proves_nothing_on": "laptop: why"}) == []
+    assert one(rule_a_chat_case_is_never_excused_on_a_layer, {"id": "x", "tags": ["chat"], "say": "hi"}) == []
 
 
 # --------------------------------------------------------------------------- the rules' own teeth
