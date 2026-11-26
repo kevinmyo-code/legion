@@ -447,8 +447,9 @@ def consolidate_one(log: DeviceLog, *, key: str, transport: Transport) -> tuple[
     except ValueError:
         _mark(log, OUTCOME_FAILED, detail="The stored batch could not be read.")
         return OUTCOME_FAILED, 0
-    # Ticket #460: a crisis exchange is never distilled, and no model ever sees it. Marked done
-    # rather than failed, so the record is never read again.
+    # Ticket #460: a crisis exchange is never distilled, and no model ever sees it. Marked
+    # skipped, not failed, because `pending` leaves a skipped record out for good: a failed one
+    # would be read again on the next run.
     if crisis.log_has_crisis_turn(log, raw):
         _mark(log, OUTCOME_SKIPPED, detail="A crisis was spoken in this conversation.")
         return OUTCOME_SKIPPED, 0
