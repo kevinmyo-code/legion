@@ -50,6 +50,7 @@ from django.db.models.functions import Now
 from django.utils import timezone
 
 from devicelogs import crisis
+from devicelogs.render import batch_text
 from household.tenancy import household_of
 from member_memory import service
 from member_memory.consolidate import _norm, log_transcript
@@ -309,10 +310,11 @@ def _filtered_text(log) -> str:
     """The one reader of a conversation record in the review: its evidence and its date check both
     come through here, so the crisis gate (#460) sits in one place. A record holding a crisis turn
     reads as nothing at all, so nothing it says can reach the model or a memory's text."""
-    if crisis.log_has_crisis_turn(log):
-        return ""
     try:
-        return "\n".join(log_transcript(log).lines)
+        raw = batch_text(log)  # read once: the gate and the transcript both need it
+        if crisis.log_has_crisis_turn(log, raw):
+            return ""
+        return "\n".join(log_transcript(log, raw).lines)
     except ValueError:
         return ""
 
