@@ -202,3 +202,41 @@ def test_a_chat_case_fails_on_any_tool_even_one_no_case_thought_to_forbid():
 def test_an_untagged_case_is_not_judged_by_the_chat_rule():
     plain = {"id": "x", "say": "what's due today", "expect": {}}
     assert ve.score_case(plain, chat_run([("day", {"action": "read_calendar"})]), phone=False).passed
+
+
+# --------------------------------------------------------------------------- the checks' own teeth
+#
+# A schema check that has never been seen to fail is a check nobody has tested. Each of these feeds
+# the rule a case it must reject, so the rule cannot quietly become a no-op.
+
+
+def test_the_gate_header_check_rejects_a_count_that_drifted():
+    header = "# The phone eval runs the 2 named\n# cases once, retries"
+    stated = re.search(r"The phone eval runs the (\d+) named\s*#\s*cases once", header)
+    assert stated and int(stated.group(1)) != len(gate_ids())
+
+
+def test_the_parity_check_rejects_a_case_claiming_an_engine_it_was_never_ported_to():
+    ported = voice21_ids()
+    invented = {"id": "not_ported_anywhere", "surfaces": ["phone", "engine"]}
+    assert invented["id"] not in ported and not invented.get("engine_skip")
+
+
+def test_engine_skip_is_what_lets_a_case_claim_the_engine_without_a_port():
+    opted_out = {"id": "not_ported_anywhere", "surfaces": ["phone", "engine"], "engine_skip": "no limb yet"}
+    assert opted_out["id"] not in voice21_ids() and opted_out.get("engine_skip")
+
+
+def test_the_save_none_check_rejects_a_tag_resting_on_nothing():
+    """save:none on a case that neither forbids `memory` nor is a chat case."""
+    bad = {"id": "x", "tags": ["save:none"], "say": "hi", "expect": {"not_calls": ["car"]}}
+    forbidden = {s for e in expects(bad) for spec in (e.get("not_calls") or []) for s in spec.split("|")}
+    assert "chat" not in bad["tags"]
+    assert not any(s.split("/")[0] == "memory" for s in forbidden)
+
+
+def test_ran_specs_reads_both_keys_and_splits_alternatives():
+    """The helper the chat and tool: rules both rest on."""
+    c = {"id": "x", "turns": [{"expect": {"calls": ["a/b|c/d"]}}, {"expect": {"succeeded": ["e/f"]}}]}
+    assert ran_specs(c) == {"a/b", "c/d", "e/f"}
+    assert ran_specs({"id": "y", "say": "hi", "expect": {"not_calls": ["memory"]}}) == set()

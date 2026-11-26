@@ -111,8 +111,11 @@ sent typed and the scorecard says why.
   the tools whoever wrote the case thought of. Every other tag labels checks written out in full,
   and a tag that contradicts its checks fails the free test.
 - `surfaces`: which runners may run the case. Left out means `["phone"]`. `engine` claims the case
-  is ported in `server/agents/evals/cases/voice21.yaml`, and the free test holds both files to that
-  claim in each direction; `engine_skip: "<why>"` opts a case out.
+  is ported in `server/agents/evals/cases/voice21.yaml`; the free test fails a case that claims it
+  and is not there, and fails a `voice21.yaml` id that has no case here. `engine_skip: "<why>"` opts
+  a case out. What it does NOT catch is a ported case that quietly drops `engine` from `surfaces`.
+  **No runner reads `surfaces` yet**: it records which suite a case belongs to, and the phone runner
+  still runs every case it is given.
 - `moose`: an override merged over the case on the head unit runner, whose tool names differ from
   the phone's. One id, two surfaces, no duplicated cases. Nothing runs it until the Moose harness
   lands; the free test checks its shape today.

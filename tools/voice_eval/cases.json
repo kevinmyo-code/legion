@@ -951,16 +951,18 @@
       "tags": ["save:asked", "tool:memory/remember"],
       "say": "remember that the spare key is in the blue tin",
       "write": true,
-      "why": "He asked in so many words, so the save is his. No `succeeded`: MemoryController sends writes to the engine only and refuses them in words offline, and the laptop harness runs with no engine, so a memory write never comes back successful there",
-      "expect": {"calls": ["memory/remember"]}
+      "why": "He asked in so many words, so the save is his. No `succeeded`: MemoryController sends writes to the engine only and refuses them in words offline, VoiceEvalRun refuses to start with an engine configured, and nothing in the harness fakes the controller, so a memory write never comes back successful on layer 1. The refusal is what the laptop check rides on: the save did not land, so nothing may say it did",
+      "expect": {"calls": ["memory/remember"]},
+      "fixture": {"answer_not": ["(?i)(i'?ve|i have|that'?s) (remembered|saved|been saved)", "(?i)\bi'?ll remember that\b"]}
     },
     {
       "id": "save_forget_asked",
       "tags": ["save:asked", "tool:memory/forget"],
       "say": "forget what I said about the blue tin",
       "write": true,
-      "why": "Forgetting is asked for the same way saving is. Same reason there is no `succeeded` here",
-      "expect": {"calls": ["memory/forget"]}
+      "why": "Forgetting is asked for the same way saving is. Same reason there is no `succeeded` here, and the same reason the reply may not claim the deletion landed",
+      "expect": {"calls": ["memory/forget"]},
+      "fixture": {"answer_not": ["(?i)(i'?ve|i have) (forgotten|deleted|removed)"]}
     },
     {
       "id": "save_not_asked_passing",

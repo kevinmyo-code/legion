@@ -1,6 +1,11 @@
 # Voice eval suite: what exists, and what to add
 Saved Nov 25, 2026 after a voice call with Kevin. A NOTE, not committed work and not a ticket.
 
+**Status.** The shape below was approved and is being built in slices. Slices 1 and 2 have landed:
+case `tags` with `chat` as a real zero-tool check, `surfaces`, `moose`, the chat and memory-save
+sets, and free no-key checks on every PR. Gaps 1 and 2 are closed by that; 3, 4, 5 and 6 are not.
+The counts in this note are kept current; the gap list is left as it read on the day.
+
 Kevin's ask, in his words: a suite where "Legion or some agent would put prompts into Alfred... get his answers and his actions and tool calls", run "after every like big chunk of work", with a score, for example when he was just chatting and Alfred called a tool, or asked for a calendar thing and Alfred did something else. Keep the API cost low.
 
 ## What already exists (checked on dev `d7e477c`)
@@ -9,10 +14,10 @@ A harness exists and is good. It is not run regularly, and it has few "just chat
 
 - **Voice eval, layer 1 (laptop, text only):** `tools/voice_eval.py laptop` runs the real cascade text loop and real tool code under Robolectric (`VoiceEvalRun`) on a made-up household (`VoiceEvalFixture.kt`). It records the reply, every tool call and its arguments, turn time, tokens and estimated cost, and prints a pass/fail scorecard. Text in, text out, so only the text model is billed. Guide: `tools/voice_eval/README.md`.
 - **Voice eval, layer 2 (phone over adb):** `tools/phone_voice_test.py run` sends typed or spoken turns into a test conversation on the real phone. Writes are refused in test mode, and test turns stay out of memory and the conversation record.
-- **Cases:** `tools/voice_eval/cases.json` has 65 public cases, and private ones go in `tools/voice_eval/private/` (git-ignored). Each case can check `calls` (must call), `not_calls` (must not call), `args`, `answer_has` / `answer_not`, `no_empty_claim`, `write` and more. 13 cases use `not_calls`.
+- **Cases:** `tools/voice_eval/cases.json` has 89 public cases, and private ones go in `tools/voice_eval/private/` (git-ignored). Each case can check `calls` (must call), `not_calls` (must not call), `args`, `answer_has` / `answer_not`, `no_empty_claim`, `write` and more. 15 cases use `not_calls`, and 21 are tagged `chat`, which forbids every tool rather than a listed few.
 - **Tool routing eval:** `tools/live_tool_eval.py` sends 115 sentences (`tools/live_tool_eval/cases.jsonl`) with the real system instruction and tool list to a text model and scores which tool it picks. A cheap proxy for the Live model.
 - **No-key checks in the normal suite:** `VoiceEvalOfflineTest` checks that every expected call exists on the tool surface, and runs in CI (`android.yml`, which watches `tools/voice_eval/**`). `tools/tests/test_voice_eval.py` covers the scorer itself and runs in CI too (`checks.yml`, which has no path filter, so it runs on every PR).
-- **CI with a key:** `.github/workflows/gates.yml` runs the cases in `tools/voice_eval/gate_cases.txt` (38 today; `tools/tests/test_voice_eval_cases.py` holds the header's count to the file, so neither can drift) plus the money specialist eval, about $0.10 to $0.20 a run, capped at 6 runs a day. It is manual only (workflow_dispatch). It has been dispatched (first runs 2026-11-25; see the Actions tab for each run's verdict). It fails until Kevin adds `GEMINI_API_KEY` to the `gates` environment himself.
+- **CI with a key:** `.github/workflows/gates.yml` runs the cases in `tools/voice_eval/gate_cases.txt` (`tools/tests/test_voice_eval_cases.py` holds the count stated in the workflow header to the length of that file, so the two cannot drift) plus the money specialist eval, about $0.10 to $0.20 a run, capped at 6 runs a day. It is manual only (workflow_dispatch). It has been dispatched (first runs 2026-11-25; see the Actions tab for each run's verdict). It fails until Kevin adds `GEMINI_API_KEY` to the `gates` environment himself.
 
 ## Gaps
 
@@ -20,7 +25,7 @@ A harness exists and is good. It is not run regularly, and it has few "just chat
 2. **No check for unwanted memory saves** or for saying "saved to memory".
 3. **No summary score.** The scorecard is pass/fail per case; there is no tool-choice accuracy or "tool called while chatting" rate to compare runs.
 4. **Moose is not covered.** Nothing under `headunit/` runs these cases.
-5. **Not run after big chunks of work.** Gates is manual and has never run; layer 1 runs only on the laptop when someone remembers.
+5. **Not run after big chunks of work.** Gates is manual; layer 1 runs only on the laptop when someone remembers. (Gates has since been dispatched; the cadence itself is still unbuilt, and is slice 4.)
 6. **No memory recall cases**, such as "what did we talk about today?" after a closed chat.
 
 ## Proposed shape (build on what exists, do not start over)
