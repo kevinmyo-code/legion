@@ -12,17 +12,26 @@ is a phrase. `agents/voice/crisis.py` imports nothing of the engine's, so readin
 no layer.
 
 **What it reads, and why it is not the consolidation transcript.** The devices audit each
-transcript chunk BEFORE they detect (head unit `GeminiLiveSession.kt:922` audits, `:923` detects),
-and the crisis teardown kills the socket on the partial transcript, so the phrase can be spooled
-with no `user final=true` line and no `turn_complete` after it. So:
+transcript chunk BEFORE they detect (head unit `GeminiLiveSession.kt:920-922` appends the chunk to
+`userTurnText` and audits it, `:923` detects), and the crisis teardown kills the socket on the
+partial transcript, so the phrase can be spooled with no whole-turn line and no `turn_complete`
+after it. So:
 
-- every `user` line, final or not, and the chunks of one turn joined as the device joins them
+- every `user` line, final or not, rebuilt into the turn the way the device builds it
   (`userTurnText.append(chunk)`, no separator), because a phrase can be split across two chunks;
-- every `assistant` line too, joined the same way, as the head unit's `CrisisMemoryGate
-  .forgetsSession` does: a reply carrying the line is as much a memory of the distress as the
-  line is;
-- each line on its own as well as the join, because a join can only add words and an exclusion
-  reads the word before ("has suicide doors" is car talk, "suicide, doors..." is not);
+- the turn is judged **when it closes**, never per line and never on a growing prefix. A chunk
+  boundary is not the start or the end of an utterance, and the detector keeps a hit when an
+  excluded phrase has no car-talk word in front of it or runs off the end of the text: judged
+  apart, "does the wagon have" + " suicide doors" reads as a crisis, and so does the prefix "does
+  the wagon have suicide", while the whole sentence does not (RED review B2). The live detector on
+  the car does read each prefix (`checkForCrisis()` on the accumulated `userTurnText`), and
+  deliberately so: there, firing early on a half-said sentence costs one unneeded help line, and
+  the next chunk settles it. Here it would cost the whole record, kept out of memory for good, so
+  the completed turn is the only honest unit;
+- every `assistant` line too, rebuilt the same way, as the head unit's
+  `CrisisMemoryGate.forgetsSession` does: a reply carrying the line is as much a memory of the
+  distress as the line is;
+- **never the head unit's whole-turn repeat on top of the chunks it repeats** (see `_repeats`);
 - no read-through, redaction or `can_mark_turns` filtering: a turn those rules drop still says the
   record was a crisis, and none of this text is ever shown to a model;
 - the phone's own `session_end reason="crisis"` mark as well, because every audit line is truncated
@@ -38,6 +47,7 @@ from agents.voice.crisis import detect
 from devicelogs import voice_audit
 
 TURN_ENDS = frozenset({"turn_complete", "session_start", "session_end"})
+TRUNCATION_MARK = "..."
 
 # What the phone's crisis teardown writes: `shutdown("crisis")` ends at
 # `CascadeSession.kt:4019` `audit.sessionEnd(reason)`. The head unit leaves no such mark (its
@@ -48,14 +58,36 @@ TURN_ENDS = frozenset({"turn_complete", "session_start", "session_end"})
 CRISIS_REASON = "crisis"
 
 
-def has_crisis_turn(raw: str) -> bool:
-    """True when anything said in one record's raw audit lines says a crisis phrase, or when the
-    record carries a device's own crisis mark."""
-    said: list[str] = []
-    heard: list[str] = []
+def _repeats(built: str, text: str) -> bool:
+    """Is `text` the turn `built` already holds, written again?
 
-    def joined_trips() -> bool:
-        return detect("".join(said)) or detect("".join(heard))
+    The head unit audits every transcript chunk and then, at `turn_complete`, the whole trimmed
+    turn once more (`GeminiLiveSession.kt:1035`). Appending that line to the chunks it repeats
+    would fuse its first word onto the turn's last one, and a fused word breaks the car-talk
+    exclusion the detector exists to honour: "...suicide doors" + "does the wagon..." becomes the
+    one word "doorsdoes", `suicide doors` stops matching and the `suicide` stem fires on ordinary
+    car talk (RED review B1).
+
+    The repeat is `userTurnText.toString().trim()`, so it equals what we have, except that an audit
+    line over 400 characters is cut and marked (`ConvoAudit.MAX_TEXT`), which leaves a prefix.
+    """
+    if not built:
+        return False
+    said = text.strip()
+    if not said:
+        return False
+    if said == built:
+        return True
+    return said.endswith(TRUNCATION_MARK) and built.startswith(said[: -len(TRUNCATION_MARK)])
+
+
+def has_crisis_turn(raw: str) -> bool:
+    """True when a turn in one record's raw audit lines says a crisis phrase, or when the record
+    carries a device's own crisis mark."""
+    turns: dict[str, list[str]] = {"user": [], "assistant": []}
+
+    def closes() -> bool:
+        return any(detect("".join(said)) for said in turns.values())
 
     for _date, _time, tag, msg in voice_audit._records(raw.splitlines()):
         if tag != voice_audit.AUDIT:
@@ -64,19 +96,20 @@ def has_crisis_turn(raw: str) -> bool:
         if event == "session_end" and fields.get("reason") == CRISIS_REASON:
             return True
         if event in TURN_ENDS:
-            if joined_trips():
+            if closes():
                 return True
-            said, heard = [], []
+            turns = {"user": [], "assistant": []}
             continue
-        if event not in ("user", "assistant"):
+        if event not in turns:
             continue
         text = fields.get("text")
         if not isinstance(text, str):
             continue
-        if detect(text):
-            return True
-        (said if event == "user" else heard).append(text)
-    return joined_trips()
+        turn = turns[event]
+        if _repeats("".join(turn).strip(), text):
+            continue
+        turn.append(text)
+    return closes()
 
 
 def log_has_crisis_turn(log, raw: str | None = None) -> bool:

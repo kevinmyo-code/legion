@@ -16,6 +16,7 @@ import datetime
 import pytest
 from django.utils import timezone
 
+from devicelogs import crisis
 from member_memory import consolidate, review
 from member_memory.models import MemberMemory, MemoryConsolidation
 from open_loops import words
@@ -73,6 +74,23 @@ TRUNCATED = """\
 11-24 22:00:09.000  1 2 I LIVE_AUDIT: session_end reason="crisis"
 """
 
+# Ordinary car talk in the shape the HEAD UNIT writes it: every transcript chunk, then the whole
+# trimmed turn once more (`GeminiLiveSession.kt:920-922` and `:1035`). The excluded phrase ends the
+# turn with no punctuation after it, which is the ordinary shape because speech-to-text writes no
+# punctuation. This record must still be distilled.
+HEAD_UNIT_CAR_TALK = """\
+11-24 08:00:00.000  1 2 I LIVE_AUDIT: session_start model=gemini-live async_set=none
+11-24 08:00:01.000  1 2 I LIVE_AUDIT: user final=false text="does the wagon have"
+11-24 08:00:01.300  1 2 I LIVE_AUDIT: user final=false text=" suicide doors"
+11-24 08:00:01.600  1 2 I LIVE_AUDIT: user final=true text="does the wagon have suicide doors"
+11-24 08:00:01.800  1 2 I LIVE_AUDIT: assistant text="It does"
+11-24 08:00:01.900  1 2 I LIVE_AUDIT: assistant text=" not."
+11-24 08:00:02.000  1 2 I LIVE_AUDIT: turn_complete
+11-24 08:00:03.000  1 2 I LIVE_AUDIT: user final=true text="My gym moved to Elm Street."
+11-24 08:00:04.000  1 2 I LIVE_AUDIT: turn_complete
+11-24 08:00:05.000  1 2 I LIVE_AUDIT: session_end reason="stopped"
+"""
+
 # Ordinary car talk the detector is tuned to leave alone. This record must still be distilled.
 CAR_TALK = """\
 11-24 09:00:00.000  1 2 I LIVE_AUDIT: session_start model=gemini-live async_set=none
@@ -109,14 +127,60 @@ def test_the_turns_said_before_the_phrase_go_too(household_user, household_a):
     assert not MemberMemory.objects.filter(text__icontains="Elm").exists()
 
 
-def test_ordinary_car_talk_is_still_distilled(household_user, household_a):
-    _log(household_a, household_user, CAR_TALK)
+@pytest.mark.parametrize("raw", [CAR_TALK, HEAD_UNIT_CAR_TALK],
+    ids=["phone whole turn", "head unit chunks and the repeat"])
+def test_ordinary_car_talk_is_still_distilled(household_user, household_a, raw):
+    _log(household_a, household_user, raw)
     model = FakeModel(A_MEMORY)
     report = consolidate.run(key="test-key", transport=model)
 
     assert len(model.prompts) == 1
     assert (report.read, report.written) == (1, 1)
     assert MemberMemory.objects.get().text == "Sam's gym is on Elm Street"
+
+
+# ----------------------------------------------------------- chunk boundaries
+#
+# The head unit cuts a turn at whatever boundary the transcript arrives on, so the gate has to read
+# the same sentence identically at every one of them. Two things could break that, and both did
+# (RED review B1 and B2): judging a chunk on its own, where an excluded phrase has no car-talk word
+# in front of it, and appending the whole-turn repeat to the chunks it repeats, which fuses its
+# first word onto the turn's last one. These are pure-predicate sweeps, no model and no record.
+
+CAR_SENTENCE = "does the wagon have suicide doors"
+CRISIS_SENTENCE = "some days I just want to die"
+
+
+def _head_unit_turn(text: str, split: int) -> str:
+    """One turn as the head unit writes it: the chunks, then the whole trimmed turn once more."""
+    lines = ["session_start model=gemini-live async_set=none"]
+    lines += [f'user final=false text="{chunk}"' for chunk in (text[:split], text[split:]) if chunk]
+    lines += [f'user final=true text="{text}"', "turn_complete", 'session_end reason="stopped"']
+    return "".join(
+        f"11-24 07:{index // 60:02d}:{index % 60:02d}.000  1 2 I LIVE_AUDIT: {line}\n"
+        for index, line in enumerate(lines)
+    )
+
+
+@pytest.mark.parametrize("split", range(len(CAR_SENTENCE) + 1))
+def test_car_talk_is_quiet_at_every_chunk_boundary(split):
+    assert not crisis.has_crisis_turn(_head_unit_turn(CAR_SENTENCE, split))
+
+
+@pytest.mark.parametrize("split", range(len(CRISIS_SENTENCE) + 1))
+def test_a_crisis_phrase_is_caught_at_every_chunk_boundary(split):
+    assert crisis.has_crisis_turn(_head_unit_turn(CRISIS_SENTENCE, split))
+
+
+def test_the_whole_turn_repeat_is_not_read_as_more_words(household_user, household_a):
+    """The repeat is the turn we already have, so it adds nothing and fuses nothing."""
+    chunks = '11-24 07:30:01.000  1 2 I LIVE_AUDIT: user final=false text="does the wagon have suicide doors"\n'
+    repeat = '11-24 07:30:02.000  1 2 I LIVE_AUDIT: user final=true text="does the wagon have suicide doors"\n'
+    assert not crisis.has_crisis_turn(chunks)
+    assert not crisis.has_crisis_turn(chunks + repeat)
+    # Truncated at the 400-character cap, the repeat is a marked prefix of the same turn.
+    cut = '11-24 07:30:02.000  1 2 I LIVE_AUDIT: user final=true text="does the wagon have suicide..."\n'
+    assert not crisis.has_crisis_turn(chunks + cut)
 
 
 @pytest.mark.parametrize("raw", [CRISIS, PHONE_CRISIS, CRISIS_IN_THE_REPLY, TRUNCATED],

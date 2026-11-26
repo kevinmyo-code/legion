@@ -430,7 +430,7 @@ class RunReport:
             )
         said = (
             f"Read {self.read} conversation records: {self.written} memories written, "
-            f"{self.skipped} with nothing to read, {self.failed} failed (retried next run)."
+            f"{self.skipped} not distilled, {self.failed} failed (retried next run)."
         )
         if self.gave_up:
             noun = "record has" if self.gave_up == 1 else "records have"
@@ -451,7 +451,9 @@ def consolidate_one(log: DeviceLog, *, key: str, transport: Transport) -> tuple[
     # skipped, not failed, because `pending` leaves a skipped record out for good: a failed one
     # would be read again on the next run.
     if crisis.log_has_crisis_turn(log, raw):
-        _mark(log, OUTCOME_SKIPPED, detail="A crisis was spoken in this conversation.")
+        # The detail is a line about the GUARD, not about him: it is a durable row, and a sentence
+        # saying he was in distress has no business sitting in the engine's bookkeeping.
+        _mark(log, OUTCOME_SKIPPED, detail="The crisis guard held this record.")
         return OUTCOME_SKIPPED, 0
     words = log_transcript(log, raw)
     if not words.lines:
