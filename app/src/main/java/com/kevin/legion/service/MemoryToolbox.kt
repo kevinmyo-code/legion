@@ -35,9 +35,13 @@ object MemoryToolbox {
     internal var controllerFactory: (Context) -> MemoryController = MemoryController::forContext
 
     private const val DESCRIPTION =
+        // The recall trigger is asks only (chat-first, Kevin 2026-11-25): it used to add "or a past
+        // detail would make the reply personal", which told the model to recall unasked and so
+        // disagreed with CHAT_FIRST_CLAUSE's "memory only when asked about it". The save half is
+        // unchanged here on purpose; ticket #454 owns it.
         "Your long-term memory of the user. action=recall (query: a few words, empty for the latest) when " +
-            "they ask what you remember, mention someone or something from before, or a past detail would " +
-            "make the reply personal; remember (text, in their words) only when they ask you to; forget (id " +
+            "they ask what you remember or mention someone or something from before; " +
+            "remember (text, in their words) only when they ask you to; forget (id " +
             "from a result) when they say forget that; list for all you keep about them. Say only what the " +
             "result says."
 

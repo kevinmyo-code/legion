@@ -572,9 +572,8 @@ object LiveToolbox {
         fns.put(fn(
             name = "recall_memory",
             description = "Search your long-term memory of past conversations and trips with the " +
-                "driver. Use when they ask what you remember, reference something from before, or " +
-                "when recalling a past detail would make your reply more personal. Returns the " +
-                "closest-matching memories with the date each was noted.",
+                "driver. Use when they ask what you remember or reference something from before. " +
+                "Returns the closest-matching memories with the date each was noted.",
             params = obj("query" to schema("string", "What to look for, in a few words - e.g. " +
                 "'brakes', 'trip to Tahoe', 'favorite coffee'. Leave empty for the most recent memories.")),
             required = listOf(),

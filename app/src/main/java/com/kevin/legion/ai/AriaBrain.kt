@@ -1069,9 +1069,17 @@ internal const val TOOL_RESULT_CLAUSE =
 
 /**
  * Chat is the default (Kevin, 2026-11-25, on a call): Alfred called tools for small talk and general
- * questions, tied them to his calendar or memory, and announced "saved to memory". A tool is for an
- * action, something current, or a fact about the user; the two examples show the plain-chat case.
- * Moose carries the same words in the head unit's prompt (Kevin's voice-parity rule, 2026-11-24).
+ * questions, tied them to his calendar or memory, and announced "saved to memory". Two halves: the
+ * pinned action rule (call the tool before claiming the deed), then chat and general questions need
+ * no tool, with his calendar, memory and records read only when he asks about them and a memory save
+ * confirmed only when he asks. The two examples show the plain-chat case. It states no positive
+ * "when to use a tool" rule; the shipped declarations, [RECORD_FACTS] and the search sentence above
+ * it carry that.
+ *
+ * Moose carries the same two halves in the head unit's prompt (Kevin's voice-parity rule,
+ * 2026-11-24), in that prompt's own "the driver" register rather than these words, as its own
+ * `CHAT_FIRST_CLAUSE` in `headunit/.../ai/AriaBrain.kt`.
+ *
  * It replaces the old tool sentence (live data, music, saved places, location reminders, "never say
  * you're pulling up music..."), whose tools describe themselves, keeping the action rule's words
  * that AriaBrainHonestyClauseTest pins, and is shorter than it, so LiveSetupPayloadSizeTest's
