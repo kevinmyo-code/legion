@@ -198,6 +198,9 @@ internal class CascadeSession(
     private var textLoop: GeminiTextLoop? = null
     @Volatile private var prefix: CascadePrefix? = null
 
+    /** A turn of this conversation went out with the full tool set: later turns stay on it ([ToolGate]). */
+    @Volatile private var fullToolsUsed = false
+
     /** The prompt build started at open ([buildPrompt]); null until then. */
     @Volatile private var prefixReady: Deferred<CascadePrefix>? = null
     @Volatile private var preambleReady: Deferred<Unit>? = null
@@ -869,6 +872,28 @@ internal class CascadeSession(
         System.currentTimeMillis(),
         ZoneId.systemDefault(),
     )
+
+    /**
+     * The prefix a turn is sent with: [full], or its chat cut ([ToolGate]) when [heard] is plainly small
+     * talk or general knowledge. Never the cut for an opener, a carried or prompt turn, or once a turn of
+     * this conversation went out FULL. A draft ([log] false) decides the same way from the same words, and
+     * is only adopted on the same words, so the verdict it made is the turn's.
+     */
+    private fun toolsFor(full: CascadePrefix, heard: String, fromUser: Boolean, log: Boolean): CascadePrefix {
+        val verdict = if (!fromUser || opener != null || carriedBlock.isNotEmpty()) {
+            ToolGate.Verdict(ToolGate.Set.FULL, "not_his_words")
+        } else {
+            ToolGate.choose(heard, fullToolsUsed, CompanionProfile.name(ctx))
+        }
+        if (verdict.set == ToolGate.Set.FULL) fullToolsUsed = true
+        if (log) {
+            LiveLatency.log(
+                LiveLatency.TAG,
+                "tool_set=${verdict.set.name.lowercase()} why=${verdict.why} n=${ToolGate.prefixFor(full, verdict).functionDeclarations.length()}",
+            )
+        }
+        return ToolGate.prefixFor(full, verdict)
+    }
 
     /** His turns' preamble: the shared one plus the agenda ([CascadePrompt.withAgenda]). */
     private fun turnPreamble(): String =
@@ -1924,7 +1949,7 @@ internal class CascadeSession(
                     brain?.answer(it, record.engineUtt, executorFor(record, seq), listenerFor(record, reply))
                 }
                 ?: textLoop!!.answer(
-                    checkNotNull(pfx),
+                    toolsFor(checkNotNull(pfx), heard, record.fromUser, log = true),
                     turnContentsFor(heard),
                     executorFor(record, seq),
                     listenerFor(record, reply),
@@ -3521,7 +3546,7 @@ internal class CascadeSession(
             LiveLatency.TAG,
             CascadeLines.specStart(d.trigger, d.utt.backend.kind.token, heard.length),
         )
-        answer.start(pfx, turnContentsFor(heard))
+        answer.start(toolsFor(pfx, heard, fromUser = true, log = false), turnContentsFor(heard))
     }
 
     /**
