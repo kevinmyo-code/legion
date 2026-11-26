@@ -22,7 +22,11 @@ from member_memory.models import MemberMemory, MemoryConsolidation
 from open_loops import words
 from tests.test_member_memory_consolidate import FakeModel, _log
 
-pytestmark = pytest.mark.django_db
+# No module-wide `django_db`: the boundary sweeps and the repeat test are pure predicates, and a
+# test that opens a database connection it does not need is not free. `test_turn_cancel`'s
+# `test_the_model_reader_thread_leaves_no_database_session_open` counts every session in
+# `pg_stat_activity`, so sixty-five needless connections earlier in the run are enough to move it
+# (CI run 45799926479). Each test that really needs a record marks itself.
 
 A_MEMORY = [{"text": "Sam's gym is on Elm Street", "kind": "fact", "importance": 6, "durable": True}]
 
@@ -103,6 +107,7 @@ CAR_TALK = """\
 """
 
 
+@pytest.mark.django_db
 @pytest.mark.parametrize("raw", [CRISIS, PHONE_CRISIS, CRISIS_IN_THE_REPLY, TRUNCATED],
     ids=["head unit chunks", "phone whole turn", "only the reply", "truncated, marked"])
 def test_a_crisis_conversation_is_never_distilled(household_user, household_a, raw):
@@ -118,6 +123,7 @@ def test_a_crisis_conversation_is_never_distilled(household_user, household_a, r
     assert consolidate.run(key="test-key", transport=model).read == 0
 
 
+@pytest.mark.django_db
 def test_the_turns_said_before_the_phrase_go_too(household_user, household_a):
     _log(household_a, household_user, CRISIS)
     model = FakeModel(A_MEMORY)
@@ -127,6 +133,7 @@ def test_the_turns_said_before_the_phrase_go_too(household_user, household_a):
     assert not MemberMemory.objects.filter(text__icontains="Elm").exists()
 
 
+@pytest.mark.django_db
 @pytest.mark.parametrize("raw", [CAR_TALK, HEAD_UNIT_CAR_TALK],
     ids=["phone whole turn", "head unit chunks and the repeat"])
 def test_ordinary_car_talk_is_still_distilled(household_user, household_a, raw):
@@ -172,7 +179,7 @@ def test_a_crisis_phrase_is_caught_at_every_chunk_boundary(split):
     assert crisis.has_crisis_turn(_head_unit_turn(CRISIS_SENTENCE, split))
 
 
-def test_the_whole_turn_repeat_is_not_read_as_more_words(household_user, household_a):
+def test_the_whole_turn_repeat_is_not_read_as_more_words():
     """The repeat is the turn we already have, so it adds nothing and fuses nothing."""
     chunks = '11-24 07:30:01.000  1 2 I LIVE_AUDIT: user final=false text="does the wagon have suicide doors"\n'
     repeat = '11-24 07:30:02.000  1 2 I LIVE_AUDIT: user final=true text="does the wagon have suicide doors"\n'
@@ -183,6 +190,7 @@ def test_the_whole_turn_repeat_is_not_read_as_more_words(household_user, househo
     assert not crisis.has_crisis_turn(chunks + cut)
 
 
+@pytest.mark.django_db
 @pytest.mark.parametrize("raw", [CRISIS, PHONE_CRISIS, CRISIS_IN_THE_REPLY, TRUNCATED],
     ids=["head unit chunks", "phone whole turn", "only the reply", "truncated, marked"])
 def test_the_review_reads_no_evidence_from_a_crisis_record(household_user, household_a, raw):
@@ -190,12 +198,14 @@ def test_the_review_reads_no_evidence_from_a_crisis_record(household_user, house
     assert review._transcripts(household_user, household_a, timezone.now()) == []
 
 
+@pytest.mark.django_db
 def test_the_review_still_reads_an_ordinary_record(household_user, household_a):
     _log(household_a, household_user, CAR_TALK)
     read = review._transcripts(household_user, household_a, timezone.now())
     assert len(read) == 1 and "Elm Street" in read[0][2]
 
 
+@pytest.mark.django_db
 @pytest.mark.parametrize("raw", [CRISIS, PHONE_CRISIS, CRISIS_IN_THE_REPLY, TRUNCATED],
     ids=["head unit chunks", "phone whole turn", "only the reply", "truncated, marked"])
 def test_a_crisis_record_proposes_no_open_loop(household_user, household_a, raw):
@@ -203,11 +213,13 @@ def test_a_crisis_record_proposes_no_open_loop(household_user, household_a, raw)
     assert words.own_text(log) == ""
 
 
+@pytest.mark.django_db
 def test_an_ordinary_record_still_gives_his_own_words(household_user, household_a):
     log = _log(household_a, household_user, CAR_TALK, run_id="r-2")
     assert "Elm Street" in words.own_text(log)
 
 
+@pytest.mark.django_db
 def test_a_record_older_than_the_review_window_is_not_read(household_user, household_a):
     """The review's own window still applies; the gate adds nothing to it."""
     _log(household_a, household_user, CAR_TALK, age=datetime.timedelta(days=review.REVIEW_DAYS + 1))
