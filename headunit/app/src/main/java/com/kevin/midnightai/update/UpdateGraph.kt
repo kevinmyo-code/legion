@@ -46,6 +46,10 @@ object UpdateGraph {
     fun platform(context: Context): AndroidUpdatePlatform =
         AndroidUpdatePlatform(context.applicationContext as Application)
 
+    /** Where What's new reads the release notes: the same engine door as the updater. */
+    fun history(context: Context): ReleaseHistorySource =
+        DjangoUpdateBackend(EngineHttp(EngineConfig(context.applicationContext as Application)))
+
     private fun build(app: Application): UpdateController = UpdateController(
         backend = DjangoUpdateBackend(EngineHttp(EngineConfig(app))),
         downloader = OkHttpApkDownloader(),

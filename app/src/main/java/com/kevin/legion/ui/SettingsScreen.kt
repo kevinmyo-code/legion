@@ -54,6 +54,7 @@ fun SettingsScreen(
     onOpenDumbMode: () -> Unit = {},
     // Updates (alfred-ota ticket 06): the app_update voice tool's hands path (ADR 0035).
     onOpenUpdates: () -> Unit = {},
+    onOpenWhatsNew: () -> Unit = {},
     // Car link to the head unit: pairing, location, forget.
     onOpenCarLink: () -> Unit = {},
 ) {
@@ -123,6 +124,13 @@ fun SettingsScreen(
                 label = "Updates",
                 status = "This version, the newest one, and installing it. Asks first.",
                 onClick = onOpenUpdates,
+            )
+
+            Spacer(Modifier.height(8.dp))
+            SettingsNavRow(
+                label = "What's new",
+                status = "What each version changed, this one and every earlier one.",
+                onClick = onOpenWhatsNew,
             )
 
             Spacer(Modifier.height(8.dp))

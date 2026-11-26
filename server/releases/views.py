@@ -1,6 +1,7 @@
 """`/api/releases/*`: published builds of the LEGION clients (alfred-ota ticket 04).
 
     GET  /api/releases/latest?app=phone   any member: the newest release (highest version_code)
+    GET  /api/releases/history?app=phone  any member: every release's notes, newest first
     GET  /api/releases/<id>/download      any member: a V4 signed URL, valid 15 minutes
     POST /api/releases/                   an owner: record a release after the APK is uploaded
 
@@ -92,6 +93,15 @@ class AppReleaseSerializer(serializers.ModelSerializer):
             "signer_sha256",
             "published_at",
         ]
+        read_only_fields = fields
+
+
+class ReleaseHistorySerializer(serializers.ModelSerializer):
+    """One line of "What's new": the words and the version, nothing that fetches or verifies."""
+
+    class Meta:
+        model = AppRelease
+        fields = ["version_name", "version_code", "notes", "published_at"]
         read_only_fields = fields
 
 
@@ -218,6 +228,32 @@ class ReleaseLatestView(APIView):
         if newest is None:
             return _no_release(app)
         return Response(AppReleaseSerializer(newest).data)
+
+
+class ReleaseHistoryView(APIView):
+    authentication_classes = READ_AUTHENTICATION
+
+    @extend_schema(
+        tags=TAGS,
+        operation_id="api_releases_history_list",
+        summary="Every release of one app with its notes, newest first",
+        parameters=[
+            OpenApiParameter("app", OpenApiTypes.STR, enum=list(APPS), required=False),
+        ],
+        responses={200: ReleaseHistorySerializer(many=True), 400: DetailSerializer},
+    )
+    def get(self, request):
+        app = request.query_params.get("app", "phone")
+        if app not in APPS:
+            return Response(
+                {"detail": f"There is no app called {app!r}; ask for one of: {', '.join(APPS)}."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        refusal = headunit_scope.releases_refusal(request, app)
+        if refusal is not None:
+            return Response({"detail": refusal}, status=status.HTTP_403_FORBIDDEN)
+        rows = AppRelease.objects.filter(app=app).order_by("-version_code")
+        return Response(ReleaseHistorySerializer(rows, many=True).data)
 
 
 class ReleaseDownloadView(APIView):

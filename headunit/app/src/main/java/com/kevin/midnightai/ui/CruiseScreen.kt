@@ -613,7 +613,7 @@ fun CruiseScreen(
                                 // HU-1 rail they would push the portrait (the talk target) off a
                                 // 480 dp frame.
                                 if (showSetupPrompt) SetupPromptChip(onStartVoiceSetup, dismissSetupPrompt, Modifier.fillMaxWidth())
-                                updatePrompt?.let { UpdateChip(it, Modifier.fillMaxWidth()) }
+                                updatePrompt?.let { UpdateChip(it, Modifier.fillMaxWidth(), onWhatsNew = onOpenSettings) }
                             }
                         }
                     }

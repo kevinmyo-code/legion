@@ -470,6 +470,9 @@ object LegionRoute {
      */
     const val SETTINGS_UPDATES = "settings/updates"
 
+    /** What's new: the notes of the installed version and every earlier release (ticket 467). Opens by itself once after an update. */
+    const val SETTINGS_WHATS_NEW = "settings/whats-new"
+
     /**
      * Car link: pair with the car's head unit, send it the phone's location, forget it - see
      * [com.kevin.legion.ui.settings.CarLinkScreen]. The car link's hands path (ADR 0035).

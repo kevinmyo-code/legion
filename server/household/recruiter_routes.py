@@ -332,6 +332,7 @@ RECRUITER_DENIED: dict[str, str] = {
         "the Alfred pack is for a member's own phone; a visit's prompt is built on the engine"
     ),
     "releases.views.ReleaseLatestView": "app updates are for a member's own phone",
+    "releases.views.ReleaseHistoryView": "app updates are for a member's own phone",
     "releases.views.ReleaseDownloadView": "app updates are for a member's own phone",
     "releases.views.ReleasePublishView": "app updates are for a member's own phone",
     # alfred-builds ticket 06: the household's legal book library.

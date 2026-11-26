@@ -553,6 +553,16 @@ private fun LegionShell(
     }
     val context = LocalContext.current
 
+    // After an update lands, the notes of the new version open once (ticket 467). The screen
+    // records the version as seen, so a restart does not open it again.
+    LaunchedEffect(Unit) {
+        val installed = com.kevin.legion.update.AndroidUpdatePlatform(context.applicationContext as android.app.Application).installed()
+        val seen = com.kevin.legion.update.WhatsNewSeen(context).code
+        if (com.kevin.legion.update.WhatsNew.due(installed.versionCode, seen)) {
+            navController.navigate(LegionRoute.SETTINGS_WHATS_NEW) { launchSingleTop = true }
+        }
+    }
+
     // The header's QUIET toggle. Re-read on every resume, because the Quick Settings tile can flip
     // Quiet while LEGION is in the background, and a header that disagrees with the phone is a lie.
     var quietOn by remember { mutableStateOf(com.kevin.legion.quiet.QuietMode.isOn(context)) }
@@ -1155,6 +1165,7 @@ private fun LegionShell(
                     onOpenVoiceGuide = { navController.navigate(LegionRoute.SETTINGS_HELP) },
                     onOpenDumbMode = { navController.navigate(LegionRoute.SETTINGS_DUMB_MODE) },
                     onOpenUpdates = { navController.navigate(LegionRoute.SETTINGS_UPDATES) },
+                    onOpenWhatsNew = { navController.navigate(LegionRoute.SETTINGS_WHATS_NEW) },
                     onOpenCarLink = { navController.navigate(LegionRoute.SETTINGS_CAR_LINK) },
                     // The widget pager's own hands path (rehomed from the deleted
                     // `ui/TodayScreen.kt`'s "DASHBOARD" button, one-today ticket 07).
@@ -1175,6 +1186,9 @@ private fun LegionShell(
             }
             composable(LegionRoute.SETTINGS_UPDATES) {
                 com.kevin.legion.ui.settings.UpdatesScreen(onBack = { navController.popBackStack() })
+            }
+            composable(LegionRoute.SETTINGS_WHATS_NEW) {
+                com.kevin.legion.ui.settings.WhatsNewScreen(onBack = { navController.popBackStack() })
             }
             composable(LegionRoute.SETTINGS_CAR_LINK) {
                 com.kevin.legion.ui.settings.CarLinkScreen(onBack = { navController.popBackStack() })

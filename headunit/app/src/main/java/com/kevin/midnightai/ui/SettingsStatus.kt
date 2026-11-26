@@ -67,7 +67,7 @@ internal fun permissionsCategoryStatus(missing: Int): CategoryStatus = when {
 }
 
 /** The rows of Settings > System, top to bottom (HU-1 T7: Updates leads, the rest keep their order). */
-internal enum class SystemRow { UPDATES, CLOCK, PERMISSIONS, PREFERENCES, LOGS, DEVELOPER_TOOLS, RESET }
+internal enum class SystemRow { UPDATES, WHATS_NEW, CLOCK, PERMISSIONS, PREFERENCES, LOGS, DEVELOPER_TOOLS, RESET }
 
 internal fun systemRows(): List<SystemRow> = SystemRow.entries.toList()
 

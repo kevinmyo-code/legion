@@ -22,9 +22,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -40,6 +42,9 @@ import com.kevin.midnightai.update.DrivingState
 import com.kevin.midnightai.update.UpdateGraph
 import com.kevin.midnightai.update.UpdateRules
 import com.kevin.midnightai.update.UpdateState
+import com.kevin.midnightai.update.WhatsNew
+import com.kevin.midnightai.update.WhatsNewSeen
+import com.kevin.midnightai.update.WhatsNewState
 import java.util.Locale
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -51,7 +56,10 @@ import kotlinx.coroutines.launch
  */
 
 /** What the Cruise chip says, or null when it is not shown. */
-internal data class UpdatePrompt(val title: String, val line: String, val tappable: Boolean)
+internal data class UpdatePrompt(val title: String, val line: String, val tappable: Boolean, val whatsNew: Boolean = false)
+
+/** Bumped when the driver has seen the what's-new chip, so [rememberUpdatePrompt] re-reads the stored version. */
+private val whatsNewSeenTick = mutableIntStateOf(0)
 
 /**
  * The chip's content for the current update state. Never while the car is moving
@@ -78,13 +86,25 @@ internal fun rememberUpdatePrompt(): UpdatePrompt? {
         )
         is UpdateState.Waiting -> UpdatePrompt("UPDATE INSTALLS AFTER THIS CHAT", UpdateRules.describe(s.release), false)
         is UpdateState.Installing -> UpdatePrompt("INSTALLING UPDATE", "${UpdateRules.APP} closes and comes back on its own.", false)
-        else -> null
+        else -> whatsNewPrompt(context, whatsNewSeenTick.intValue)
     }
+}
+
+/** Once per update: the chip that says the app just changed and where the notes are. */
+private fun whatsNewPrompt(context: Context, @Suppress("UNUSED_PARAMETER") tick: Int): UpdatePrompt? {
+    val installed = UpdateGraph.platform(context).installed()
+    if (!WhatsNew.due(installed.versionCode, WhatsNewSeen(context).code)) return null
+    return UpdatePrompt(
+        title = "UPDATED · TAP FOR WHAT'S NEW",
+        line = "${UpdateRules.APP} ${installed.versionName}. Later: Settings, System, What's new.",
+        tappable = true,
+        whatsNew = true,
+    )
 }
 
 /** The Cruise chip, in the console column above the telemetry chips (the setup prompt's slot). */
 @Composable
-internal fun UpdateChip(prompt: UpdatePrompt, modifier: Modifier = Modifier) {
+internal fun UpdateChip(prompt: UpdatePrompt, modifier: Modifier = Modifier, onWhatsNew: () -> Unit = {}) {
     val context = LocalContext.current
     var said by remember(prompt) { mutableStateOf<String?>(null) }
     val shape = RoundedCornerShape(8.dp)
@@ -95,7 +115,13 @@ internal fun UpdateChip(prompt: UpdatePrompt, modifier: Modifier = Modifier) {
             .border(1.dp, AriaColors.Amber.copy(alpha = 0.6f), shape)
             .then(
                 if (prompt.tappable) {
-                    Modifier.clickable(onClickLabel = "Install update") {
+                    Modifier.clickable(onClickLabel = if (prompt.whatsNew) "Open settings" else "Install update") {
+                        if (prompt.whatsNew) {
+                            WhatsNewSeen(context).code = UpdateGraph.platform(context).installed().versionCode
+                            whatsNewSeenTick.intValue++
+                            onWhatsNew()
+                            return@clickable
+                        }
                         UpdateGraph.launch {
                             val outcome = UpdateGraph.tapInstall(context)
                             if (!outcome.started) said = outcome.sentence
@@ -273,3 +299,47 @@ private fun stateColor(state: UpdateState) = when (state) {
 }
 
 private fun mb(bytes: Long): String = String.format(Locale.US, "%.1f MB", bytes / (1024.0 * 1024.0))
+
+/** Settings, System, What's new: every release's notes, newest first, the installed one marked. */
+@Composable
+internal fun SystemWhatsNewSection(context: Context, onBack: () -> Unit) {
+    val platform = remember { UpdateGraph.platform(context) }
+    val installedCode = remember { platform.installed().versionCode }
+    var reload by remember { mutableIntStateOf(0) }
+    val state by produceState<WhatsNewState>(WhatsNewState.Loading, reload) {
+        value = WhatsNewState.Loading
+        value = WhatsNew.load(UpdateGraph.history(context), installedCode)
+    }
+    // Opening this section is seeing the notes, so the Cruise chip stops.
+    LaunchedEffect(Unit) { WhatsNewSeen(context).code = installedCode }
+
+    SectionScaffold("What's new", onBack) {
+        when (val s = state) {
+            WhatsNewState.Loading -> Text("Loading the release notes.", style = RowSubtitle, color = AriaColors.TextDim)
+            is WhatsNewState.Unavailable -> {
+                Text(s.sentence, style = RowSubtitle, color = AriaColors.ScanRed)
+                Spacer(Modifier.height(AriaDimens.s2))
+                OutlinedButton(
+                    onClick = { reload++ },
+                    modifier = Modifier.heightIn(min = AriaDimens.driveTouchMin),
+                ) { Text("TRY AGAIN") }
+            }
+            is WhatsNewState.Loaded -> {
+                if (s.releases.isEmpty()) Text(WhatsNew.NO_RELEASES, style = RowSubtitle, color = AriaColors.TextDim)
+                s.releases.forEach { note ->
+                    val installed = note.versionCode == s.installedCode
+                    Text(
+                        if (installed) "${note.versionName} (installed)" else note.versionName,
+                        style = RowTitle,
+                        color = AriaColors.TextPrimary,
+                    )
+                    Text(note.publishedAt.take(DATE_CHARS), style = RowSubtitle, color = AriaColors.TextDim)
+                    Text(WhatsNew.notesLine(note), style = RowSubtitle, color = AriaColors.TextPrimary)
+                    Spacer(Modifier.height(AriaDimens.s3))
+                }
+            }
+        }
+    }
+}
+
+private const val DATE_CHARS = 10 // "2026-11-26" off an ISO timestamp
