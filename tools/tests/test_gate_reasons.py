@@ -244,6 +244,16 @@ def test_an_index_is_bounded_by_the_patterns_the_trusted_case_really_has():
     assert vgr.check("answer_not#2", case, NAMES) == "unclassified"
 
 
+def test_every_group_the_scorer_calls_a_writing_tool_can_be_reported():
+    """`write_on_read:` and `write_in_test_mode:` name a GROUP, and the scorer's `WRITE_TOOLS` holds
+    groups no committed case mentions (`money`, `place`, `phone`, `goal`, `trip`, `body_log`). Without
+    them, a question that wrongly wrote through one of those would upload `unclassified`."""
+    assert set(ve.WRITE_TOOLS) <= NAMES, sorted(set(ve.WRITE_TOOLS) - NAMES)
+    read_only = {"id": "x", "say": "hi"}
+    for name in sorted(ve.WRITE_TOOLS):
+        assert vgr.check(f"write_on_read:{name}", read_only, NAMES) == f"write_on_read:{name}"
+
+
 def test_every_grouped_tool_name_a_committed_case_names_can_be_reported():
     """`declared_tools()` lists LEAF tools (`read_calendar`); a tool call's own name is its GROUP
     (`day`, `car`, `look_up`). Without the group names, the commonest real failure this slice exists
@@ -469,6 +479,37 @@ def test_the_engine_gate_script_writes_the_node_id_into_its_summary(tmp_path):
     assert (folder / "engine-summary.txt").exists()
 
 
+RAISING_FIXTURE = f'''import pytest
+
+
+@pytest.fixture
+def a_fixture():
+    raise RuntimeError("{CANARY}")
+
+
+def test_realrun_gate(a_fixture):
+    assert a_fixture
+'''
+
+
+@pytest.mark.skipif(not _bash(), reason="needs bash to run the real engine gate script")
+def test_a_fixture_that_raised_says_where_through_the_real_script(tmp_path):
+    """The same end to end, over REAL pytest, for the shape that used to read `unclassified`: the
+    test never ran because its fixture raised, so pytest writes ERROR and not FAILED."""
+    server = tmp_path / "server"
+    (server / "tests").mkdir(parents=True)
+    (server / "tests" / "realrun_web_cascade.py").write_text(RAISING_FIXTURE, encoding="utf-8")
+    out = tmp_path / "gate-raw"
+    env = {**os.environ, "PYTEST": f"{sys.executable} -m pytest", "PYTHON3": sys.executable}
+    r = subprocess.run([_bash(), str(SCRIPTS / "engine_live_gate.sh"), str(server), str(out), "", "0.12"],
+                       capture_output=True, text=True, env=env)
+    summary = (out / "summary.txt").read_text(encoding="utf-8")
+    assert r.returncode == 1
+    assert CANARY in (out / "raw" / "gate" / "pytest.txt").read_text(encoding="utf-8")
+    assert f"node: {GATE_FILE}::test_realrun_gate" in summary, summary
+    assert CANARY not in summary
+
+
 # ------------------------------------------------------------------ the workflow really calls all this
 
 GATES = (ROOT / ".github" / "workflows" / "gates.yml").read_text(encoding="utf-8")
@@ -486,8 +527,9 @@ def test_gates_yml_validates_the_reason_from_the_trusted_checkout():
 
 
 def test_the_engine_job_writes_a_summary_as_its_very_first_step():
-    """The design says the job's FIRST step, so a sha that fails the key check or the on-dev check
-    still leaves a readable summary rather than nothing at all."""
+    """The design says the job's FIRST step. What that buys is bounded and worth stating: it covers a
+    job that dies from the trusted checkout onward, the on-dev check included. A job that dies
+    earlier still uploads nothing, because the scrub script lives in that same trusted checkout."""
     assert "RESULT: UNKNOWN (gate did not start)" in GATES
     engine = GATES[GATES.index("\n  engine:"):]
     first = engine[engine.index("    steps:"):]

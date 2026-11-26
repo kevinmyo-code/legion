@@ -60,8 +60,11 @@ the paid cloud gate, whose artifact is public:
   test cannot write its own passport. A brand new case reads `unclassified` until it lands on dev.
 - The engine's half (`.github/scripts/engine_live_gate.sh`) says WHERE it broke: the pytest node id
   and the assert's LINE number (`.github/scripts/gate_fail_where.py`), each backed by code that is
-  public at the gated commit. Never the assert's text, never the model's words. Its `summary.txt`
-  starts life as `RESULT: UNKNOWN (gate did not start)`, so an empty artifact is impossible.
+  public at the gated commit, including when a fixture raised and the test never ran. Never the
+  assert's text, never the model's words. Its `summary.txt` starts life as
+  `RESULT: UNKNOWN (gate did not start)`, written by the job's first step, so a job that dies after
+  the trusted checkout still says something. A job that dies before that checkout uploads nothing,
+  because the scrub script itself lives there.
 
 ## Layer 2: the phone over adb
 

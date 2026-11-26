@@ -312,9 +312,11 @@ jobs:
       MEDIA_ROOT: /tmp/legion-media
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/legion
     steps:
-      # THE JOB'S FIRST STEP (v2 slice 3), before anything else can go wrong: a summary saying the
-      # gate never started, so once this job starts a reader is never handed an empty artifact. The
-      # gate script truncates this file when it does start, so this line survives only if it did not.
+      # THE JOB'S FIRST STEP (v2 slice 3): a summary saying the gate never started, so a job that dies
+      # later still hands a reader a word instead of nothing. The gate script truncates this file when
+      # it does start, so this line survives only if it did not. It covers failures from the trusted
+      # checkout onward, which is where the scrub script comes from: a job that dies before that
+      # checkout still uploads nothing, because the scrub itself cannot run.
       - name: A summary exists from the start
         run: |
           set -euo pipefail

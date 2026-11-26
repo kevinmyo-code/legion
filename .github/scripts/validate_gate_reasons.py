@@ -22,9 +22,14 @@ no case definition rules out `timeout`, `no_answer`, `expression_tag` or the tur
 The widest sets are the ones that have to name a tool nobody wrote down in advance: `chat_called:`,
 `write_on_read:` and `write_in_test_mode:` take any name on the published voice surface (about 140),
 because the whole point of those three is to say which tool wrongly ran. That residual channel is
-named here on purpose rather than left for a reader to find. So is this one: the `trusted` checkout
-lives inside the job's workspace, so a gated commit whose own steps rewrote it would defeat this
-script, as it would already defeat the scrub beside it.
+named here on purpose rather than left for a reader to find. So are these two:
+
+  * the `trusted` checkout lives inside the job's workspace, so a gated commit whose own steps
+    rewrote it would defeat this script, as it would already defeat the scrub beside it;
+  * the name list is three trusted sources (the published leaf tools, the group names committed cases
+    write down, the scorer's own writing-tool groups). A group name in none of them, a read-only group
+    no case mentions, still comes out `unclassified`. That is the safe direction, and it is why the
+    three naming codes are also the ones most worth re-reading when a tool is added.
 
 Fail-safe by construction: the scorecard it is handed holds NO reason, and this script only ever adds
 one. On any trouble it prints a note, adds nothing, and exits 0, which leaves exactly today's
@@ -79,6 +84,15 @@ def surface_names(root: Path) -> set[str]:
         names |= set(voice_guide.declared_tools())
     except Exception as e:  # noqa: BLE001
         print(f"reason check: no tool surface from the trusted tree ({type(e).__name__})")
+    try:
+        # The TRUSTED scorer's own list of GROUP names it treats as writing tools (`money`, `place`,
+        # `phone`, `goal`, `trip`, `body_log`): group names that no committed case happens to mention,
+        # so neither list above holds them, and `write_on_read:money` would read `unclassified`.
+        import voice_eval  # noqa: PLC0415 - the TRUSTED copy, never the gated commit's
+
+        names |= set(voice_eval.WRITE_TOOLS)
+    except Exception as e:  # noqa: BLE001
+        print(f"reason check: no write-tool names from the trusted tree ({type(e).__name__})")
     return {n for n in names if WORD.match(n)}
 
 
