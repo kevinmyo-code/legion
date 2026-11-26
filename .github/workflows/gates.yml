@@ -312,6 +312,15 @@ jobs:
       MEDIA_ROOT: /tmp/legion-media
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/legion
     steps:
+      # THE JOB'S FIRST STEP (v2 slice 3), before anything else can go wrong: a summary saying the
+      # gate never started, so once this job starts a reader is never handed an empty artifact. The
+      # gate script truncates this file when it does start, so this line survives only if it did not.
+      - name: A summary exists from the start
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/gate-raw"
+          echo "RESULT: UNKNOWN (gate did not start)" > "$RUNNER_TEMP/gate-raw/summary.txt"
+
       - name: The key exists (fail closed); at most 2 attempts of this run
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -335,15 +344,6 @@ jobs:
       - name: The commit is on dev (review G3; it runs with Kevin's main key)
         run: |
           git merge-base --is-ancestor "$SHA" origin/dev || { echo "::error::$SHA is not on origin/dev. Nothing ran."; exit 1; }
-
-      # Before anything can go wrong: a summary that says the gate never started, so an empty or
-      # missing artifact is impossible and a reader is never left guessing (v2 slice 3). The gate
-      # script truncates this file when it does start, so this line survives only if it did not.
-      - name: A summary exists from the start
-        run: |
-          set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/gate-raw"
-          echo "RESULT: UNKNOWN (gate did not start)" > "$RUNNER_TEMP/gate-raw/summary.txt"
 
       - name: Install uv
         uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6

@@ -28,10 +28,12 @@ import sys
 from pathlib import Path
 
 NAME = re.compile(r"^[a-z][a-z0-9_]{0,60}$")
-# pytest's failure header, and the short summary line when one is printed.
-HEADER = re.compile(r"^_+ ([A-Za-z0-9_\[\]:.-]+) _+$")
-SUMMARY = re.compile(r"^FAILED [^\s:]+::([A-Za-z0-9_\[\]:.-]+)")
-AT_LINE = re.compile(r"^([^\s:]+\.py):(\d{1,6}): ")
+# pytest's failure header and its short summary line. A test that never ran because a fixture raised
+# is headed `ERROR at setup of test_x` and summarised `ERROR file::test_x`, which is a likely shape
+# of the reason-free FAIL this slice exists for, so both are read.
+HEADER = re.compile(r"^_+ (?:ERROR at (?:setup|teardown) of )?([A-Za-z0-9_\[\]:.-]+) _+$")
+SUMMARY = re.compile(r"^(?:FAILED|ERROR) [^\s:]+::([A-Za-z0-9_\[\]:.-]+)")
+AT_LINE = re.compile(r"^([^\s:]+\.py):(\d{1,6}):")
 
 
 def where(output: str, test_file: str, source: str) -> list[str]:

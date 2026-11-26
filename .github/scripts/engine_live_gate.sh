@@ -20,7 +20,8 @@
 #     exit 0 AND a line "<WORDS> VERDICT: PASS" (the carry checks print "CARRY VERDICT: PASS").
 # Writes <out dir>/summary.txt: one line per step, verdicts and spend estimates only (no model words),
 # plus, on a failure, WHERE it broke: the pytest node id and the assert's line number, each backed by
-# code that is public at the gated commit (gate_fail_where.py; v2 slice 3). Never an assert's text.
+# code that is public at the gated commit (gate_fail_where.py; v2 slice 3), including when a fixture
+# raised and the test never ran. Never an assert's text, never a value, never the model's words.
 # Raw pytest output stays in <out dir>/raw/ on the runner and is never uploaded.
 set -uo pipefail
 SERVER=${1:?server dir}; OUT=${2:?out dir}; EXTRAS=${3:-}; EXTRA_CAP=${4:-0.12}

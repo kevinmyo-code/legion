@@ -372,6 +372,32 @@ def test_the_engine_says_where_it_broke_and_nothing_else():
     assert CANARY not in "\n".join(lines)
 
 
+SETUP_ERROR = f"""
+==================================== ERRORS ====================================
+____________________ ERROR at setup of test_realrun_gate _____________________
+{GATE_FILE}:4: in a_fixture
+    raise RuntimeError("{CANARY}")
+=========================== short test summary info ============================
+ERROR {GATE_FILE}::test_realrun_gate - RuntimeError: {CANARY}
+"""
+
+
+def test_a_fixture_that_raised_still_says_where():
+    """pytest heads this `ERROR at setup of`, not `FAILED`, and the test never ran. It is a likely
+    shape of the reason-free engine FAIL this slice exists for, so it may not read `unclassified`."""
+    lines = gfw.where(SETUP_ERROR, GATE_FILE, SOURCE)
+    assert lines[0] == f"node: {GATE_FILE}::test_realrun_gate"
+    assert lines[1] == "assert_line: 4"
+    assert CANARY not in "\n".join(lines)
+
+
+def test_a_line_with_no_space_after_it_is_still_a_line():
+    """pytest's `--tb=long` writes `file.py:5: in test_x`; a bare `file.py:5:` is still a location."""
+    out = f"_____ test_realrun_gate _____\n{GATE_FILE}:7:\n"
+    assert gfw.where(out, GATE_FILE, SOURCE) == [f"node: {GATE_FILE}::test_realrun_gate",
+                                                 "assert_line: 7"]
+
+
 def test_a_test_that_prints_its_own_fake_traceback_is_not_believed():
     forged = f"""
 _____________________________ test_{CANARY.replace('-', '_')} ______________________________
@@ -459,9 +485,15 @@ def test_gates_yml_validates_the_reason_from_the_trusted_checkout():
         assert "trusted/.github/scripts/validate_gate_reasons.py" in line, line
 
 
-def test_the_engine_job_writes_a_summary_before_the_gate_can_fail():
+def test_the_engine_job_writes_a_summary_as_its_very_first_step():
+    """The design says the job's FIRST step, so a sha that fails the key check or the on-dev check
+    still leaves a readable summary rather than nothing at all."""
     assert "RESULT: UNKNOWN (gate did not start)" in GATES
-    assert GATES.index("RESULT: UNKNOWN") < GATES.index("Engine live gate")
+    engine = GATES[GATES.index("\n  engine:"):]
+    first = engine[engine.index("    steps:"):]
+    assert first.index("RESULT: UNKNOWN") < first.index("secrets.GEMINI_API_KEY")
+    assert first.index("RESULT: UNKNOWN") < first.index("is not on origin/dev")
+    assert first.index("RESULT: UNKNOWN") < first.index("Engine live gate")
 
 
 def test_the_engine_gate_script_asks_where_on_every_failure_it_can():
