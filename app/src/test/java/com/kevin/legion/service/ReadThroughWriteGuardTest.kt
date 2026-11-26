@@ -88,7 +88,7 @@ class ReadThroughWriteGuardTest {
     @Test
     fun `in a marked turn every lasting or outbound call is refused in words`() {
         for ((name, args) in lastingOrOutbound) {
-            val out = ReadThroughWriteGuard.refusal(name, args, readThrough = true)
+            val out = ReadThroughWriteGuard.refusal(name, args, readThrough = true, crisis = false)
             assertNotNull("$name $args ran in a marked turn", out)
             assertFalse(out!!.getBoolean("success"))
             assertTrue(out.getBoolean("read_through"))
@@ -99,17 +99,17 @@ class ReadThroughWriteGuardTest {
     @Test
     fun `navigation, timers, music, volume, screens and reading more of a page still run`() {
         for ((name, args) in allowedAfterRead) {
-            assertNull("$name $args was refused", ReadThroughWriteGuard.refusal(name, args, readThrough = true))
+            assertNull("$name $args was refused", ReadThroughWriteGuard.refusal(name, args, readThrough = true, crisis = false))
         }
     }
 
     @Test
     fun `every tool classified as refused after a read is refused`() {
         for (name in REFUSED_AFTER_READ - ToolReads.WHY) {
-            assertNotNull("$name ran in a marked turn", ReadThroughWriteGuard.refusal(name, JSONObject(), readThrough = true))
+            assertNotNull("$name ran in a marked turn", ReadThroughWriteGuard.refusal(name, JSONObject(), readThrough = true, crisis = false))
         }
         val stop = JSONObject().put("stop", true)
-        assertNotNull(ReadThroughWriteGuard.refusal(ToolReads.WHY, stop, readThrough = true))
+        assertNotNull(ReadThroughWriteGuard.refusal(ToolReads.WHY, stop, readThrough = true, crisis = false))
     }
 
     /**
@@ -132,7 +132,7 @@ class ReadThroughWriteGuardTest {
 
     @Test
     fun `the words name the resolved tool and say it waits for the next message, as the engine's do`() {
-        val out = ReadThroughWriteGuard.refusal("records", JSONObject().put("action", "delete_record"), readThrough = true)!!
+        val out = ReadThroughWriteGuard.refusal("records", JSONObject().put("action", "delete_record"), readThrough = true, crisis = false)!!
         val words = out.getString("message")
         assertEquals("delete_record", out.getString("tool"))
         assertTrue(words, words.startsWith("Nothing was done: delete_record did not run."))
@@ -142,21 +142,21 @@ class ReadThroughWriteGuardTest {
 
     @Test
     fun `a remember keeps the memory refusal it always had`() {
-        val out = ReadThroughWriteGuard.refusal("memory", JSONObject().put("action", "remember").put("text", "x"), readThrough = true)!!
+        val out = ReadThroughWriteGuard.refusal("memory", JSONObject().put("action", "remember").put("text", "x"), readThrough = true, crisis = false)!!
         assertEquals(LiveToolbox.REMEMBER_MAIL_REFUSAL, out.getString("message"))
     }
 
     @Test
     fun `reads still run in a marked turn`() {
         for ((name, args) in reads) {
-            assertNull("$name $args was refused", ReadThroughWriteGuard.refusal(name, args, readThrough = true))
+            assertNull("$name $args was refused", ReadThroughWriteGuard.refusal(name, args, readThrough = true, crisis = false))
         }
     }
 
     @Test
     fun `a clean turn is never refused`() {
         for ((name, args) in lastingOrOutbound + allowedAfterRead + reads) {
-            assertNull("$name $args refused in a clean turn", ReadThroughWriteGuard.refusal(name, args, readThrough = false))
+            assertNull("$name $args refused in a clean turn", ReadThroughWriteGuard.refusal(name, args, readThrough = false, crisis = false))
         }
     }
 }

@@ -130,7 +130,9 @@ object ReadThroughWriteGuard {
         wireName: String,
         wireArgs: JSONObject,
         readThrough: Boolean,
-        crisis: Boolean = false,
+        // No default: a safety argument that defaults to "no crisis" fails OPEN, so a new caller
+        // would silently skip the gate. Every caller states it.
+        crisis: Boolean,
     ): JSONObject? {
         val (name, args) = LiveSurface.resolve(wireName, wireArgs)
         if (crisis && savesAMemory(name, args)) {

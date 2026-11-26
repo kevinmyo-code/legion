@@ -521,7 +521,8 @@ class CascadeWiringTest {
     fun `the one write guard runs before any resolved tool, on every path`() {
         val c = controller()
         val runTool = bodyOf(c, "runTool")
-        val guardAt = runTool.indexOf("ReadThroughWriteGuard.refusal(name, args, readThrough)")
+        // The crisis argument joined it for #462; the pin is the guard call, not its argument list.
+        val guardAt = runTool.indexOf("ReadThroughWriteGuard")
         assertTrue("runTool asks the guard", guardAt >= 0)
         assertTrue("before anything runs", guardAt < runTool.indexOf("runResolvedTool("))
         // runTool is the only way in: one runResolvedTool caller, one dispatch caller.

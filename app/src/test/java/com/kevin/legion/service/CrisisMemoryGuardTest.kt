@@ -1,5 +1,3 @@
-@file:Suppress("MaxLineLength") // invented calls read best on one line
-
 package com.kevin.legion.service
 
 import java.io.File
@@ -92,7 +90,8 @@ class CrisisMemoryGuardTest {
         assertNull(refusal("control_music", args("action" to "pause"), crisis = true))
         assertNull(refusal("day", args("action" to "complete_task", "title" to "invented"), crisis = true))
         assertNull(refusal("manage_item", args("action" to "add", "item" to "invented errand"), crisis = true))
-        assertNull(refusal("phone", args("action" to "place_call", "target" to "invented", "confirmed" to true), crisis = true))
+        val callArgs = args("action" to "place_call", "target" to "invented", "confirmed" to true)
+        assertNull(refusal("phone", callArgs, crisis = true))
     }
 
     @Test

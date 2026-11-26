@@ -407,8 +407,10 @@ internal class VoiceEvalHarness(
             return JSONObject().put("success", false).put("message", "That only works on the Live voice engine.")
         }
         val (resolved, resolvedArgs) = LiveSurface.resolve(name, args)
-        // ADR 0090: the controller's one write guard, in the same place.
-        ReadThroughWriteGuard.refusal(resolved, resolvedArgs, readThrough)?.let { return it }
+        // ADR 0090: the controller's one write guard, in the same place. `crisis` is false because
+        // the harness runs no crisis case: the real crisis teardown is what sets it (#462), and a
+        // case whose words trip the detector never reaches a tool on the real phone either.
+        ReadThroughWriteGuard.refusal(resolved, resolvedArgs, readThrough, crisis = false)?.let { return it }
         val response = when (resolved) {
             // No Gmail on the laptop: the made-up inbox ([VoiceEvalFixture.mailAnswer]).
             in VoiceEvalFixture.MAIL_TOOLS -> VoiceEvalFixture.mailAnswer()
