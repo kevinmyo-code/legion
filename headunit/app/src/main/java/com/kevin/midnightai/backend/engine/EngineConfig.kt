@@ -105,8 +105,21 @@ class EngineConfig(
         return editor.commit()
     }
 
-    fun markCarLinkRefused() {
-        if (isCarLinkSignIn()) prefs.edit().putString(KEY_REFUSED, "1").commit()
+    /** The `Authorization` header this device's token makes, or null when it holds none. */
+    fun authorization(): String? = token()?.takeIf { it.isNotBlank() }?.let { "$TOKEN_SCHEME $it" }
+
+    /**
+     * The engine refused the car's own sign-in. [sentAuthorization] is the header the refused
+     * request carried, and the mark is made only when that is still the token this device holds:
+     * the phone replaces the car's sign-in over the link (5.6) while uploads are in flight, and a
+     * 401 for the credential it replaced would otherwise stop the car and ask for a re-pair with a
+     * perfectly good sign-in on disk. False = nothing was marked.
+     */
+    @Synchronized
+    fun markCarLinkRefused(sentAuthorization: String?): Boolean {
+        if (!isCarLinkSignIn()) return false
+        if (sentAuthorization == null || sentAuthorization != authorization()) return false
+        return prefs.edit().putString(KEY_REFUSED, "1").commit()
     }
 
     /** Saves [url] only if it passes [isValidBaseUrl]; otherwise saves nothing and returns false -
@@ -156,7 +169,14 @@ class EngineConfig(
     /** The token's ciphertext as stored. */
     fun rawToken(): String? = prefs.getString(KEY_TOKEN, null)
 
-    /** Encrypts and saves the session with commit(); false and nothing written on any failure. */
+    /**
+     * Encrypts and saves the session with commit(); false and nothing written on any failure.
+     *
+     * Synchronized with [markCarLinkRefused]: a renewed sign-in arriving over the link and a 401
+     * for the one it replaces are exactly the pair that race, and this write is what clears
+     * [KEY_REFUSED].
+     */
+    @Synchronized
     fun saveSessionStrict(
         baseUrl: String,
         token: String,
@@ -224,6 +244,8 @@ class EngineConfig(
     }
 
     companion object {
+        /** DRF's own token scheme, the one [authorization] builds and every request carries. */
+        const val TOKEN_SCHEME = "Token"
         private const val PREFS = "engine_config"
         private const val KEY_BASE_URL = "base_url"
         private const val KEY_TOKEN = "device_token"

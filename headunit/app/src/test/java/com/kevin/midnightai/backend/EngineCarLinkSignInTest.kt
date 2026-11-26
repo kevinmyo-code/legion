@@ -9,8 +9,10 @@ import com.kevin.midnightai.backend.engine.EngineSignIn
 import com.kevin.midnightai.backend.engine.McpListResult
 import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
+import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.RecordedRequest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -174,6 +176,30 @@ class EngineCarLinkSignInTest {
         assertTrue(access.clear())
         assertEquals("member-token", c.token())
         assertFalse(c.hasCarLinkReserve())
+    }
+
+    /**
+     * RED review round 3, finding 2. The phone renews the car's sign-in over the link (5.6) and
+     * revokes the credential it replaced the moment this unit confirms. An upload already in flight
+     * under the old one then 401s, and marking the hand-over refused for it would stop the car and
+     * ask for a re-pair with a perfectly good sign-in on disk. Only the token that 401'd may end
+     * the link, so the mark is made only when that is still the one this unit holds.
+     */
+    @Test fun a401ForASignInAlreadyReplacedDoesNotEndTheHandOver() = runBlocking {
+        val c = carLinked()
+        val http = EngineHttp(c, OkHttpClient())
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse {
+                // The renewed sign-in lands while this upload is in flight.
+                c.saveSessionStrict(base(), "hu1_renewed", "user-1", carLink = true, vehicleId = "veh-1")
+                return MockResponse().setResponseCode(401).setBody("""{"detail":"Invalid token."}""")
+            }
+        }
+        val refused = http.post("/api/fleet/obd_samples/batch/", "[]")
+        assertTrue(refused.failure() is EngineFailure.Unauthorized)
+        assertEquals(1, server.requestCount)
+        assertFalse("a good sign-in on disk was marked refused", c.carLinkRefused())
+        assertEquals("hu1_renewed", c.token())
     }
 
     /** Review S1: a 403 is a refused upload, not a dead sign-in: no "no longer valid", no stop. */
