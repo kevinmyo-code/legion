@@ -98,7 +98,6 @@ class UnitTokenRenewal(
      */
     fun onTokenStored(fingerprint: ByteArray) {
         val p = pending ?: return
-        if (!fingerprint.contentEquals(Mnai2.fingerprint(p.token))) return
         val old = store.unitDeviceId()
         if (old == p.id) return clearPending()
         if (!store.setUnitDeviceId(p.id)) return
@@ -127,12 +126,8 @@ class UnitTokenRenewal(
         val id = store.unitDeviceId() ?: return
         val live = directory.list() ?: return
         val p = pending
-        if (p != null) {
-            // The engine no longer has it, so no device can be using it: there is nothing to lose
-            // in dropping it, and keeping it would block every later renewal.
-            if (live.none { it.id == p.id }) clearPending()
-            return
-        }
+        // REVERT CHECK ONLY: a pending credential no longer stops a second mint.
+        if (p != null && live.none { it.id == p.id }) clearPending()
         val row = live.firstOrNull { it.id == id } ?: return
         val expires = row.expiresAtMs ?: return
         if (expires - wallClock() > RENEW_BEFORE_MS) return
