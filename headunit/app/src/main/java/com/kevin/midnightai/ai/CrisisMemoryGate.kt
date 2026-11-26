@@ -47,4 +47,33 @@ object CrisisMemoryGate {
      */
     fun forgetsSession(turns: List<EpisodicTurn>): Boolean =
         turns.any { CrisisDetector.detect(it.text) }
+
+    /**
+     * Whether a voice tool call saves a memory, so it is refused for the rest of a socket on which
+     * the detector fired (ticket #462).
+     *
+     * The third layer, and it covers what the other two cannot. [recordsTurn] and [forgetsSession]
+     * guard the raw buffer and its distillation; neither sees `remember`, which writes the legacy
+     * explicit `memories` table through [AriaBrain] and was still ungated (the #458 review's
+     * finding 4). Unlike a captured turn, a `remember` arrives DURING the crisis turn: the
+     * detection does not stop the model generating, so the tool call comes off the same socket
+     * after the phrase.
+     *
+     * Keyed on the tool NAME, not on text, because `remember`'s argument is the model's paraphrase
+     * of what was said rather than the driver's own words, so re-detecting on it the way
+     * [recordsTurn] does would decide nothing.
+     *
+     * `recall_memory` is deliberately NOT here: reading old memories back is not saving this
+     * exchange, and the crisis card is the answer to the exchange either way.
+     */
+    fun savesAMemory(toolName: String): Boolean = toolName == "remember"
+
+    /**
+     * What `remember` says instead, once the detector has fired on this socket. Says what did NOT
+     * happen, in words, because the tool's own contract cannot report a refusal
+     * ([com.kevin.midnightai.service.LiveToolbox] hardcodes success over it) and because an
+     * in-character acknowledgement of a save that never happened is the failure to avoid.
+     */
+    const val REFUSAL = "Nothing was saved. Nothing from this conversation is kept as a memory. " +
+        "Say that nothing was saved; do not offer to save it."
 }

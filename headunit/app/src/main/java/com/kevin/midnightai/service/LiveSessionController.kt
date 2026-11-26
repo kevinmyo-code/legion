@@ -10,6 +10,7 @@ import android.widget.Toast
 import com.kevin.midnightai.MidnightEvents
 import com.kevin.midnightai.ai.AriaBrain
 import com.kevin.midnightai.ai.CompanionProfile
+import com.kevin.midnightai.ai.CrisisMemoryGate
 import com.kevin.midnightai.ai.GeminiKeyProvider
 import com.kevin.midnightai.ai.KeyHealth
 import com.kevin.midnightai.ai.firstGreetingOpener
@@ -776,13 +777,25 @@ class LiveSessionController(context: Context) {
     private fun handleToolCall(call: LiveEvent.ToolCall) {
         scope.launch {
             val s = session ?: return@launch
+            // Ticket #462: once the detector has fired on this socket, nothing of this conversation
+            // becomes a memory, so a `remember` is refused in words before it runs. Here rather
+            // than in [LiveToolbox.dispatch], which is handed no session and no turn, or in
+            // `AriaBrain.remember`, which sees only the model's paraphrase. The flag is set on the
+            // socket reader before the crisis event is emitted, so a call read after the phrase
+            // cannot slip past; a call read BEFORE it is the detector-miss case, which no
+            // detector-keyed gate reaches.
+            val crisisRefusal = if (CrisisMemoryGate.savesAMemory(call.name) && s.crisisOnThisSocket) {
+                JSONObject().put("success", false).put("message", CrisisMemoryGate.REFUSAL)
+            } else {
+                null
+            }
             // A tool MUST always hand a response back, even on error/timeout, or
             // Gemini stays mid-turn and the UI wedges. Bound every tool.
             // The investigating specialists run a multi-round agent loop (up to a
             // 30s budget plus a one-shot fallback), so they get a longer leash than
             // the snappy data/action tools.
             val timeout = toolTimeoutMs(call.name)
-            val response: JSONObject = try {
+            val response: JSONObject = crisisRefusal ?: try {
                 withTimeoutOrNull(timeout) {
                     when (call.name) {
                         // Session/UI-scoped tools the toolbox returns null for - we

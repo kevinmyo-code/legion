@@ -356,6 +356,17 @@ class GeminiLiveSession(
     // match on one delta matches on every delta after it. Reset on turnComplete.
     @Volatile private var crisisFiredThisTurn = false
 
+    // Ticket #462: a turn of THIS socket tripped the crisis detector. NOT reset at turnComplete
+    // like [crisisFiredThisTurn], and that is the whole point: the model keeps generating on the
+    // wire after a detection (this file's own note at `checkForCrisis`), so a `remember` tool call
+    // can still arrive, and the controller refuses it off this flag
+    // ([CrisisMemoryGate.savesAMemory]). Set inside `checkForCrisis`, on the socket reader, BEFORE
+    // the event is emitted, so a tool call read after the phrase always sees it. Cleared by
+    // `start()` (a fresh socket is a fresh conversation).
+    @Volatile
+    var crisisOnThisSocket: Boolean = false
+        private set
+
     // The driver said goodbye (DriverDismissal), so this conversation ends when the turn does.
     // NOT reset at turnComplete like crisisFiredThisTurn: a dismissal said on a turn that called a
     // tool has to survive to the answer's own turnComplete, which is the turn that parks. Cleared
@@ -439,6 +450,7 @@ class GeminiLiveSession(
         suppressMicNextTurn = false
         discardModelAudioUntilTurnComplete = false
         dismissAfterTurn = false
+        crisisOnThisSocket = false
         // Every session speaks or listens right away (the idle pre-connect that did not mark busy
         // is gone, 2026-11-09), so it marks busy and routine proactive stays quiet for it.
         ConversationState.setBusy(true)
@@ -908,6 +920,8 @@ class GeminiLiveSession(
         if (crisisFiredThisTurn) return
         if (!CrisisDetector.detect(userTurnText.toString())) return
         crisisFiredThisTurn = true
+        // #462: set before the event, so a tool call read after this phrase cannot save a memory.
+        crisisOnThisSocket = true
         Log.w(TAG, "Crisis phrase detected in transcript - flushing audio, notifying owner")
         flushAudio()
         speakingThisTurn = false
