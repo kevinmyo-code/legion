@@ -58,8 +58,13 @@ class VoiceEvalOfflineTest {
         for (id in gate) assertTrue("gate_cases.txt names $id, which no case file has", id in ids)
     }
 
+    /**
+     * Every tool a case NAMES must exist, whichever key names it. Until v2 only `calls` was checked,
+     * so a typo in `not_calls` forbade a tool nobody has and the case quietly tested nothing; the
+     * same held for `succeeded` / `not_succeeded` and now for the `tool:<spec>` tags.
+     */
     @Test
-    fun `every expected call in the committed cases is on the voice surface`() {
+    fun `every tool the committed cases name is on the voice surface`() {
         val surface = surfaceActions()
         val json = JSONObject(VoiceEvalCases.resolve("tools/voice_eval/cases.json").readText())
         val cases = json.getJSONArray("cases")
@@ -67,24 +72,35 @@ class VoiceEvalOfflineTest {
         var checked = 0
         for (i in 0 until cases.length()) {
             val c = cases.getJSONObject(i)
-            assertTrue("duplicate id ${c.getString("id")}", ids.add(c.getString("id")))
+            val id = c.getString("id")
+            assertTrue("duplicate id $id", ids.add(id))
+            val specs = mutableListOf<Pair<String, String>>()
             val expects = c.optJSONArray("turns")?.let { t -> (0 until t.length()).map { t.getJSONObject(it).optJSONObject("expect") } }
                 ?: listOf(c.optJSONObject("expect"))
             for (e in expects.filterNotNull()) {
-                val calls = e.optJSONArray("calls") ?: continue
-                for (j in 0 until calls.length()) {
-                    for (alt in calls.getString(j).split('|')) {
-                        val tool = alt.substringBefore('/')
-                        val action = alt.substringAfter('/', "")
-                        val names = surface[tool]
-                        // A bare name may be a resolved tool (e.g. list_vehicles behind a router): skip.
-                        if (names == null && action.isEmpty()) continue
-                        assertTrue("${c.getString("id")}: $tool is not on the voice surface", names != null)
-                        if (action.isNotEmpty()) {
-                            assertTrue("${c.getString("id")}: $tool has no action $action", action in names!!)
-                        }
-                        checked++
+                for (key in listOf("calls", "not_calls", "succeeded", "not_succeeded")) {
+                    val arr = e.optJSONArray(key) ?: continue
+                    for (j in 0 until arr.length()) specs += key to arr.getString(j)
+                }
+            }
+            c.optJSONArray("tags")?.let { t ->
+                for (j in 0 until t.length()) {
+                    val tag = t.getString(j)
+                    if (tag.startsWith("tool:")) specs += "tags" to tag.removePrefix("tool:")
+                }
+            }
+            for ((key, spec) in specs) {
+                for (alt in spec.split('|')) {
+                    val tool = alt.substringBefore('/')
+                    val action = alt.substringAfter('/', "")
+                    val names = surface[tool]
+                    // A bare name may be a resolved tool (e.g. list_vehicles behind a router): skip.
+                    if (names == null && action.isEmpty()) continue
+                    assertTrue("$id ($key): $tool is not on the voice surface", names != null)
+                    if (action.isNotEmpty()) {
+                        assertTrue("$id ($key): $tool has no action $action", action in names!!)
                     }
+                    checked++
                 }
             }
         }

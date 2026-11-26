@@ -590,6 +590,14 @@ def score_case(case: dict, run: CaseRun, *, phone: bool) -> Verdict:
         prefix = f"turn {i + 1}: " if len(turns) > 1 else ""
         fails += [prefix + x for x in f]
         warns += [prefix + x for x in w]
+    # The `chat` tag is a CHECK, not a label (v2 slice 2): the case said nothing that asks for a
+    # tool, so no tool may run. It is scored off the calls the row already carries, never off a
+    # hand-written `not_calls` list, which can only forbid the tools whoever wrote the case thought
+    # of and goes stale the moment the tool list changes.
+    if "chat" in case.get("tags", []):
+        called = sorted({c.key for t in run.turns for c in t.calls})
+        if called:
+            fails.append(f"a chat case called {', '.join(called)}; a chat case calls no tool")
     # `read_through: true` is a precondition, not a check: a turn that had to be answered from outside
     # text (a search) and carries no read-through mark tested nothing, so the case is inconclusive,
     # never a pass (review 1121 EVAL). Only for a run that finished with every turn answered.
