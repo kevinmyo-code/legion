@@ -155,9 +155,7 @@ class UnitTokenRenewal(
         val car = store.unitDeviceId()
         // Already the car's: the unit answered and only the record's own clearing is still owed.
         if (car == p.id) return null
-        if (store.pendingUnitId() == p.id && p.replaces == car) return p
-        end(p)
-        return null
+        return p
     }
 
     /** A few tries per socket, spaced, then quiet until the next one. */
