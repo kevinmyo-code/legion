@@ -15,7 +15,7 @@ by mistake opens nothing.
 | `device-logs-upload` | POST | its own drive log; GET (the household's list) is refused |
 | `fleet-obd-samples-batch` | POST | append-only OBD telemetry; no read, no edit |
 | `releases-latest` | GET | its own OTA: the newest `headunit` release, never another app's |
-| `releases-history` | GET | its own "What's new": every `headunit` release's notes, never another app's |
+| `releases-history` | GET | its own "What's new": every `headunit` release's notes only |
 | `releases-download` | GET | the signed link for a `headunit` release id, never another app's |
 
 **Why the two release routes are on the list (2026-11-24).** A unit paired over the car link held

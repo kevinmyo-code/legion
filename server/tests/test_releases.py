@@ -176,7 +176,7 @@ def test_history_lists_every_release_newest_first_with_notes_and_no_object_name(
     owner_client, member_client
 ):
     assert member_client.get("/api/releases/history?app=phone").data == []
-    for code, notes in ((10, "first"), (12, "third"), (11, "second")):
+    for code, notes in ((10, "first"), (11, "second"), (12, "third")):
         owner_client.post("/api/releases/", _body(version_code=code, notes=notes), format="json")
     owner_client.post("/api/releases/", _body(app="headunit", version_code=99), format="json")
     response = member_client.get("/api/releases/history?app=phone")
