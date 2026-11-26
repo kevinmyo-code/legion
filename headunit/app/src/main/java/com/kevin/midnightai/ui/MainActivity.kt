@@ -188,6 +188,8 @@ class MainActivity : ComponentActivity() {
                     var settingsInPhones by remember { mutableStateOf(false) }
                     // Cruise playlist tile long-press: straight to Connections > Spotify.
                     var settingsInSpotify by remember { mutableStateOf(false) }
+                    // The Cruise "TAP FOR WHAT'S NEW" chip: straight to System > What's new.
+                    var settingsInWhatsNew by remember { mutableStateOf(false) }
                     var showOnboarding by remember { mutableStateOf(false) }
                     val onVoiceSetupDone = {
                         OnboardingState.markVoiceSetupDone(this@MainActivity)
@@ -210,9 +212,10 @@ class MainActivity : ComponentActivity() {
                             startInSetup = settingsInSetup,
                             startInPhones = settingsInPhones,
                             startInSpotify = settingsInSpotify,
+                            startInWhatsNew = settingsInWhatsNew,
                             onReset = { onboarded = false },
-                            onExit = { inSettings = false; settingsInSetup = false; settingsInPhones = false; settingsInSpotify = false },
-                            onStartVoiceSetup = { inSettings = false; settingsInSetup = false; settingsInPhones = false; settingsInSpotify = false; startCompanionSetup() },
+                            onExit = { inSettings = false; settingsInSetup = false; settingsInPhones = false; settingsInSpotify = false; settingsInWhatsNew = false },
+                            onStartVoiceSetup = { inSettings = false; settingsInSetup = false; settingsInPhones = false; settingsInSpotify = false; settingsInWhatsNew = false; startCompanionSetup() },
                         )
                         // Cruise is home. It was briefly displaced by a purpose-built
                         // DriveHome launcher screen (2026-09), which Kevin reverted:
@@ -226,6 +229,7 @@ class MainActivity : ComponentActivity() {
                             onOpenSettings = { settingsInSetup = false; settingsInPhones = false; settingsInSpotify = false; inSettings = true },
                             onOpenPhoneLink = { settingsInSetup = false; settingsInPhones = true; settingsInSpotify = false; inSettings = true },
                             onOpenSpotifySettings = { settingsInSetup = false; settingsInPhones = false; settingsInSpotify = true; inSettings = true },
+                            onOpenWhatsNew = { settingsInSetup = false; settingsInPhones = false; settingsInSpotify = false; settingsInWhatsNew = true; inSettings = true },
                             onStartVoiceSetup = { startCompanionSetup() },
                         )
                     }

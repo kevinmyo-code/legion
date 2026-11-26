@@ -1,6 +1,5 @@
 package com.kevin.legion.ui.settings
 
-import android.app.Application
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -23,7 +22,6 @@ import com.kevin.legion.ui.common.DeckButton
 import com.kevin.legion.ui.common.DeckScreenHeader
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
-import com.kevin.legion.update.AndroidUpdatePlatform
 import com.kevin.legion.update.WhatsNew
 import com.kevin.legion.update.WhatsNewSeen
 import com.kevin.legion.update.WhatsNewState
@@ -34,10 +32,9 @@ fun WhatsNewScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val viewModel: WhatsNewViewModel = viewModel(factory = WhatsNewViewModel.Factory(context))
     val state by viewModel.state.collectAsStateWithLifecycle()
-    // Opening the screen, by hand or by itself after an update, is what counts as seeing it.
-    LaunchedEffect(Unit) {
-        val platform = AndroidUpdatePlatform(context.applicationContext as Application)
-        WhatsNewSeen(context).code = platform.installed().versionCode
+    // Seen means the notes were on screen: a failed load leaves the once to try again next time.
+    LaunchedEffect(state) {
+        WhatsNew.seenToRecord(state)?.let { WhatsNewSeen(context).code = it }
     }
     WhatsNewContent(state = state, onBack = onBack, onRetry = viewModel::reload)
 }

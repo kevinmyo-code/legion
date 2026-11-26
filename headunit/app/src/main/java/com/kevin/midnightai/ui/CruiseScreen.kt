@@ -186,6 +186,8 @@ fun CruiseScreen(
     onStartVoiceSetup: () -> Unit = {},
     // Long-press on a playlist tile: the pin picker (Connections > Spotify).
     onOpenSpotifySettings: () -> Unit = onOpenSettings,
+    // The "TAP FOR WHAT'S NEW" chip: System > What's new.
+    onOpenWhatsNew: () -> Unit = onOpenSettings,
 ) {
     val context = LocalContext.current
     // Dual-target reflow (2026-07-12): a head unit only ever reports EXPANDED
@@ -613,7 +615,7 @@ fun CruiseScreen(
                                 // HU-1 rail they would push the portrait (the talk target) off a
                                 // 480 dp frame.
                                 if (showSetupPrompt) SetupPromptChip(onStartVoiceSetup, dismissSetupPrompt, Modifier.fillMaxWidth())
-                                updatePrompt?.let { UpdateChip(it, Modifier.fillMaxWidth(), onWhatsNew = onOpenSettings) }
+                                updatePrompt?.let { UpdateChip(it, Modifier.fillMaxWidth(), onWhatsNew = onOpenWhatsNew) }
                             }
                         }
                     }

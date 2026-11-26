@@ -187,6 +187,8 @@ fun ControlPanel(
     startInPhones: Boolean = false,
     // Lands on Music > Spotify (long-press on a Cruise playlist tile).
     startInSpotify: Boolean = false,
+    // Lands on System > What's new (the Cruise "UPDATED, TAP FOR WHAT'S NEW" chip, ticket 467).
+    startInWhatsNew: Boolean = false,
     onReset: () -> Unit = {},
     onExit: () -> Unit = {},
     onStartVoiceSetup: () -> Unit = {},
@@ -200,7 +202,7 @@ fun ControlPanel(
     var selected by remember {
         mutableStateOf(
             when {
-                startInSetup -> SettingsCategory.SYSTEM
+                startInSetup || startInWhatsNew -> SettingsCategory.SYSTEM
                 startInPhones -> SettingsCategory.PHONES
                 startInSpotify -> SettingsCategory.MUSIC
                 else -> defaultSettingsCategory(context)
@@ -213,12 +215,13 @@ fun ControlPanel(
                 startInSetup -> Section.SYSTEM_PERMISSIONS
                 startInPhones -> Section.CONN_PHONES
                 startInSpotify -> Section.CONN_SPOTIFY
+                startInWhatsNew -> Section.SYSTEM_WHATS_NEW
                 else -> null
             }
         )
     }
     // COMPACT only: whether the single pane is showing a category (true) or the rail (false).
-    var paneOpen by remember { mutableStateOf(startInSetup || startInPhones || startInSpotify) }
+    var paneOpen by remember { mutableStateOf(startInSetup || startInPhones || startInSpotify || startInWhatsNew) }
     val compact = LocalSizeClass.current == SizeClass.COMPACT ||
         LocalConfiguration.current.screenWidthDp < SETTINGS_TWO_PANE_MIN_DP
 
