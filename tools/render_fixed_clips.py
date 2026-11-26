@@ -175,7 +175,7 @@ def cost(usage: dict) -> float:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--force", action="store_true", help="render every clip, not only missing ones")
+    ap.add_argument("--force", action="store_true", help="re-render every clip, not only missing ones, and pay for it (skips the cache)")
     ap.add_argument("--dry-run", action="store_true", help="estimate the spend and stop")
     ap.add_argument("--no-cache", action="store_true",
                     help="pay for every render again (default: replay what tools/tts_cache.py holds)")
@@ -209,7 +209,7 @@ def main() -> int:
                 got = tts_cache.cached(
                     MODEL, VOICE, c["line"],
                     lambda: _paid(key, c["line"]),
-                    variant=f"take{c['take']}-try{attempt}", no_cache=args.no_cache,
+                    variant=f"take{c['take']}-try{attempt}", no_cache=args.no_cache or args.force,
                 )
                 raw, usage = got.pcm, got.extra
             except (urllib.error.URLError, OSError, ValueError) as e:

@@ -30,7 +30,7 @@ class Counter:
 
     def __call__(self):
         self.calls += 1
-        return b"\x01\x00" * 100, 24_000, {"cost": 0.01}
+        return b"\x01\x00" * 24_000, 24_000, {"cost": 0.01}  # one second
 
 
 def test_the_second_render_of_the_same_text_makes_no_call(tmp_path):
@@ -98,12 +98,10 @@ def _tone(ms: int = 400) -> bytes:
     return b"".join(struct.pack("<h", int(8000 * math.sin(i / 8))) for i in range(n))
 
 
-def test_the_fixed_clips_rerun_with_force_pays_for_nothing(monkeypatch, tmp_path):
-    calls = []
-
+def _fixed_setup(monkeypatch, tmp_path, calls, argv):
     def fake_render(key, text):
         calls.append(text)
-        return _tone(), {"candidatesTokenCount": 40, "promptTokenCount": 5}
+        return _tone(max(400, 70 * len(text))), {"candidatesTokenCount": 40, "promptTokenCount": 5}
 
     key_file = tmp_path / "key.txt"
     key_file.write_text("test-key-not-real", encoding="utf-8")
@@ -111,28 +109,34 @@ def test_the_fixed_clips_rerun_with_force_pays_for_nothing(monkeypatch, tmp_path
     monkeypatch.setattr(fixed, "OUT", tmp_path / "clips")
     monkeypatch.setenv("LEGION_GEMINI_KEY_FILE", str(key_file))
     monkeypatch.setenv("LEGION_TTS_CACHE", str(tmp_path / "cache"))
-    monkeypatch.setattr(sys, "argv", ["render_fixed_clips.py", "--force"])
+    monkeypatch.setattr(sys, "argv", ["render_fixed_clips.py", *argv])
+
+
+def test_the_fixed_clips_second_pass_comes_from_the_cache(monkeypatch, tmp_path):
+    calls = []
+    _fixed_setup(monkeypatch, tmp_path, calls, [])
     assert fixed.main() == 0
     paid = len(calls)
-    assert paid == len(fixed.clips())
+    assert paid > 0
+    for f in (tmp_path / "clips").glob("*.wav"):
+        f.unlink()  # the clips are gone but the renders are cached
     assert fixed.main() == 0
-    assert len(calls) == paid  # the second pass came from the cache
+    assert len(calls) == paid
+
+
+def test_force_rerenders_every_clip_and_pays_again(monkeypatch, tmp_path):
+    calls = []
+    _fixed_setup(monkeypatch, tmp_path, calls, [])
+    assert fixed.main() == 0
+    paid = len(calls)
+    monkeypatch.setattr(sys, "argv", ["render_fixed_clips.py", "--force"])
+    assert fixed.main() == 0
+    assert len(calls) == 2 * paid  # --force means re-render, as its help says
 
 
 def test_the_two_takes_of_a_line_are_two_renders(monkeypatch, tmp_path):
     calls = []
-
-    def fake_render(key, text):
-        calls.append(text)
-        return _tone(), {}
-
-    key_file = tmp_path / "key.txt"
-    key_file.write_text("test-key-not-real", encoding="utf-8")
-    monkeypatch.setattr(fixed, "render", fake_render)
-    monkeypatch.setattr(fixed, "OUT", tmp_path / "clips")
-    monkeypatch.setenv("LEGION_GEMINI_KEY_FILE", str(key_file))
-    monkeypatch.setenv("LEGION_TTS_CACHE", str(tmp_path / "cache"))
-    monkeypatch.setattr(sys, "argv", ["render_fixed_clips.py"])
+    _fixed_setup(monkeypatch, tmp_path, calls, [])
     fixed.main()
     assert calls.count(fixed.ACKS[0]) == 2  # take 0 and take 1 are meant to differ
 
@@ -143,7 +147,7 @@ def test_the_listen_cues_gemini_renderer_reuses_a_line(monkeypatch, tmp_path):
     def fake_call(url, key, body=None):
         sent.append(url)
         return {"candidates": [{"content": {"parts": [{"inlineData": {
-            "mimeType": "audio/L16;rate=24000", "data": "AAAA"}}]}}]}
+            "mimeType": "audio/L16;rate=24000", "data": "AAAA" * 6000}}]}}]}
 
     monkeypatch.setattr(cues, "_call", fake_call)
     monkeypatch.setenv("LEGION_TTS_CACHE", str(tmp_path))
@@ -152,3 +156,50 @@ def test_the_listen_cues_gemini_renderer_reuses_a_line(monkeypatch, tmp_path):
     cues.GeminiRenderer("Kore", "test-key-not-real", "tts-model-a").render("Right.")
     assert first == again
     assert len(sent) == 2  # the other voice was a new render
+
+
+# ---- a render that is not a render is never stored ---------------------------------------------
+
+
+@pytest.mark.parametrize("pcm", [b"", b"\x01", b"\x01\x00" * 100])
+def test_an_empty_or_implausibly_short_render_is_refused_and_not_stored(tmp_path, pcm):
+    with pytest.raises(ValueError):
+        tts_cache.cached(MODEL, VOICE, "Good evening.", lambda: (pcm, 24_000, {}), root=tmp_path)
+    assert list(tmp_path.iterdir()) == []
+    render = Counter()
+    tts_cache.cached(MODEL, VOICE, "Good evening.", render, root=tmp_path)
+    assert render.calls == 1  # the refusal left nothing behind to replay
+
+
+def test_the_floor_scales_with_the_text(tmp_path):
+    long_text = "word " * 40  # 200 chars: 5 s floor
+    one_second = b"\x01\x00" * 24_000
+    with pytest.raises(ValueError):
+        tts_cache.cached(MODEL, VOICE, long_text, lambda: (one_second, 24_000, {}), root=tmp_path)
+    assert tts_cache.min_pcm_bytes("Hi.", 24_000) == 24_000 * 2 * 150 // 1000
+
+
+def test_a_bad_entry_an_older_run_stored_is_a_miss(tmp_path):
+    render = Counter()
+    tts_cache.cached(MODEL, VOICE, "Good evening.", render, root=tmp_path)
+    for f in tmp_path.glob("*.pcm"):
+        f.write_bytes(b"")
+    tts_cache.cached(MODEL, VOICE, "Good evening.", render, root=tmp_path)
+    assert render.calls == 2
+
+
+def test_new_pcm_under_old_meta_is_a_miss_not_a_wrong_rate(tmp_path):
+    render = Counter()
+    tts_cache.cached(MODEL, VOICE, "Good evening.", render, root=tmp_path)
+    for f in tmp_path.glob("*.pcm"):
+        f.write_bytes(b"\x02\x00" * 30_000)  # a torn overwrite: other length, old meta
+    got = tts_cache.cached(MODEL, VOICE, "Good evening.", render, root=tmp_path)
+    assert not got.hit and render.calls == 2
+
+
+def test_a_write_leaves_no_temp_files_and_an_overwrite_replaces_both(tmp_path):
+    tts_cache.cached(MODEL, VOICE, "Hi.", Counter(), root=tmp_path)
+    tts_cache.cached(MODEL, VOICE, "Hi.", lambda: (b"\x03\x00" * 12_000, 12_000, {}), root=tmp_path, no_cache=True)
+    assert sorted(p.suffix for p in tmp_path.iterdir()) == [".json", ".pcm"]
+    got = tts_cache.cached(MODEL, VOICE, "Hi.", Counter(), root=tmp_path)
+    assert got.hit and got.rate == 12_000
