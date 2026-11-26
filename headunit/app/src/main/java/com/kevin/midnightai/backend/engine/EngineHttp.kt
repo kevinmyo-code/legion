@@ -225,8 +225,7 @@ class EngineHttp(
         }
 
     private fun Request.Builder.authorize(): Request.Builder {
-        val token = config.token()
-        if (!token.isNullOrBlank()) header("Authorization", "Token $token")
+        config.authorization()?.let { header(AUTHORIZATION, it) }
         return this
     }
 
@@ -265,11 +264,15 @@ class EngineHttp(
                 ),
             )
         }
+        // The header as SENT, so a 401 is read against the token that earned it even when the car's
+        // sign-in was replaced over the link while this request was in flight (5.6).
+        val request = buildRequest(baseUrl)
         return try {
             classify(
-                executeAsync(buildRequest(baseUrl)),
+                executeAsync(request),
                 carLink = carLink,
                 refusalEndsLink = carLink && CarLinkScope.aRefusalEndsTheHandover(method, path),
+                sentAuthorization = request.header(AUTHORIZATION),
             )
         } catch (e: IOException) {
             Result.failure(
@@ -311,6 +314,7 @@ class EngineHttp(
         response: Response,
         carLink: Boolean = false,
         refusalEndsLink: Boolean = carLink,
+        sentAuthorization: String? = null,
     ): Result<EngineOk> {
         val code = response.code
         val headers = response.headers.associate { (name, value) -> name.lowercase() to value }
@@ -328,7 +332,11 @@ class EngineHttp(
                 ),
             )
             refusalEndsLink && code == UNAUTHORIZED -> {
-                config.markCarLinkRefused()
+                // Only the token that actually 401'd may end the hand-over: the phone replaces the
+                // car's sign-in over the link while uploads are in flight (5.6), and marking the
+                // link refused for the credential it replaced would stop the car and ask for a
+                // re-pair with a good sign-in on disk. This request still fails either way.
+                config.markCarLinkRefused(sentAuthorization)
                 Result.failure(EngineHttpException(EngineFailure.Unauthorized(CarLinkScope.REFUSED)))
             }
             // A 401 on a release read says the ENGINE will not take a unit token there - an engine
@@ -372,6 +380,7 @@ class EngineHttp(
     companion object {
         private val SUCCESS_RANGE = 200..299
         private val CLIENT_ERROR_RANGE = 400..499
+        private const val AUTHORIZATION = "Authorization"
         private const val UNAUTHORIZED = 401
         private const val FORBIDDEN = 403
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
