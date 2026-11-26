@@ -34,7 +34,8 @@ note() { echo "$*"; echo "$*" >> "$SUMMARY"; }
 fail() { note "RESULT: FAIL ($*)"; exit 1; }
 # where <pytest output> <test file as this script ran it>: the node id and assert line, or
 # `node: unclassified`. Reads no other line of that output, which the gated commit's tests wrote.
-# PYTHON3 is for a machine whose interpreter is not called python3 (the laptop's ship scripts).
+# PYTHON3 is for a machine whose interpreter is not called python3: the runner has python3, Windows
+# often does not, and the free test in tools/tests/test_gate_reasons.py runs this script there.
 where() {
   local got
   got=$("${PYTHON3:-python3}" "$HERE/gate_fail_where.py" "$1" "$2" "$SERVER" 2>/dev/null) || got=""

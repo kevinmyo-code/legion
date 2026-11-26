@@ -34,7 +34,13 @@ ve = _load("voice_eval_for_reasons", ROOT / "tools" / "voice_eval.py")
 vgr = _load("validate_gate_reasons", SCRIPTS / "validate_gate_reasons.py")
 gfw = _load("gate_fail_where", SCRIPTS / "gate_fail_where.py")
 
-COMMITTED = json.loads((ROOT / "tools" / "voice_eval" / "cases.json").read_text(encoding="utf-8"))["cases"]
+def _cases(name: str) -> list[dict]:
+    return json.loads((ROOT / "tools" / "voice_eval" / name).read_text(encoding="utf-8"))["cases"]
+
+
+# BOTH committed files, because the gate list spans both and `reply_length.json` owns the reply-length
+# bounds, which is where the one gate case reported failing (`len_octopus`) lives.
+COMMITTED = _cases("cases.json") + _cases("reply_length.json")
 TRUSTED = vgr.trusted_cases(ROOT)
 NAMES = vgr.surface_names(ROOT) | vgr.spec_heads(TRUSTED)
 # A canary stands in for everything the artifact may never carry: a model's words, a tool argument,
