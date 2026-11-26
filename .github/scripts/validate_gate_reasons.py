@@ -84,16 +84,31 @@ def surface_names(root: Path) -> set[str]:
         names |= set(voice_guide.declared_tools())
     except Exception as e:  # noqa: BLE001
         print(f"reason check: no tool surface from the trusted tree ({type(e).__name__})")
-    try:
-        # The TRUSTED scorer's own list of GROUP names it treats as writing tools (`money`, `place`,
-        # `phone`, `goal`, `trip`, `body_log`): group names that no committed case happens to mention,
-        # so neither list above holds them, and `write_on_read:money` would read `unclassified`.
-        import voice_eval  # noqa: PLC0415 - the TRUSTED copy, never the gated commit's
-
-        names |= set(voice_eval.WRITE_TOOLS)
-    except Exception as e:  # noqa: BLE001
-        print(f"reason check: no write-tool names from the trusted tree ({type(e).__name__})")
+    names |= write_groups(root)
     return {n for n in names if WORD.match(n)}
+
+
+WRITE_TOOLS_SET = re.compile(r"^WRITE_TOOLS\s*=\s*\{(.*?)\}", re.M | re.S)
+
+
+def write_groups(root: Path) -> set[str]:
+    """The TRUSTED scorer's own GROUP names for writing tools (`money`, `place`, `phone`, `goal`,
+    `trip`, `body_log`): groups no committed case happens to mention, so without them a real
+    `write_on_read:money` would read `unclassified`.
+
+    Read as TEXT, not imported. Importing `tools/voice_eval.py` would pull `voice_cost.py` and
+    `voice_audit.py` with it, and the tier script calls those two YELLOW, which is a lighter review
+    than anything that executes in this job while the key sits on the runner. A regex over a literal
+    set runs none of it. `test_gate_reasons.py` asserts this parse equals the real constant, so a
+    reformat that breaks it goes red in CI rather than quietly narrowing the list.
+    """
+    try:
+        text = (root / "tools" / "voice_eval.py").read_text(encoding="utf-8")
+        body = WRITE_TOOLS_SET.search(text)
+        return set(re.findall(r'"([a-z0-9_]{1,40})"', body.group(1))) if body else set()
+    except Exception as e:  # noqa: BLE001 - a missing list narrows the names, never widens them
+        print(f"reason check: no write-tool names from the trusted tree ({type(e).__name__})")
+        return set()
 
 
 def spec_heads(cases: dict[str, dict]) -> set[str]:

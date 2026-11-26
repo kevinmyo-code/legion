@@ -248,6 +248,9 @@ def test_every_group_the_scorer_calls_a_writing_tool_can_be_reported():
     """`write_on_read:` and `write_in_test_mode:` name a GROUP, and the scorer's `WRITE_TOOLS` holds
     groups no committed case mentions (`money`, `place`, `phone`, `goal`, `trip`, `body_log`). Without
     them, a question that wrongly wrote through one of those would upload `unclassified`."""
+    # The validator reads that list as text rather than importing the scorer, so that nothing of
+    # YELLOW tier runs in the gate's trusted step. This ties the parse to the real constant.
+    assert vgr.write_groups(ROOT) == set(ve.WRITE_TOOLS)
     assert set(ve.WRITE_TOOLS) <= NAMES, sorted(set(ve.WRITE_TOOLS) - NAMES)
     read_only = {"id": "x", "say": "hi"}
     for name in sorted(ve.WRITE_TOOLS):
