@@ -3,6 +3,7 @@ package com.kevin.legion.carlink
 import com.kevin.legion.carlink.protocol.Mnai2
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -34,7 +35,11 @@ class UnitTokenRenewalTest {
             return if (listFails) null else rows
         }
 
+        /** Something that happens while a mint is in flight (a Forget, say). */
+        var onMint: (() -> Unit)? = null
+
         override suspend fun mint(name: String, vehicleId: String?): UnitToken {
+            onMint?.invoke()
             val token = UnitToken("id-${nextId++}", "hu1_token-${minted.size}", null)
             minted += token
             rows = rows + UnitRecord(token.id, Long.MAX_VALUE, vehicleId)
@@ -263,5 +268,62 @@ class UnitTokenRenewalTest {
         assertTrue(link.handed.isEmpty())
         assertEquals("id-old", store.unitDeviceId())
         assertTrue(engine.revoked.isEmpty())
+    }
+
+    /**
+     * Blocker 2 (RED review, 2026-11-25). Forget clears the store's pending record without going
+     * through this object, so a record held only in memory outlived the pairing it belonged to: the
+     * next pairing's first in-range pass handed the NEW unit the OLD, revoked token, and the unit's
+     * answer then made the dead credential the car's and revoked the fresh one. The just-made
+     * pairing was dead and only another re-pair got out of it, which is worse than the base.
+     */
+    @Test fun `Forget then a re-pair in the same process never hands the new unit the old token`() {
+        store.setUnitDeviceId("id-old")
+        val engine = FakeEngine(dueSoon())
+        val r = renewal(engine)
+        r.session()
+        r.step(FakeLink()) // asks the engine and mints: a pending record now exists
+        val stale = engine.minted.single()
+        assertEquals(stale.id, store.pendingUnitToken()?.id)
+
+        // Forget: the engine revokes the pending credential and the record goes with the pairing.
+        runBlocking { engine.revoke(stale.id) }
+        store.writeRevokeOnly(ByteArray(32) { 3 }, now)
+        assertNull(store.pendingUnitToken())
+
+        // A re-pair in the same process: a new unit, a new credential, a new socket.
+        store.setUnitDeviceId("id-new")
+        val next = FakeLink()
+        r.session()
+        r.step(next)
+        assertTrue("the old, revoked token must never reach the new unit", next.handed.isEmpty())
+
+        // An answer about the stale token moves nothing either, so a unit still holding it from
+        // before the Forget cannot take the fresh pairing down with it.
+        r.onTokenStored(Mnai2.fingerprint(stale.token))
+        assertEquals("the new pairing's credential stays the car's", "id-new", store.unitDeviceId())
+        assertTrue("the fresh credential must not be revoked", "id-new" !in engine.revoked)
+        // `askedAt` is still within its 6 hours, so no renewal is minted for the new pairing in this
+        // pass. That cannot hurt it: a pairing's own credential has 30 days and the window to renew
+        // one opens at 10 days left, so a 6-hour wait is never the thing in the way.
+        assertEquals(1, engine.minted.size)
+    }
+
+    @Test fun `a mint that lands after Forget revokes itself instead of arming the next pairing`() {
+        store.setUnitDeviceId("id-old")
+        val engine = FakeEngine(dueSoon())
+        // The Forget lands while the mint is in flight, which is the one ordering the renewal cannot
+        // see: without the check the credential would be written into a store the pairing has left.
+        engine.onMint = { store.writeRevokeOnly(ByteArray(32) { 4 }, now) }
+        val r = renewal(engine)
+        r.session()
+        r.step(FakeLink())
+        assertEquals(1, engine.minted.size)
+        assertNull("nothing is left armed for the next pairing", store.pendingUnitToken())
+        assertEquals(
+            "a credential nobody can reach goes now, not in 30 days",
+            engine.minted.single().id,
+            engine.revoked.singleOrNull(),
+        )
     }
 }
