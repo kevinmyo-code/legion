@@ -35,7 +35,8 @@ vgr = _load("validate_gate_reasons", SCRIPTS / "validate_gate_reasons.py")
 gfw = _load("gate_fail_where", SCRIPTS / "gate_fail_where.py")
 
 COMMITTED = json.loads((ROOT / "tools" / "voice_eval" / "cases.json").read_text(encoding="utf-8"))["cases"]
-NAMES = vgr.surface_names(ROOT)
+TRUSTED = vgr.trusted_cases(ROOT)
+NAMES = vgr.surface_names(ROOT) | vgr.spec_heads(TRUSTED)
 # A canary stands in for everything the artifact may never carry: a model's words, a tool argument,
 # an assert's text, a key. If a canary ever reaches an uploaded file, the guard it tests is broken.
 CANARY = "CANARY-the-spare-key-is-in-the-blue-tin"
@@ -107,38 +108,41 @@ def test_the_turn_prefix_keeps_the_code():
 # ------------------------------------------------- the validator accepts every code a real run can give
 
 
-REACHED: set[str] = set()
+PLANTS = [
+    ([("manage_item", {"action": "read_list"}, '{"success":true}')], CANARY, True),
+    ([], "", True),
+    ([("memory", {"action": "remember", "text": CANARY}, '{"success":true}')], "Saved that.", True),
+    ([("day", {"action": "read_calendar"}, '{"success":true}')], "Nothing today.", True),
+    ([], "A very long reply. " * 40, False),
+]
+
+
+def _codes_from_plants(case: dict) -> set[str]:
+    """Every reason code the real scorer emits for this case under each plant."""
+    return {f.code for calls, answer, end in PLANTS
+            for f in _score(case, calls, answer, end).failures}
 
 
 @pytest.mark.parametrize("case", COMMITTED, ids=[c["id"] for c in COMMITTED])
 def test_a_real_failure_of_a_committed_case_is_accepted(case):
     """Drive the real scorer into failing each committed case, then ask the real validator. A code the
     scorer can emit and the validator rejects would read as `unclassified` on a paid run."""
-    plants = [
-        ([("manage_item", {"action": "read_list"}, '{"success":true}')], CANARY, True),
-        ([], "", True),
-        ([("memory", {"action": "remember", "text": CANARY}, '{"success":true}')], "Saved that.", True),
-        ([], "A very long reply. " * 40, False),
-    ]
-    seen = set()
-    for calls, answer, end in plants:
-        for f in _score(case, calls, answer, end).failures:
-            seen.add(f.code)
+    seen = _codes_from_plants(case)
     if case.get("known_limit"):
         # A recorded known limit never fails, by Kevin's ruling, so there is nothing to classify.
         assert not seen
         return
     assert seen, "no plant broke this case, so nothing was checked"
-    REACHED.update(seen)
     for code in sorted(seen):
         assert vgr.check(code, case, NAMES) == code, f"the validator would drop a real code: {code}"
 
 
 def test_the_plants_reach_more_than_one_kind_of_code(capsys):
-    """What the sweep above actually exercises. Four plants cannot reach every failure site in the
-    scorer, so the kinds they do reach are printed rather than claimed."""
-    assert REACHED, "run the parametrized sweep first (pytest runs this file in order)"
-    kinds = sorted({c.split(":")[0].split("#")[0] for c in REACHED})
+    """What the sweep above actually exercises. A handful of plants cannot reach every failure site in
+    the scorer, so the kinds they do reach are printed rather than claimed. Computed here, not shared
+    through a global, so this test says the same thing run alone."""
+    reached = {c for case in COMMITTED for c in _codes_from_plants(case)}
+    kinds = sorted({c.split(":")[0].split("#")[0] for c in reached})
     assert len(kinds) >= 6, kinds
     with capsys.disabled():
         print(f"\nreason kinds the plants reach ({len(kinds)}): {', '.join(kinds)}")
@@ -232,6 +236,24 @@ def test_an_index_is_bounded_by_the_patterns_the_trusted_case_really_has():
     case = {"id": "i", "say": "hi", "expect": {"answer_not": ["a", "b"]}}
     assert vgr.check("answer_not#1", case, NAMES) == "answer_not#1"
     assert vgr.check("answer_not#2", case, NAMES) == "unclassified"
+
+
+def test_every_grouped_tool_name_a_committed_case_names_can_be_reported():
+    """`declared_tools()` lists LEAF tools (`read_calendar`); a tool call's own name is its GROUP
+    (`day`, `car`, `look_up`). Without the group names, the commonest real failure this slice exists
+    to name, a chat case that wrongly read the calendar, would upload `unclassified`."""
+    heads = vgr.spec_heads(TRUSTED)
+    assert {"day", "car", "look_up"} <= heads, sorted(heads)
+    chat = {"id": "c", "tags": ["chat"], "say": "hi"}
+    for head in sorted(heads):
+        assert vgr.check(f"chat_called:{head}", chat, NAMES) == f"chat_called:{head}"
+
+
+def test_a_chat_case_that_really_reads_the_calendar_says_so():
+    case = next(c for c in COMMITTED if "chat" in c.get("tags", []) and "turns" not in c)
+    v = _score(case, [("day", {"action": "read_calendar"}, '{"success":true}')], "Nothing today.")
+    assert not v.passed and ve.reason_of(v.failures) == "chat_called:day"
+    assert vgr.check("chat_called:day", case, NAMES) == "chat_called:day"
 
 
 def test_a_tool_name_only_the_gated_commit_knows_is_rejected():

@@ -82,6 +82,31 @@ def surface_names(root: Path) -> set[str]:
     return {n for n in names if WORD.match(n)}
 
 
+def spec_heads(cases: dict[str, dict]) -> set[str]:
+    """Every tool name the TRUSTED cases write down, which is not the same list as the one above.
+
+    `declared_tools()` finds a LEAF tool (`read_calendar`), but a tool call's own name is its GROUP
+    (`day`, `car`, `look_up`), and `chat_called:` and the two write codes name exactly that. Without
+    these, a chat case that wrongly read the calendar would upload `unclassified`, which is the very
+    failure this slice exists to name. Trusted data: it comes from the trusted tree's case files.
+    """
+    heads: set[str] = set()
+    for case in cases.values():
+        specs = {t[5:] for t in case.get("tags") or [] if t.startswith("tool:")}
+        for turn in _turns(case):
+            expect = turn.get("expect") or {}
+            for field in SPEC_CODES:
+                specs.update(s for s in expect.get(field, []) if isinstance(s, str))
+            for field in ("args", "args_all"):
+                block = expect.get(field)
+                if isinstance(block, dict):
+                    specs.update(s for s in block if isinstance(s, str))
+        for spec in specs:
+            for part in spec.split("|"):
+                heads.add(part.partition("/")[0])
+    return {h for h in heads if WORD.match(h)}
+
+
 def trusted_cases(root: Path) -> dict[str, dict]:
     """The committed cases at the TRUSTED commit, by id."""
     out: dict[str, dict] = {}
@@ -158,8 +183,8 @@ def main(argv: list[str]) -> int:
     if not isinstance(rows, list) or len(rows) > MAX_ROWS:
         print("reason check: the scorecard has no usable case list; no reason is added")
         return 0
-    names = surface_names(root)
     cases = trusted_cases(root)
+    names = surface_names(root) | spec_heads(cases)
     reasons = {r["id"]: r.get("reason") for r in raw.get("cases", [])[:MAX_ROWS]
                if isinstance(r, dict) and isinstance(r.get("id"), str)}
     kept = dropped = 0
