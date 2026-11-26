@@ -28,6 +28,12 @@ import java.time.LocalDate
  */
 @RunWith(RobolectricTestRunner::class)
 class VoiceEvalOfflineTest {
+    private companion object {
+        /** The expect keys that NAME a tool, whether they require the call or forbid it. */
+        val NAMING_KEYS = listOf("calls", "not_calls", "succeeded", "not_succeeded")
+        const val TOOL_TAG = "tool:"
+    }
+
     private val context = RuntimeEnvironment.getApplication()
     private val today = LocalDate.now()
 
@@ -74,38 +80,49 @@ class VoiceEvalOfflineTest {
             val c = cases.getJSONObject(i)
             val id = c.getString("id")
             assertTrue("duplicate id $id", ids.add(id))
-            val specs = mutableListOf<Pair<String, String>>()
-            val expects = c.optJSONArray("turns")?.let { t -> (0 until t.length()).map { t.getJSONObject(it).optJSONObject("expect") } }
-                ?: listOf(c.optJSONObject("expect"))
-            for (e in expects.filterNotNull()) {
-                for (key in listOf("calls", "not_calls", "succeeded", "not_succeeded")) {
-                    val arr = e.optJSONArray(key) ?: continue
-                    for (j in 0 until arr.length()) specs += key to arr.getString(j)
-                }
-            }
-            c.optJSONArray("tags")?.let { t ->
-                for (j in 0 until t.length()) {
-                    val tag = t.getString(j)
-                    if (tag.startsWith("tool:")) specs += "tags" to tag.removePrefix("tool:")
-                }
-            }
-            for ((key, spec) in specs) {
-                for (alt in spec.split('|')) {
-                    val tool = alt.substringBefore('/')
-                    val action = alt.substringAfter('/', "")
-                    val names = surface[tool]
-                    // A bare name may be a resolved tool (e.g. list_vehicles behind a router): skip.
-                    if (names == null && action.isEmpty()) continue
-                    assertTrue("$id ($key): $tool is not on the voice surface", names != null)
-                    if (action.isNotEmpty()) {
-                        assertTrue("$id ($key): $tool has no action $action", action in names!!)
-                    }
-                    checked++
-                }
+            for ((key, spec) in namedTools(c)) {
+                checked += checkSpec(id, key, spec, surface)
             }
         }
         assertTrue("no calls checked", checked > 10)
         assertEquals(ids.size, VoiceEvalCases.parse(json.toString()).size)
+    }
+
+    /** Every `<where> to <call spec>` a case names, across its turns' expect keys and its tags. */
+    private fun namedTools(c: JSONObject): List<Pair<String, String>> {
+        val specs = mutableListOf<Pair<String, String>>()
+        val expects = c.optJSONArray("turns")?.let { t -> (0 until t.length()).map { t.getJSONObject(it).optJSONObject("expect") } }
+            ?: listOf(c.optJSONObject("expect"))
+        for (e in expects.filterNotNull()) {
+            for (key in NAMING_KEYS) {
+                val arr = e.optJSONArray(key) ?: continue
+                for (j in 0 until arr.length()) specs += key to arr.getString(j)
+            }
+        }
+        val tags = c.optJSONArray("tags")
+        for (j in 0 until (tags?.length() ?: 0)) {
+            val tag = tags!!.getString(j)
+            if (tag.startsWith(TOOL_TAG)) specs += "tags" to tag.removePrefix(TOOL_TAG)
+        }
+        return specs
+    }
+
+    /** Asserts each alternative of `a|b` resolves, and returns how many were actually checked. */
+    private fun checkSpec(id: String, key: String, spec: String, surface: Map<String, Set<String>>): Int {
+        var checked = 0
+        for (alt in spec.split('|')) {
+            val tool = alt.substringBefore('/')
+            val action = alt.substringAfter('/', "")
+            val names = surface[tool]
+            // A bare name may be a resolved tool (e.g. list_vehicles behind a router): skip.
+            if (names == null && action.isEmpty()) continue
+            assertTrue("$id ($key): $tool is not on the voice surface", names != null)
+            if (action.isNotEmpty()) {
+                assertTrue("$id ($key): $tool has no action $action", action in names!!)
+            }
+            checked++
+        }
+        return checked
     }
 
     /** Tool name to its discriminator values (`action` or `domain`), as the model is offered them. */
