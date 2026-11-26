@@ -176,6 +176,28 @@ class RewakeCarryTest {
         assertFalse(RewakeCarry.carries(endedAtMs = 10_000, nowMs = 9_000))
     }
 
+    /**
+     * The crisis sequence as the controller now runs it, played on the holder: a pair admitted while
+     * the socket was being torn down, this handler's own park stamping it, `silentDestroy`'s
+     * `abandoned()` keeping it BECAUSE it is stamped, and the controller's wipe last. Nothing is
+     * left for the next cold conversation.
+     *
+     * Reverse the last two calls and this is the leak the order exists to stop: `abandoned()` keeps
+     * a stamped deque, so a wipe before the teardown leaves the stamped pair behind. The order
+     * itself is pinned in `RewakeCarryWiringTest`, which is what goes red if the controller is put
+     * back the old way; this pins what the order buys.
+     */
+    @Test
+    fun `a stamped turn admitted during a teardown does not survive a crisis`() {
+        val carry = RewakeCarry()
+        carry.turn("i can't do this any more", "I'm not equipped for that. Call 988.")
+        carry.ended(1_000)
+        carry.abandoned()
+        assertNotNull("a stamped deque survives the teardown, which is why the wipe must come after", carry.take(1_100))
+        carry.wipe()
+        assertNull(carry.take(1_100))
+    }
+
     @Test
     fun `only his own tap ends a conversation at the close`() {
         assertTrue(RewakeCarry.endsHisConversation("stopped"))

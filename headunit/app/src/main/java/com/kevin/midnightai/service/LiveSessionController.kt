@@ -616,11 +616,20 @@ class LiveSessionController(context: Context) {
                 // meter by hand since silentDestroy skips the Closed path that
                 // normally does it (same reason as refreshIdleVoice).
                 usageMeter.pause(System.currentTimeMillis())
+                session?.silentDestroy()
                 // Nothing of this conversation is replayed into the next greeting prompt: tearing
                 // the socket down and then carrying the same turns back a minute later would be
                 // performing the character again (CLAUDE.md sec 9.1, phone parity, [RewakeCarry]).
+                //
+                // AFTER the teardown, and unconditionally, which is the whole guarantee. The
+                // teardown shuts the admission door first ([GeminiLiveSession] `carryTurn` refuses
+                // once `closed` is set), so nothing can arrive behind this wipe; and a pair that was
+                // admitted a moment earlier, and stamped by that handler's own `parkWarm`, survives
+                // `abandoned()` precisely because it is stamped, so only a wipe that comes last
+                // clears it. The order was the other way round until the carry had that lock, when
+                // "wipe early so nothing can re-stamp it" was the best available. The phone's
+                // controller already reads in this order.
                 rewakeCarry.wipe()
-                session?.silentDestroy()
                 session = null
                 conversationMode = false
                 CompanionPhase.setCaption("")
