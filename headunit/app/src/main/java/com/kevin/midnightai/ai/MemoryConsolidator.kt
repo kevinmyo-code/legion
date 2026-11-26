@@ -55,6 +55,18 @@ object MemoryConsolidator {
             val turns = turnDao.forSession(sessionId)
             if (turns.isEmpty()) continue // already cleared by a concurrent pass
 
+            // A crisis conversation is dropped whole, never distilled (ticket #458,
+            // [CrisisMemoryGate]). The session's write gate already keeps one out of this buffer;
+            // this is what reaches rows a unit recorded before that gate existed, and what catches
+            // one that raced the teardown. Deleted even while a conversation is live, unlike the
+            // ordinary delete below: those turns are kept back in case the live conversation still
+            // needs them, and these are exactly the turns nothing may be given again.
+            if (CrisisMemoryGate.forgetsSession(turns)) {
+                Log.w(TAG, "crisis session $sessionId dropped, not consolidated")
+                turnDao.deleteSession(sessionId)
+                continue
+            }
+
             val distilled = distill(turns)
             if (distilled == null) {
                 // Model/network failure: leave the turns in place, try again next pass.

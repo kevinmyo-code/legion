@@ -104,12 +104,69 @@ class RewakeCarryWiringTest {
             crisis.indexOf("session?.silentDestroy()") < crisis.indexOf("rewakeCarry.wipe()"),
         )
         assertEquals("one wipe site", 1, Regex("rewakeCarry\\.wipe\\(\\)").findAll(c).count())
-        // A statement of the branch's own, never inside a `session?.let` or an `if`: a socket that
-        // was already gone must not cost the wipe. Pinned by its indent; these files are CRLF, so
-        // the newline after the call is matched loosely rather than as a bare \n.
+        // Never inside a `session?.let` or an `if`: a socket that was already gone must not cost
+        // the wipe. Pinned by its indent, which is the teardown's `finally` (ticket #458); these
+        // files are CRLF, so the newline after the call is matched loosely rather than as a bare \n.
         assertTrue(
-            "the wipe is a statement of the crisis branch, at the branch's own indent",
-            Regex("\\n {16}rewakeCarry\\.wipe\\(\\)\\s*?\\n").containsMatchIn(crisis),
+            "the wipe is unconditional, at the finally's own indent",
+            Regex("\\n {20}rewakeCarry\\.wipe\\(\\)\\s*?\\n").containsMatchIn(crisis),
+        )
+    }
+
+    /**
+     * A throw inside the teardown must not cost the forgetting (ticket #458).
+     *
+     * The crisis branch runs inside the session's own `main` scope, whose fault guard swallows the
+     * exception into a close that no-ops because `closed` is already set. So a `silentDestroy` that
+     * threw used to leave the carry and the conversation's raw turns exactly where they were, which
+     * is the one case where this branch failing silently is a privacy failure rather than a cosmetic
+     * one.
+     */
+    @Test
+    fun `a teardown that throws still wipes the carry and forgets the conversation`() {
+        val c = controller()
+        val crisis = c.substring(c.indexOf("is LiveEvent.CrisisDetected ->"))
+        assertTrue(
+            "the teardown is the try, so a throw in it skips neither line below",
+            Regex("try \\{\\s*session\\?\\.silentDestroy\\(\\)\\s*\\} finally \\{").containsMatchIn(crisis),
+        )
+        assertTrue(
+            "the carry and the conversation's raw turns both go in the finally",
+            Regex("\\} finally \\{[^}]*rewakeCarry\\.wipe\\(\\)[^}]*forgetCrisisConversation\\(")
+                .containsMatchIn(crisis),
+        )
+    }
+
+    /**
+     * The long replay, the one the carry's minute does not cover: a turn written to `episodic_turns`
+     * is distilled into `companion_memories` and pulled back into a prompt on demand for the life of
+     * the car (ticket #458). The phone records no crisis turn at all; this is how the head unit
+     * matches it. The same teardown owns both windows, which is why the memory side is pinned here
+     * beside the carry's.
+     */
+    @Test
+    fun `a crisis turn never reaches the episodic buffer, and the crisis forgets the rest`() {
+        val capture = bodyOf(session(), "captureEpisodicTurn")
+        assertTrue(
+            "decided from the completed text, not the mid-turn flag that turnComplete already reset",
+            capture.contains("if (!CrisisMemoryGate.recordsTurn(driverText, closed.get())) return"),
+        )
+        assertTrue("before the write, not inside it", capture.indexOf("recordsTurn") < capture.indexOf("io.launch"))
+
+        val forget = bodyOf(controller(), "forgetCrisisConversation")
+        assertTrue("the whole conversation, not one turn", forget.contains("deleteSession(episodicSessionId)"))
+        assertTrue(
+            "on the controller's scope: silentDestroy cancels the session's own io",
+            forget.contains("scope.launch(Dispatchers.IO)"),
+        )
+
+        // The read side, for rows a unit recorded before the write gate shipped: consolidation
+        // drops such a session instead of distilling it into a durable memory.
+        val consolidate = bodyOf(stripComments(read("ai/MemoryConsolidator.kt")), "consolidatePending")
+        assertTrue(consolidate.contains("if (CrisisMemoryGate.forgetsSession(turns)) {"))
+        assertTrue(
+            "dropped, never handed to the model",
+            consolidate.indexOf("forgetsSession") < consolidate.indexOf("distill(turns)"),
         )
     }
 

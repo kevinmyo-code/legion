@@ -21,6 +21,7 @@ import androidx.core.content.ContextCompat
 import com.kevin.midnightai.BuildConfig
 import com.kevin.midnightai.ai.CompanionProfile
 import com.kevin.midnightai.ai.CrisisDetector
+import com.kevin.midnightai.ai.CrisisMemoryGate
 import com.kevin.midnightai.ai.GeminiKeyProvider
 import com.kevin.midnightai.diag.ConvoAudit
 import com.kevin.midnightai.diag.ConvoLatency
@@ -376,6 +377,13 @@ class GeminiLiveSession(
     // EpisodicTurn rows. Minted fresh in start(); blank before the first
     // start() call, which captureTurn() below treats as "don't capture yet."
     @Volatile private var episodicSessionId: String = ""
+
+    /**
+     * The id grouping this socket's `episodic_turns` rows, blank before `start()`. Read by the
+     * crisis teardown so it can forget the whole conversation, not only the turn the phrase landed
+     * on: the turns said before it are the same exchange, and the write gate cannot reach them.
+     */
+    val episodicSession: String get() = episodicSessionId
 
     // Emulators have no real acoustic path: the hardware echo-canceller/noise-
     // suppressor do nothing useful and can interfere, and the virtual mic can
@@ -861,14 +869,20 @@ class GeminiLiveSession(
      * rows. Fire-and-forget on [io] - never blocks the conversation, and a
      * write failure here must not affect the live turn in any way.
      *
-     * Skips a blank driver line (nothing to remember) and skips entirely when
-     * [episodicSessionId] hasn't been minted yet (start() never ran - shouldn't
-     * happen mid-turnComplete, but this is transcript capture, not the
-     * conversation itself, so it fails silent rather than throwing).
+     * Skips entirely when [episodicSessionId] hasn't been minted yet (start() never
+     * ran - shouldn't happen mid-turnComplete, but this is transcript capture, not
+     * the conversation itself, so it fails silent rather than throwing).
+     *
+     * **A crisis exchange never gets here, and a closed session never gets here**
+     * ([CrisisMemoryGate] `recordsTurn`, which also keeps the blank driver line out:
+     * nothing to remember). Writing one would hand the distress to the consolidation
+     * pass and from there to `recallMemories`, which is the replay the crisis
+     * teardown exists to stop, with a drive's life instead of a minute's.
      */
     private fun captureEpisodicTurn(driverText: String, companionText: String) {
         val sessionId = episodicSessionId
-        if (sessionId.isBlank() || driverText.isBlank()) return
+        if (sessionId.isBlank()) return
+        if (!CrisisMemoryGate.recordsTurn(driverText, closed.get())) return
         io.launch {
             try {
                 val dao = CarDatabase.getDatabase(appContext).episodicTurnDao()

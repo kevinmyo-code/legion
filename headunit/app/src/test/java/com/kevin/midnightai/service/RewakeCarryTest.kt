@@ -198,6 +198,55 @@ class RewakeCarryTest {
         assertNull(carry.take(1_100))
     }
 
+    /**
+     * Every method takes the holder's own monitor, and the crisis guarantee rests on it.
+     * `GeminiLiveSession` `carryTurn` checks `closed` and admits a turn inside `synchronized(holder)`
+     * so that `silentDestroy`'s `abandoned()` cannot run between the check and the insert. That only
+     * excludes anything while the holder's own methods take the SAME monitor, which is what
+     * `@Synchronized` means on an instance method and nothing else states.
+     *
+     * Behavioural, not a source pin: this thread holds the monitor, a second thread calls the
+     * method, and the call must park. Drop the annotation and it runs straight through instead, so
+     * the thread finishes and this goes red.
+     */
+    @Test
+    fun `every method waits for the holder's own monitor, which is what the admission check holds`() {
+        val carry = RewakeCarry()
+        val calls = mapOf<String, () -> Unit>(
+            "running" to { carry.running() },
+            "turn" to { carry.turn("what's the voltage", "Twelve six. Fine.") },
+            "ended" to { carry.ended(1_000) },
+            "abandoned" to { carry.abandoned() },
+            "wipe" to { carry.wipe() },
+            "take" to { carry.take(1_000) },
+        )
+        for ((name, call) in calls) {
+            val caller = Thread(call, "carry-$name")
+            synchronized(carry) {
+                caller.start()
+                assertTrue(
+                    "$name ran while another thread held the holder's monitor, so it is not @Synchronized",
+                    parks(caller),
+                )
+            }
+            caller.join(5_000)
+            assertFalse("$name never finished once the monitor was free", caller.isAlive)
+        }
+    }
+
+    /** True once the thread is waiting on a monitor; false if it finished instead, or never started. */
+    private fun parks(thread: Thread): Boolean {
+        val deadline = System.currentTimeMillis() + 5_000
+        while (System.currentTimeMillis() < deadline) {
+            when (thread.state) {
+                Thread.State.BLOCKED -> return true
+                Thread.State.TERMINATED -> return false
+                else -> Thread.sleep(1)
+            }
+        }
+        return false
+    }
+
     @Test
     fun `only his own tap ends a conversation at the close`() {
         assertTrue(RewakeCarry.endsHisConversation("stopped"))

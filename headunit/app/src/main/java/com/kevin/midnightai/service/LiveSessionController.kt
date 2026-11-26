@@ -14,6 +14,7 @@ import com.kevin.midnightai.ai.GeminiKeyProvider
 import com.kevin.midnightai.ai.KeyHealth
 import com.kevin.midnightai.ai.firstGreetingOpener
 import com.kevin.midnightai.ai.EntitlementManager
+import com.kevin.midnightai.data.local.CarDatabase
 import com.kevin.midnightai.ui.SavedPlacesActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -508,6 +509,29 @@ class LiveSessionController(context: Context) {
     }
 
     /**
+     * Drops the crisis conversation's raw `episodic_turns` rows, so nothing of it can be distilled
+     * into a durable memory and recalled at him later (ticket #458, CrisisMemoryGate).
+     *
+     * On the CONTROLLER's scope, never the session's: `silentDestroy` cancels the session's `io`,
+     * so a delete launched from there would often never run. MemoryConsolidator is the other
+     * half, for a unit whose rows predate the write gate.
+     *
+     * The id groups one SOCKET's turns, so a conversation that parked on this socket before the
+     * crisis one goes too. That is the head unit erring toward forgetting, which is the safe
+     * direction when the alternative is replaying a distress exchange.
+     */
+    private fun forgetCrisisConversation(episodicSessionId: String?) {
+        if (episodicSessionId.isNullOrBlank()) return
+        scope.launch(Dispatchers.IO) {
+            try {
+                CarDatabase.getDatabase(appContext).episodicTurnDao().deleteSession(episodicSessionId)
+            } catch (e: Exception) {
+                Log.w(TAG, "crisis episodic forget failed: ${e.message}")
+            }
+        }
+    }
+
+    /**
      * After a connect, speaks the line [carried] kept from a failed one (B8). [connectedFor] is
      * what the connect was for: a bare connect (NONE; nothing opens one since prewarm went,
      * 2026-11-09) speaks it on the warm socket; a
@@ -616,10 +640,14 @@ class LiveSessionController(context: Context) {
                 // meter by hand since silentDestroy skips the Closed path that
                 // normally does it (same reason as refreshIdleVoice).
                 usageMeter.pause(System.currentTimeMillis())
-                session?.silentDestroy()
-                // Nothing of this conversation is replayed into the next greeting prompt: tearing
-                // the socket down and then carrying the same turns back a minute later would be
-                // performing the character again (CLAUDE.md sec 9.1, phone parity, [RewakeCarry]).
+                // Read before the teardown, because the forget below is what clears the turns said
+                // BEFORE the crisis phrase: the write gate can only refuse the turn it is handed.
+                val crisisEpisodicSession = session?.episodicSession
+                // Nothing of this conversation is replayed into the next greeting prompt, and
+                // nothing of it becomes a memory: tearing the socket down and then carrying the
+                // same turns back a minute later, or recalling them next month, are both
+                // performing the character again (CLAUDE.md sec 9.1, phone parity, [RewakeCarry],
+                // CrisisMemoryGate).
                 //
                 // AFTER the teardown, and unconditionally, which is the whole guarantee. The
                 // teardown shuts the admission door first ([GeminiLiveSession] `carryTurn` refuses
@@ -629,7 +657,16 @@ class LiveSessionController(context: Context) {
                 // clears it. The order was the other way round until the carry had that lock, when
                 // "wipe early so nothing can re-stamp it" was the best available. The phone's
                 // controller already reads in this order.
-                rewakeCarry.wipe()
+                //
+                // In a `finally`, because a throw inside the teardown must not cost the forgetting.
+                // The session's own scope swallows that throw into a close that no-ops, so without
+                // this the crisis exchange would simply be kept.
+                try {
+                    session?.silentDestroy()
+                } finally {
+                    rewakeCarry.wipe()
+                    forgetCrisisConversation(crisisEpisodicSession)
+                }
                 session = null
                 conversationMode = false
                 CompanionPhase.setCaption("")
