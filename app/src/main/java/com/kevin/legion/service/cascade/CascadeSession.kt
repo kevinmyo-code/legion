@@ -886,13 +886,12 @@ internal class CascadeSession(
             ToolGate.choose(heard, fullToolsUsed, CompanionProfile.name(ctx))
         }
         if (verdict.set == ToolGate.Set.FULL) fullToolsUsed = true
+        val sent = ToolGate.prefixFor(full, verdict)
         if (log) {
-            LiveLatency.log(
-                LiveLatency.TAG,
-                "tool_set=${verdict.set.name.lowercase()} why=${verdict.why} n=${ToolGate.prefixFor(full, verdict).functionDeclarations.length()}",
-            )
+            val n = sent.functionDeclarations.length()
+            LiveLatency.log(LiveLatency.TAG, "tool_set=${verdict.set.name.lowercase()} why=${verdict.why} n=$n")
         }
-        return ToolGate.prefixFor(full, verdict)
+        return sent
     }
 
     /** His turns' preamble: the shared one plus the agenda ([CascadePrompt.withAgenda]). */

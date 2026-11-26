@@ -115,7 +115,8 @@ class ToolGateTest {
             .put(JSONObject().put("name", "records"))
         val full = CascadePrefix("model-x", "Invented instruction.", decls)
         val cut = ToolGate.chatPrefix(full)
-        val names = (0 until cut.functionDeclarations.length()).map { cut.functionDeclarations.getJSONObject(it).getString("name") }
+        val declared = cut.functionDeclarations
+        val names = (0 until declared.length()).map { declared.getJSONObject(it).getString("name") }
         assertEquals(listOf("end_conversation"), names)
         assertEquals(full.systemInstruction, cut.systemInstruction)
         assertEquals(true, cut.search)

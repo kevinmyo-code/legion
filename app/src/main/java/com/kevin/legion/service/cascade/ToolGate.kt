@@ -58,7 +58,9 @@ internal object ToolGate {
      */
     private val PERSONAL_TRIGGERS: List<Pair<String, Regex>> = listOf(
         "first_person" to words("i|i'?m|i'?ve|i'?ll|i'?d|me|my|mine|myself|we|we'?re|we'?ve|our|ours|us|let'?s"),
-        "memory" to words("remember|remind|reminder|reminders|forget|recall|note|notes|memory|memories|save|saved|keep track"),
+        "memory" to words(
+            "remember|remind|reminder|reminders|forget|recall|note|notes|memory|memories|save|saved|keep track",
+        ),
         "calendar" to words(
             "calendar|schedule|scheduled|event|events|meeting|meetings|appointment|appointments|agenda|" +
                 "today|tonight|tomorrow|yesterday|weekend|this (?:morning|afternoon|evening|week|month)|" +
