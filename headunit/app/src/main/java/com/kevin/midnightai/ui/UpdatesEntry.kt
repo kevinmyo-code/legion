@@ -35,6 +35,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.kevin.midnightai.backend.engine.EngineConfig
+import com.kevin.midnightai.backend.engine.EngineHttp
 import com.kevin.midnightai.ui.theme.AriaColors
 import com.kevin.midnightai.ui.theme.AriaDimens
 import com.kevin.midnightai.ui.theme.AriaType
@@ -70,6 +72,10 @@ private val whatsNewSeenTick = mutableIntStateOf(0)
 internal fun rememberUpdatePrompt(): UpdatePrompt? {
     val context = LocalContext.current
     val state by remember { UpdateGraph.controller(context).state }.collectAsState()
+    // Read once per entry to Cruise: it is a decrypt, and Cruise recomposes often.
+    val signedIn = remember {
+        EngineHttp(EngineConfig(context.applicationContext as android.app.Application)).isUsable()
+    }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) {
         while (true) {
@@ -86,17 +92,21 @@ internal fun rememberUpdatePrompt(): UpdatePrompt? {
         )
         is UpdateState.Waiting -> UpdatePrompt("UPDATE INSTALLS AFTER THIS CHAT", UpdateRules.describe(s.release), false)
         is UpdateState.Installing -> UpdatePrompt("INSTALLING UPDATE", "${UpdateRules.APP} closes and comes back on its own.", false)
-        else -> whatsNewPrompt(context, whatsNewSeenTick.intValue)
+        else -> whatsNewPrompt(context, signedIn, whatsNewSeenTick.intValue)
     }
 }
 
 /** Once per update: the chip that says the app just changed and where the notes are. */
-private fun whatsNewPrompt(context: Context, @Suppress("UNUSED_PARAMETER") tick: Int): UpdatePrompt? {
+private fun whatsNewPrompt(
+    context: Context,
+    signedIn: Boolean,
+    @Suppress("UNUSED_PARAMETER") tick: Int,
+): UpdatePrompt? {
     val installed = UpdateGraph.platform(context).installed()
-    if (!WhatsNew.due(installed.versionCode, WhatsNewSeen(context).code)) return null
+    if (!WhatsNew.due(installed.versionCode, WhatsNewSeen(context).code, signedIn)) return null
     return UpdatePrompt(
         title = "UPDATED · TAP FOR WHAT'S NEW",
-        line = "${UpdateRules.APP} ${installed.versionName}. Later: Settings, System, What's new.",
+        line = "${UpdateRules.APP} ${installed.versionName}. Also under Settings, System, What's new.",
         tappable = true,
         whatsNew = true,
     )
@@ -115,10 +125,8 @@ internal fun UpdateChip(prompt: UpdatePrompt, modifier: Modifier = Modifier, onW
             .border(1.dp, AriaColors.Amber.copy(alpha = 0.6f), shape)
             .then(
                 if (prompt.tappable) {
-                    Modifier.clickable(onClickLabel = if (prompt.whatsNew) "Open settings" else "Install update") {
+                    Modifier.clickable(onClickLabel = if (prompt.whatsNew) "Open what's new" else "Install update") {
                         if (prompt.whatsNew) {
-                            WhatsNewSeen(context).code = UpdateGraph.platform(context).installed().versionCode
-                            whatsNewSeenTick.intValue++
                             onWhatsNew()
                             return@clickable
                         }
@@ -310,8 +318,13 @@ internal fun SystemWhatsNewSection(context: Context, onBack: () -> Unit) {
         value = WhatsNewState.Loading
         value = WhatsNew.load(UpdateGraph.history(context), installedCode)
     }
-    // Opening this section is seeing the notes, so the Cruise chip stops.
-    LaunchedEffect(Unit) { WhatsNewSeen(context).code = installedCode }
+    // Seeing the notes stops the Cruise chip; a failed load leaves it, so the notes get another try.
+    LaunchedEffect(state) {
+        WhatsNew.seenToRecord(state)?.let {
+            WhatsNewSeen(context).code = it
+            whatsNewSeenTick.intValue++
+        }
+    }
 
     SectionScaffold("What's new", onBack) {
         when (val s = state) {

@@ -52,9 +52,9 @@ class DjangoUpdateBackend(private val http: EngineHttp) : UpdateBackend, Release
     }
 
     override suspend fun history(): Result<List<ReleaseNote>> {
-        if (!http.isUsable()) return Result.failure(IOException("this phone is not signed in to an engine"))
+        if (!http.isUsable()) return Result.failure(ReleaseHistoryException(ReleaseHistoryFailure.NOT_SIGNED_IN))
         return http.get("/api/releases/history", mapOf("app" to "phone")).mapCatching { ok ->
-            ReleaseHistoryJson.parse(ok.body) ?: throw IOException("the engine's release list was not readable")
+            ReleaseHistoryJson.parse(ok.body) ?: throw ReleaseHistoryException(ReleaseHistoryFailure.UNREADABLE)
         }
     }
 

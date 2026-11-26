@@ -560,7 +560,9 @@ private fun LegionShell(
         val updates = com.kevin.legion.update.AndroidUpdatePlatform(app)
         val installed = updates.installed()
         val seen = com.kevin.legion.update.WhatsNewSeen(context).code
-        if (com.kevin.legion.update.WhatsNew.due(installed.versionCode, seen)) {
+        val engine = com.kevin.legion.backend.engine.EngineHttp(com.kevin.legion.backend.engine.EngineConfig(app))
+        val signedIn = engine.isUsable()
+        if (com.kevin.legion.update.WhatsNew.due(installed.versionCode, seen, signedIn)) {
             navController.navigate(LegionRoute.SETTINGS_WHATS_NEW) { launchSingleTop = true }
         }
     }

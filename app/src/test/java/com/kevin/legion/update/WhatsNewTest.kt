@@ -1,5 +1,7 @@
 package com.kevin.legion.update
 
+import com.kevin.legion.backend.engine.EngineFailure
+import com.kevin.legion.backend.engine.EngineHttpException
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -42,15 +44,63 @@ class WhatsNewTest {
         assertEquals(10L, state.installedCode)
     }
 
-    @Test
-    fun `a server that cannot be reached says so in words and is never an empty list`() = runBlocking {
-        val source = FakeSource(Result.failure(IOException("timeout")))
-        val state = WhatsNew.load(source, installedCode = 10)
+    private fun sentenceFor(failure: Throwable): String {
+        val state = runBlocking { WhatsNew.load(FakeSource(Result.failure(failure)), installedCode = 10) }
         assertTrue(state is WhatsNewState.Unavailable)
         val sentence = (state as WhatsNewState.Unavailable).sentence
-        assertTrue(sentence, sentence.contains("Could not load"))
-        assertTrue(sentence, sentence.contains("timeout"))
-        assertTrue(sentence, sentence.contains("not that there are no releases"))
+        assertTrue(sentence, sentence.startsWith("Could not load the release notes"))
+        assertTrue(sentence, sentence.contains("does not mean there are no releases"))
+        return sentence
+    }
+
+    @Test
+    fun `an unreachable engine says it could not be reached`() {
+        val sentence = sentenceFor(EngineHttpException(EngineFailure.Unreachable("engine", "timeout")))
+        assertTrue(sentence, sentence.contains("could not be reached"))
+    }
+
+    @Test
+    fun `a device that is not signed in says so and never blames the engine`() {
+        val sentence = sentenceFor(ReleaseHistoryException(ReleaseHistoryFailure.NOT_SIGNED_IN))
+        assertTrue(sentence, sentence.contains("not signed in"))
+        assertFalse(sentence, sentence.contains("reach"))
+    }
+
+    @Test
+    fun `a refused sign-in says the sign-in was refused, not that the engine is away`() {
+        val sentence = sentenceFor(EngineHttpException(EngineFailure.Unauthorized("no", status = 401)))
+        assertTrue(sentence, sentence.contains("sign-in was not accepted"))
+        assertFalse(sentence, sentence.contains("reach"))
+    }
+
+    @Test
+    fun `a server error says the engine answered with an error and its status`() {
+        val sentence = sentenceFor(EngineHttpException(EngineFailure.Refused(503, "down for work")))
+        assertTrue(sentence, sentence.contains("answered with an error"))
+        assertTrue(sentence, sentence.contains("503"))
+        assertFalse(sentence, sentence.contains("reach"))
+    }
+
+    @Test
+    fun `an unreadable reply says it could not be read`() {
+        val sentence = sentenceFor(ReleaseHistoryException(ReleaseHistoryFailure.UNREADABLE))
+        assertTrue(sentence, sentence.contains("could not be read"))
+        assertFalse(sentence, sentence.contains("reach"))
+    }
+
+    @Test
+    fun `a failure of unknown kind names no cause it did not see`() {
+        val sentence = sentenceFor(IOException("boom"))
+        assertTrue(sentence, sentence.contains("boom"))
+        assertFalse(sentence, sentence.contains("reach"))
+    }
+
+    @Test
+    fun `only a load that showed the notes is recorded as seen`() {
+        val loaded = WhatsNewState.Loaded(emptyList(), installedCode = 12)
+        assertEquals(12L, WhatsNew.seenToRecord(loaded))
+        assertNull(WhatsNew.seenToRecord(WhatsNewState.Loading))
+        assertNull(WhatsNew.seenToRecord(WhatsNewState.Unavailable("Could not load")))
     }
 
     @Test
@@ -66,10 +116,11 @@ class WhatsNewTest {
 
     @Test
     fun `it is due once per installed version, never on a debug build`() {
-        assertTrue(WhatsNew.due(installedCode = 12, seenCode = 10))
-        assertTrue(WhatsNew.due(installedCode = 12, seenCode = 0))
-        assertFalse(WhatsNew.due(installedCode = 12, seenCode = 12))
-        assertFalse(WhatsNew.due(installedCode = 1, seenCode = 0))
-        assertFalse(WhatsNew.due(installedCode = 0, seenCode = 0))
+        assertTrue(WhatsNew.due(installedCode = 12, seenCode = 10, signedIn = true))
+        assertTrue(WhatsNew.due(installedCode = 12, seenCode = 0, signedIn = true))
+        assertFalse(WhatsNew.due(installedCode = 12, seenCode = 12, signedIn = true))
+        assertFalse(WhatsNew.due(installedCode = 1, seenCode = 0, signedIn = true))
+        assertFalse(WhatsNew.due(installedCode = 0, seenCode = 0, signedIn = true))
+        assertFalse(WhatsNew.due(installedCode = 12, seenCode = 0, signedIn = false))
     }
 }
