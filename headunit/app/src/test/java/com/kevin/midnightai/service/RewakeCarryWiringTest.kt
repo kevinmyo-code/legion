@@ -33,9 +33,24 @@ class RewakeCarryWiringTest {
         val s = session()
         assertTrue(
             "beside the episodic row, which already keeps the same pair",
-            s.contains("if (vadMode && keepWarm) rewake?.turn(heard, spoken)"),
+            s.contains("if (vadMode && keepWarm) carryTurn(heard, spoken)"),
         )
-        assertEquals("one place turns enter", 1, Regex("rewake\\?\\.turn\\(").findAll(s).count())
+        assertEquals("one place turns enter", 1, Regex("holder\\.turn\\(heard, spoken\\)").findAll(s).count())
+    }
+
+    /**
+     * The crisis guard. `silentDestroy` sets `closed` and only then calls `abandoned()`, and it closes
+     * the socket gracefully, so frames keep arriving through the handshake. Without a check under the
+     * holder's own lock, a `turnComplete` delivered in that window puts the distress exchange back
+     * after the controller wiped it, with no end stamp, and a later cold conversation replays it.
+     */
+    @Test
+    fun `a turn arriving after the session closed is refused, so a wipe is final`() {
+        val s = session()
+        val carry = bodyOf(s, "carryTurn")
+        assertTrue("the holder's own lock, the one abandoned() waits behind", carry.contains("synchronized(holder)"))
+        assertTrue("nothing is recorded once the session is closed", carry.contains("if (!closed.get()) holder.turn(heard, spoken)"))
+        assertEquals("one guarded door into the holder's turns", 1, Regex("\\.turn\\(heard, spoken\\)").findAll(s).count())
     }
 
     @Test

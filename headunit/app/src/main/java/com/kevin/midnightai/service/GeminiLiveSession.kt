@@ -756,6 +756,31 @@ class GeminiLiveSession(
         if (!ok && !closed.get()) closeSession("stale socket")
     }
 
+    /**
+     * This turn's pair for the re-wake carry ([RewakeCarry]), recorded only while the session is
+     * still open, and decided under the holder's own lock.
+     *
+     * The lock is the whole point, not belt and braces. `silentDestroy` sets [closed] and only then
+     * calls `abandoned()`, and it closes the socket GRACEFULLY, so frames keep arriving on the
+     * socket thread through the close handshake. A bare `closed` check could therefore read false,
+     * and the turn still land after the controller's crisis wipe had run: a stampless pair of the
+     * distress exchange, left in the holder for a later cold conversation to replay. Holding the
+     * holder's monitor across the check means nothing enters the holder once a close has begun. A
+     * turn that got in first is wiped by the `abandoned()` waiting behind it (nothing has stamped an
+     * end), and one that arrives after is refused here.
+     *
+     * One hairline window is left and is not this function's to close: the controller wipes and only
+     * then calls `silentDestroy`, so a turn admitted in those few instructions could still be
+     * stamped by a `parkWarm` later in this same handler and kept. That gap is in the controller's
+     * two statements, not in the close.
+     */
+    private fun carryTurn(heard: String, spoken: String) {
+        val holder = rewake ?: return
+        synchronized(holder) {
+            if (!closed.get()) holder.turn(heard, spoken)
+        }
+    }
+
     private fun handleServerMessage(json: String) {
         val root = try {
             JSONObject(json)
@@ -1012,7 +1037,7 @@ class GeminiLiveSession(
             // The same pair, held in memory for the minute after this conversation ends, so a
             // re-wake inside the window still has it ([RewakeCarry]). A conversation socket only:
             // a speak-only proactive session is not a conversation to carry.
-            if (vadMode && keepWarm) rewake?.turn(heard, spoken)
+            if (vadMode && keepWarm) carryTurn(heard, spoken)
             // The driver's goodbye, read once off the COMPLETE turn (never a partial delta - see
             // DriverDismissal's doc). Sticky: once armed it survives a tool round trip to the turn
             // that parks. By now Moose's sign-off has been spoken and is draining from the
