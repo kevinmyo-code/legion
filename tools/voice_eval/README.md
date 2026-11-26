@@ -7,7 +7,10 @@ Two layers, one set of cases, one scorer (`tools/voice_eval.py`).
 | 1. Laptop | the real cascade text loop and the real tool code under Robolectric | made-up household (`VoiceEvalFixture.kt`) | none: text in, text out | the text model only, real Gemini |
 | 2. Phone | the real app over adb, in a test conversation | Kevin's real data, writes refused | typed turns, or a WAV fed in place of the mic | the whole conversation |
 
-Run layer 1 on every change to prompts, tool descriptions or routing; layer 2 before a ship.
+**When each layer runs (Kevin, 2026-11-25).** Layer 1 costs money, so it does not run on every
+change: a paid run happens after three voice lands on `dev` and always before a ship, and the ship's
+own gate run counts as that ship's paid run. Layer 2 runs before a ship. What runs on every change is
+the free no-key half below, which needs no key, no Gradle and no network.
 
 ## Layer 1: laptop, no phone
 
@@ -35,8 +38,12 @@ A prompt wording change is measured both ways on the same cases: set
 scorer prints a `lengths` line per run (words per sentence and per reply, mean and spread);
 `reply_length.json` is the set for reply length (ticket T13), with `max_words` / `max_sentences` bounds.
 
-The no-key half runs in the suite: `VoiceEvalOfflineTest` (every expected call exists on the voice
-surface; the real tools read the fixture) and `python -m pytest tools/tests/test_voice_eval.py`.
+The no-key half runs in CI on every change, and costs nothing:
+
+- `VoiceEvalOfflineTest` (android.yml, which watches `tools/voice_eval/**`): every call a case names
+  exists on the voice surface, and the real tools read the fixture.
+- `python -m pytest tools/tests/test_voice_eval.py tools/tests/test_voice_eval_cases.py` (checks.yml,
+  no path filter, so every PR): the scorer's own rules, and the committed case files' shape.
 
 ## Layer 2: the phone over adb
 
