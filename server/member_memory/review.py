@@ -49,6 +49,7 @@ from django.db.models import Max
 from django.db.models.functions import Now
 from django.utils import timezone
 
+from devicelogs import crisis
 from household.tenancy import household_of
 from member_memory import service
 from member_memory.consolidate import _norm, log_transcript
@@ -292,11 +293,7 @@ def _transcripts(member, household, now):
     ).order_by("-received_at", "-pk")
     out, used = [], 0
     for log in logs:
-        try:
-            lines = log_transcript(log).lines
-        except ValueError:
-            continue
-        text = "\n".join(lines)
+        text = _filtered_text(log)
         if not text:
             continue
         room = REVIEW_MAX_CHARS - used
@@ -309,6 +306,11 @@ def _transcripts(member, household, now):
 
 
 def _filtered_text(log) -> str:
+    """The one reader of a conversation record in the review: its evidence and its date check both
+    come through here, so the crisis gate (#460) sits in one place. A record holding a crisis turn
+    reads as nothing at all, so nothing it says can reach the model or a memory's text."""
+    if crisis.log_has_crisis_turn(log):
+        return ""
     try:
         return "\n".join(log_transcript(log).lines)
     except ValueError:

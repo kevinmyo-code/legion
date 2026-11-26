@@ -19,6 +19,8 @@ stricter than memory consolidation's filter (`member_memory.consolidate.transcri
   Google Search grounding and its audit has no `read_through` event,
   `headunit/.../diag/ConvoAudit.kt`; also refused by its `1.0+<sha>` version name), an older phone,
   or a record that names nothing. A blank or unknown source fails closed.
+- **A record holding a crisis turn gives nothing at all** (ticket #460, `devicelogs.crisis`),
+  the turns said before the phrase included.
 
 The turn is decided when it closes (`turn_complete`, `session_end`, or the end of the record),
 because a `read_through` mark can be logged after his line in the same turn.
@@ -26,7 +28,7 @@ because a `read_through` mark can be logged after his line in the same turn.
 
 from __future__ import annotations
 
-from devicelogs import voice_audit
+from devicelogs import crisis, voice_audit
 
 # A turn with any of these is dropped whole (see the module doc).
 TOOL_EVENTS = frozenset({"tool_call", "tool_result", "tool_cancelled", "procedure_run"})
@@ -88,10 +90,15 @@ def own_lines(raw: str) -> list[str]:
 
 
 def own_text(log) -> str:
-    """One record's own words as one text, or "" (unreadable, the head unit, or nothing clean)."""
+    """One record's own words as one text, or "" (unreadable, the head unit, a crisis, or nothing
+    clean)."""
     from devicelogs.render import batch_text
 
     if not can_mark_turns(log):
+        return ""
+    # Ticket #460: a crisis conversation proposes no open loop, the turns before the phrase
+    # included. An open loop is durable and he is asked about it later.
+    if crisis.log_has_crisis_turn(log):
         return ""
     try:
         return "\n".join(own_lines(batch_text(log)))

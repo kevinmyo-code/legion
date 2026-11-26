@@ -31,6 +31,11 @@ device uploaded it (`DeviceLog.user`).
   there may be a search answer. `open_loops.words.can_mark_turns` decides, the same allowlist open
   loops uses (web records, phone records with a `run_id`).
 
+- **A record that holds a crisis turn is dropped whole and never read again** (ticket #460,
+  `devicelogs.crisis`): nothing said in that conversation becomes a memory, the turns before the
+  phrase included, and no model is asked about it. The decision is the engine's own crisis
+  detector, the same phrases the phone and the head unit use.
+
 So mail never reaches the prompt, and the guarantee is the shape of the extraction, not a
 reminder in it. The prompt also asks the model never to keep anything from mail or the web, never
 an opinion about the assistant, and never an identity or bank number; `sensitive.looks_sensitive`
@@ -73,7 +78,7 @@ from django.db.models.functions import Now
 from django.utils import timezone
 
 from assistant.read_through import THIRD_PARTY_TOOLS
-from devicelogs import voice_audit
+from devicelogs import crisis, voice_audit
 from devicelogs.models import REASON_CONVERSATION, DeviceLog
 from devicelogs.render import batch_text
 from ingest import statements
@@ -442,6 +447,11 @@ def consolidate_one(log: DeviceLog, *, key: str, transport: Transport) -> tuple[
     except ValueError:
         _mark(log, OUTCOME_FAILED, detail="The stored batch could not be read.")
         return OUTCOME_FAILED, 0
+    # Ticket #460: a crisis exchange is never distilled, and no model ever sees it. Marked done
+    # rather than failed, so the record is never read again.
+    if crisis.log_has_crisis_turn(log, raw):
+        _mark(log, OUTCOME_SKIPPED, detail="A crisis was spoken in this conversation.")
+        return OUTCOME_SKIPPED, 0
     words = log_transcript(log, raw)
     if not words.lines:
         _mark(log, OUTCOME_SKIPPED, detail="No words of the person's own to read.")
