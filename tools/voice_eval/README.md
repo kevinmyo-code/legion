@@ -102,6 +102,20 @@ sent typed and the scorecard says why.
 ]}
 ```
 
+- `tags`: what the case is for, from a closed vocabulary checked by
+  `tools/tests/test_voice_eval_cases.py`: `chat`, `tool:<call spec>`, `save:none`, `save:asked`,
+  `recall`, `guard`, `speech`, `length`. A separate field, never part of the id, because gates.yml
+  forces ids to `[a-z0-9_]`.
+  **`chat` is a check, not a label:** the case calls no tool at all, scored off the calls the row
+  already carries. A hand-written `not_calls` list is not a measurement, since it can only forbid
+  the tools whoever wrote the case thought of. Every other tag labels checks written out in full,
+  and a tag that contradicts its checks fails the free test.
+- `surfaces`: which runners may run the case. Left out means `["phone"]`. `engine` claims the case
+  is ported in `server/agents/evals/cases/voice21.yaml`, and the free test holds both files to that
+  claim in each direction; `engine_skip: "<why>"` opts a case out.
+- `moose`: an override merged over the case on the head unit runner, whose tool names differ from
+  the phone's. One id, two surfaces, no duplicated cases. Nothing runs it until the Moose harness
+  lands; the free test checks its shape today.
 - `calls`: each entry must be called; `a|b` is either; `tool/action` matches the action (or router
   `domain`) the model sent, a bare name matches a tool or an action. `not_calls`: must not be.
 - `args`: on a matching call, each argument equals the value, or `{"lte"|"gte": ...}`, or
