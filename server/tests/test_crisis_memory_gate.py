@@ -54,7 +54,7 @@ CRISIS = """\
 # also writes `session_end reason="crisis"`; this record deliberately does not, so the phrase is
 # what has to carry it. The mark has a case of its own below.
 PHONE_CRISIS = """\
-11-24 20:30:00.000  1 2 I LIVE_AUDIT: session_start model=gemini-live async_set=none
+11-24 20:30:00.000  1 2 I LIVE_AUDIT: session_start model=cloud+gemini-3.5-flash-lite async_set=none
 11-24 20:30:01.000  1 2 I LIVE_AUDIT: user final=true text="My gym moved to Elm Street."
 11-24 20:30:02.000  1 2 I LIVE_AUDIT: turn_complete
 11-24 20:30:08.000  1 2 I LIVE_AUDIT: user final=true text="Some days I just want to die."
@@ -63,7 +63,7 @@ PHONE_CRISIS = """\
 
 # Only the assistant's reply carries a listed phrase, as the help line does.
 CRISIS_IN_THE_REPLY = """\
-11-24 21:00:00.000  1 2 I LIVE_AUDIT: session_start model=gemini-live async_set=none
+11-24 21:00:00.000  1 2 I LIVE_AUDIT: session_start model=cloud+gemini-3.5-flash-lite async_set=none
 11-24 21:00:01.000  1 2 I LIVE_AUDIT: user final=true text="My gym moved to Elm Street."
 11-24 21:00:02.000  1 2 I LIVE_AUDIT: turn_complete
 11-24 21:00:05.000  1 2 I LIVE_AUDIT: user final=true text="I dont see the point of any of it."
@@ -75,7 +75,7 @@ CRISIS_IN_THE_REPLY = """\
 # Every audit line is truncated at 400 characters, so a phrase said late in a long turn is not in
 # the record at all. What is left is the phone's own crisis mark.
 TRUNCATED = """\
-11-24 22:00:00.000  1 2 I LIVE_AUDIT: session_start model=gemini-live async_set=none
+11-24 22:00:00.000  1 2 I LIVE_AUDIT: session_start model=cloud+gemini-3.5-flash-lite async_set=none
 11-24 22:00:01.000  1 2 I LIVE_AUDIT: user final=true text="My gym moved to Elm Street."
 11-24 22:00:02.000  1 2 I LIVE_AUDIT: turn_complete
 11-24 22:00:08.000  1 2 I LIVE_AUDIT: user final=true text="it has been a long month and it has been a long month and it has been a long month and it has been a long month and it has been a long month and it has been a long month and it has been a long month and it has been a long month and it has been a long month and it has been a long month and it has been a long month and it has been a long month and it has been a long month and it has been a long month and ..."
@@ -101,7 +101,7 @@ HEAD_UNIT_CAR_TALK = """\
 
 # Ordinary car talk the detector is tuned to leave alone. This record must still be distilled.
 CAR_TALK = """\
-11-24 09:00:00.000  1 2 I LIVE_AUDIT: session_start model=gemini-live async_set=none
+11-24 09:00:00.000  1 2 I LIVE_AUDIT: session_start model=cloud+gemini-3.5-flash-lite async_set=none
 11-24 09:00:01.000  1 2 I LIVE_AUDIT: user final=true text="This traffic is killing me."
 11-24 09:00:02.000  1 2 I LIVE_AUDIT: turn_complete
 11-24 09:00:03.000  1 2 I LIVE_AUDIT: user final=true text="My gym moved to Elm Street. Does the wagon have suicide doors?"
@@ -176,30 +176,45 @@ def _record(*lines: str) -> str:
     )
 
 
-def _split_run(text: str, at: int) -> str:
+LIVE_START = "session_start model=gemini-live async_set=none"
+CASCADE_START = "session_start model=cloud+gemini-3.5-flash-lite async_set=none"
+
+
+def _chunks(text: str, *splits: int, finished: bool = False) -> list[str]:
+    """`text` cut at `splits` into the chunks a Live session audits. The LAST chunk carries
+    `finished`, as Gemini's own `inputTranscription.finished` lands on whichever chunk ends the
+    utterance (`GeminiLiveSession.kt:922` on the head unit, `:1808` on the phone)."""
+    cuts = [0, *splits, len(text)]
+    parts = [text[a:b] for a, b in zip(cuts, cuts[1:], strict=False) if text[a:b]]
+    return [_line(part, final=finished and i == len(parts) - 1) for i, part in enumerate(parts)]
+
+
+def _split_run(text: str, at: int, *, finished: bool = False) -> str:
     """One unfinished run of two chunks, as the spool holds a turn that never closed."""
-    return _record(*[_line(part, final=False) for part in (text[:at], text[at:]) if part])
+    return _record(*_chunks(text, at, finished=finished))
 
 
-def _chunked_turn(text: str, split: int) -> str:
-    """One turn as the head unit writes it: the chunks, then the whole trimmed turn once more."""
+def _chunked_turn(text: str, split: int, *, finished: bool = False) -> str:
+    """One turn as a Live session writes it: the chunks, then the whole trimmed turn once more."""
     return _record(
-        "session_start model=gemini-live async_set=none",
-        *[_line(chunk, final=False) for chunk in (text[:split], text[split:]) if chunk],
+        LIVE_START,
+        *_chunks(text, split, finished=finished),
         _line(text),
         "turn_complete",
         'session_end reason="stopped"',
     )
 
 
+@pytest.mark.parametrize("finished", [False, True], ids=["unfinished tail", "finished tail"])
 @pytest.mark.parametrize("split", range(len(CAR_SENTENCE) + 1))
-def test_car_talk_is_quiet_at_every_chunk_boundary(split):
-    assert not crisis.has_crisis_turn(_chunked_turn(CAR_SENTENCE, split))
+def test_car_talk_is_quiet_at_every_chunk_boundary(split, finished):
+    assert not crisis.has_crisis_turn(_chunked_turn(CAR_SENTENCE, split, finished=finished))
 
 
+@pytest.mark.parametrize("finished", [False, True], ids=["unfinished tail", "finished tail"])
 @pytest.mark.parametrize("split", range(len(CRISIS_SENTENCE) + 1))
-def test_a_crisis_phrase_is_caught_at_every_chunk_boundary(split):
-    assert crisis.has_crisis_turn(_chunked_turn(CRISIS_SENTENCE, split))
+def test_a_crisis_phrase_is_caught_at_every_chunk_boundary(split, finished):
+    assert crisis.has_crisis_turn(_chunked_turn(CRISIS_SENTENCE, split, finished=finished))
 
 
 # B3: the phone writes `turn_complete` only through `afterReply()` (`CascadeSession.kt:2926`), so a
@@ -211,6 +226,7 @@ CUT_OFF = ("interrupted source=barge_in", "interrupted source=tap", "nudge reaso
 @pytest.mark.parametrize("between", CUT_OFF)
 def test_two_car_talk_turns_across_a_cut_off_reply_are_quiet(between):
     assert not crisis.has_crisis_turn(_record(
+        CASCADE_START,
         _line("does the wagon have suicide doors"),
         _line("It does not", role="assistant"),
         between,
@@ -222,6 +238,7 @@ def test_two_car_talk_turns_across_a_cut_off_reply_are_quiet(between):
 @pytest.mark.parametrize("between", CUT_OFF)
 def test_a_crisis_turn_across_a_cut_off_reply_is_still_caught(between):
     assert crisis.has_crisis_turn(_record(
+        CASCADE_START,
         _line("does the wagon have suicide doors"),
         between,
         _line("some days I just want to die"),
@@ -284,20 +301,34 @@ def test_a_record_cut_mid_crisis_turn_is_still_caught():
     ))
 
 
-def test_the_speakers_never_bridge_each_other():
-    """An assistant line between two user chunks does not join them, and the reverse."""
+def test_a_reply_never_joins_onto_what_he_said():
+    """A Live session keeps his words and its own in two buffers (`userTurnText`,
+    `companionTurnText`), so a reply between two of his chunks joins neither of them: his chunks
+    join each other across it, exactly as the device appends them."""
     assert not crisis.has_crisis_turn(_record(
         _line("I want to", final=False),
         _line("hold on", role="assistant"),
         _line(" diet soda", final=False),
     ))
+    assert not crisis.has_crisis_turn(_record(
+        _line("does the wagon have ", final=False),
+        _line("one moment", role="assistant"),
+        _line("suicide doors"),
+        'session_end reason="superseded"',
+    ))
+    assert crisis.has_crisis_turn(_record(
+        _line("some days I just want", final=False),
+        _line("mm", role="assistant"),
+        _line(" to die"),
+        'session_end reason="superseded"',
+    ))
 
 
-# -------------------------------------------- the repeat, by shape not by place
+# -------------------------------------------- the whole-turn repeat, by position
 #
-# A run that ends on a `final=true` line ends on a whole utterance, so that line and the chunks
-# before it are judged apart. Nothing has to recognise a repeat by its content, which is what a
-# stutter defeated, and nothing depends on where `turn_complete` sits.
+# A Live session writes the trimmed turn once more just before `turn_complete`, so the last line
+# he said before it is the repeat with no test of its content (which a stutter defeated). With no
+# `turn_complete` after it, a last line is the repeat only when it is exactly his joined deltas.
 
 
 def test_the_repeat_is_quiet_with_or_without_a_turn_end():
@@ -338,6 +369,129 @@ def test_every_phrase_survives_every_chunk_boundary(phrase):
     assert missed == []
 
 
+# ---------------------------------- r4: Gemini's `finished` flag lands on a chunk, not a turn
+#
+# Both Live sessions audit each transcript delta with Gemini's own `finished` flag
+# (`audit.user(chunk, final = finished)`, head unit `GeminiLiveSession.kt:922`, phone `:1808`), so a
+# `final=true` line in a Live session is sometimes the last few words of an utterance. The crisis
+# teardown (`silentDestroy`, `session_end reason="superseded"`) writes no whole-turn repeat and no
+# `turn_complete` after it, on the car and on the phone's Live session alike.
+
+CAR_SENTENCES = [CAR_SENTENCE, "it has a suicide knob", "my truck has suicide doors", "i want the two suicide doors"]
+CRISIS_SENTENCES = [CRISIS_SENTENCE, "I dont want to live anymore", "I am going to hurt myself", "there is nothing to live for"]
+TORN_DOWN = 'session_end reason="superseded"'
+
+
+def _torn_down(text: str, *splits: int, finished: bool = True, start: str | None = LIVE_START) -> str:
+    """A Live turn torn down by the crisis branch on its chunks: no repeat, no `turn_complete`."""
+    return _record(*([start] if start else []), *_chunks(text, *splits, finished=finished), TORN_DOWN)
+
+
+def _boundaries(text: str) -> range:
+    return range(1, len(text))
+
+
+@pytest.mark.parametrize("said", CRISIS_SENTENCES)
+def test_a_crisis_torn_down_on_a_finished_tail_is_caught_at_every_boundary(said):
+    """B5: `finished` on the tail delta, the real teardown, no repeat."""
+    assert [i for i in _boundaries(said) if not crisis.has_crisis_turn(_torn_down(said, i))] == []
+
+
+@pytest.mark.parametrize("said", CAR_SENTENCES)
+def test_car_talk_with_a_finished_tail_is_quiet_at_every_boundary(said):
+    """B6, with the repeat and `turn_complete`, and with neither (the record ends on the tail)."""
+    with_repeat = [i for i in _boundaries(said) if crisis.has_crisis_turn(_record(
+        LIVE_START, *_chunks(said, i, finished=True), _line(said), "turn_complete"))]
+    torn_down = [i for i in _boundaries(said) if crisis.has_crisis_turn(_torn_down(said, i))]
+    record_ends = [i for i in _boundaries(said) if crisis.has_crisis_turn(_record(
+        *_chunks(said, i, finished=True)))]
+    assert (with_repeat, torn_down, record_ends) == ([], [], [])
+
+
+def _middle_finished(text: str, i: int, j: int) -> list[str]:
+    """Three chunks with `finished` on the middle one."""
+    return [_line(text[:i], final=False), _line(text[i:j]), _line(text[j:], final=False)]
+
+
+@pytest.mark.parametrize("said", CRISIS_SENTENCES + CAR_SENTENCES)
+def test_finished_on_a_middle_chunk_changes_nothing(said):
+    expected = detector.detect(said)
+    pairs = [(i, j) for i in _boundaries(said) for j in range(i + 1, len(said))]
+    wrong = [(i, j) for i, j in pairs
+             if crisis.has_crisis_turn(_record(LIVE_START, *_middle_finished(said, i, j), TORN_DOWN)) != expected]
+    assert wrong == []
+
+
+@pytest.mark.parametrize("said", CRISIS_SENTENCES + CAR_SENTENCES)
+def test_finished_on_every_chunk_of_a_live_session_changes_nothing(said):
+    """Every chunk `final=true` and none `false`: the session's own start says it is Live."""
+    expected = detector.detect(said)
+    wrong = [i for i in _boundaries(said) if crisis.has_crisis_turn(_record(
+        LIVE_START, _line(said[:i]), _line(said[i:]), TORN_DOWN)) != expected]
+    assert wrong == []
+
+
+@pytest.mark.parametrize("phrase", detector.PHRASES)
+@pytest.mark.parametrize("finished", [False, True], ids=["unfinished tail", "finished tail"])
+def test_every_bare_phrase_survives_a_teardown_at_every_boundary(phrase, finished):
+    """The phrase is the whole utterance, so no padding hides a split at its first letter."""
+    missed = [i for i in _boundaries(phrase)
+              if not crisis.has_crisis_turn(_torn_down(phrase, i, finished=finished))]
+    assert missed == []
+
+
+@pytest.mark.parametrize("phrase", detector.PHRASES)
+def test_every_phrase_survives_a_finished_tail_at_every_boundary(phrase):
+    said = f"honestly {phrase} today"
+    assert [i for i in _boundaries(said) if not crisis.has_crisis_turn(_torn_down(said, i))] == []
+
+
+def test_a_car_upload_is_read_as_live_with_no_session_start():
+    """The record began mid-session (the periodic tick), so nothing in it names the session, and
+    every chunk happens to carry `finished`. The head unit writes `user` lines only from its Live
+    session, so its upload is read that way."""
+    raw = _record(_line("I dont want to"), _line(" live anymore"), TORN_DOWN)
+    assert crisis.has_crisis_turn(raw, head_unit=True)
+
+
+def test_an_unnamed_phone_segment_of_whole_lines_is_read_as_the_cascade_writes():
+    """The known residue, pinned: a phone record that begins mid-session with no `final=false`
+    line names neither session. It is read as the cascade (each line a whole turn), because
+    joining cascade turns is round 2's B3. A Live tail cut this way, `finished` on every chunk,
+    is judged line by line."""
+    assert not crisis.has_crisis_turn(_record(_line("does the wagon have suicide doors"), _line("does it")))
+    assert not crisis.has_crisis_turn(_record(_line("I dont want to"), _line(" live anymore"), TORN_DOWN))
+
+
+def test_a_typed_line_is_never_taken_for_the_repeat():
+    """A typed turn has no whole-turn repeat (`!wasTyped`, phone `GeminiLiveSession.kt:1980`), and
+    the device starts its turn text from the typed text (`:1091-1092`)."""
+    assert crisis.has_crisis_turn(_record(
+        LIVE_START,
+        'user final=true typed=true text="some days I just want"',
+        _line(" to die"),
+        "turn_complete",
+    ))
+
+
+def test_a_record_cut_between_the_repeat_and_its_turn_end_is_quiet():
+    """The repeat and `turn_complete` are two writes, so a spool tick can fall between them."""
+    for said in CAR_SENTENCES:
+        for i in _boundaries(said):
+            raw = _record(LIVE_START, *_chunks(said, i, finished=True), _line(said))
+            assert not crisis.has_crisis_turn(raw), (said, i)
+
+
+def test_a_truncated_repeat_after_a_mid_turn_cut_is_still_read():
+    """r4 residue 1: the record begins with a late chunk, so the cut repeat is the only line that
+    holds the start of the turn."""
+    assert crisis.has_crisis_turn(_record(
+        _line(" and that is all of it", final=False),
+        _line("some days I just want to die and that is all of it and more ..."),
+        "turn_complete",
+    ))
+
+
 @pytest.mark.django_db
 @pytest.mark.parametrize("raw", [CRISIS, PHONE_CRISIS, CRISIS_IN_THE_REPLY, TRUNCATED],
     ids=["head unit chunks", "phone whole turn", "only the reply", "truncated, marked"])
@@ -372,3 +526,14 @@ def test_a_record_older_than_the_review_window_is_not_read(household_user, house
     """The review's own window still applies; the gate adds nothing to it."""
     _log(household_a, household_user, CAR_TALK, age=datetime.timedelta(days=review.REVIEW_DAYS + 1))
     assert review._transcripts(household_user, household_a, timezone.now()) == []
+
+
+@pytest.mark.django_db
+def test_a_head_unit_upload_is_gated_as_a_live_session(household_user, household_a):
+    """`log_has_crisis_turn` reads who uploaded the record: the car's teardown shape with no
+    `session_start` is caught on a head unit upload, and read as the cascade on a phone one."""
+    from devicelogs.models import UPLOADER_HEAD_UNIT
+
+    raw = _record(_line("I dont want to"), _line(" live anymore"), TORN_DOWN)
+    assert crisis.log_has_crisis_turn(_log(household_a, household_user, raw, uploader_kind=UPLOADER_HEAD_UNIT))
+    assert not crisis.log_has_crisis_turn(_log(household_a, household_user, raw))
