@@ -117,7 +117,7 @@ class RewakeCarryWiringTest {
     }
 
     @Test
-    fun `the close hands over the real taint, from the one funnel every close goes through`() {
+    fun `the close hands over the real taint, from the close that ends a conversation`() {
         val shutdown = bodyOf(session(), "shutdown")
         assertTrue("every close leaves its decision behind", shutdown.contains("rewake.ended("))
         // Not a constant: the write guard would be bypassed by a carried turn if this read `false`.

@@ -3915,8 +3915,11 @@ internal class CascadeSession(
     /** Idempotent full release. */
     private suspend fun shutdown(reason: String) {
         if (!closing.compareAndSet(false, true)) return
-        // The one funnel every close goes through, so the one place the next conversation's context
-        // is left behind (Kevin, 2026-11-24). Its own rules decide whether this close leaves any.
+        // The one place the next conversation's context is left behind (Kevin, 2026-11-24). Not
+        // every close reaches it: `handOver` takes `closing` itself and releases directly, so a
+        // voice, speech or phone failure runs none of this and the holder keeps what it already
+        // held, which is the rule for a close that is not the end of a conversation. Its own rules
+        // decide whether this close leaves any.
         if (ownConversation) {
             rewake.ended(
                 reason = reason,
