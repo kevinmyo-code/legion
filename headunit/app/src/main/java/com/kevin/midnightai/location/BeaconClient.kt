@@ -388,8 +388,11 @@ object BeaconClient {
                 }.onFailure { Log.v(TAG, "TOKEN_OK send failed: ${it.message}") }
             }
             // AFTER the send, never before: see [Answer]. The write already happened, so the
-            // receiver is rebuilt even when the send threw.
-            answer?.afterSend?.invoke()
+            // receiver is rebuilt even when the send threw. Contained like handle() above it,
+            // because review L10's rule is that one datagram can never end this loop, and moving
+            // this call out of handle() would otherwise have taken it out from under that.
+            runCatching { answer?.afterSend?.invoke() }
+                .onFailure { Log.w(TAG, "Pairing change after a hand-over failed", it) }
         }
     }
 
