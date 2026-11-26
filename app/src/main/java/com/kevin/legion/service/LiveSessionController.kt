@@ -1513,7 +1513,12 @@ class LiveSessionController(context: Context) {
                 rewakeCarry.wipe()
                 // The panel keeps what was said (the person can still read it) and a voice
                 // conversation is marked ended; the crisis card is the response.
-                AssistantChatStore.update { it.sessionEnded() }
+                // Ticket #462: nothing of this exchange becomes a memory. The voice session is
+                // gone, but the panel deliberately survives (that is the line itself), and
+                // `typedSent` continues a panel a voice close ended, so the very next typed message
+                // would otherwise hand the text model these words with the memory tool on offer.
+                // The flag rides on the panel, so it lasts exactly as long as the words do.
+                AssistantChatStore.update { it.sessionEnded().crisisHappened() }
                 CompanionPhase.setCaption("")
                 CompanionPhase.setCrisis()
                 set(Phase.IDLE, IDLE_STATUS)
@@ -1911,7 +1916,11 @@ class LiveSessionController(context: Context) {
         // no-op for a name the session already resolved.
         val (name, args) = LiveSurface.resolve(wireName, wireArgs)
         // ADR 0090: the one write guard, before anything runs, on every path (Live, cascade, typed).
-        ReadThroughWriteGuard.refusal(name, args, readThrough)?.let { return it }
+        // It also carries #462: a memory-saving call is refused while the panel still holds a
+        // conversation that turned into a crisis ([ChatTranscript.crisis]).
+        ReadThroughWriteGuard
+            .refusal(name, args, readThrough, AssistantChatStore.transcript.value.crisis)
+            ?.let { return it }
         return LiveSurface.withRule(name, runResolvedTool(name, args, readThrough, userText))
     }
 

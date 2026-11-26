@@ -75,6 +75,34 @@ object ReadThroughWriteGuard {
         "voice_note",
     )
 
+    /**
+     * Saves a member memory, so it is refused while the panel still holds a conversation that
+     * turned into a crisis (ticket #462): `memory` with `action: remember`.
+     *
+     * Narrower than [REFUSED_AFTER_READ] on purpose. The outside-text rule refuses everything that
+     * lasts or leaves the phone, because the words in the turn may not be the person's. A crisis
+     * says nothing about the words being untrustworthy: it says that nothing from this exchange
+     * becomes something he is handed back later. So navigation, music, a timer and a to-do still
+     * run; only the memory save is refused.
+     *
+     * Two adjacent doors are deliberately NOT here, and both are named as owed rather than widened
+     * into: `generate_goal_plan`'s `new_constraint` is saved as a memory too, but refusing the call
+     * would also refuse the plan he asked for (the read-through rule refuses only the constraint,
+     * inside [GoalsToolbox], which is where a crisis arm belongs as well); and `ask_engine` with
+     * `intent: record` can reach the engine's own `remember`, which the engine cannot gate for this
+     * door because it is handed no conversation and no words.
+     */
+    fun savesAMemory(name: String, args: JSONObject): Boolean =
+        name == MemoryToolbox.TOOL_NAME && args.optString("action") == "remember"
+
+    /**
+     * What a memory-saving tool refuses with for the rest of a crisis conversation. Says what did
+     * NOT happen and does not offer to do it next message, because this gate holds until the
+     * person starts a new conversation; never repeats what he said.
+     */
+    const val CRISIS_REFUSAL = "Nothing was saved: %s did not run, and nothing from this conversation " +
+        "is kept as a memory. Say that nothing was saved; do not offer to save it."
+
     /** True when [name] (resolved) with [args] may run in a turn that read outside text. */
     fun runsAfterRead(name: String, args: JSONObject): Boolean =
         ToolReads.isRead(name, args) ||
@@ -92,9 +120,26 @@ object ReadThroughWriteGuard {
      * is set and the call may not run after an outside read ([runsAfterRead]), else null.
      * [readThrough] is the turn's mark as it stood before this call's own mark, so a read-through
      * tool that also acts does not refuse itself.
+     *
+     * [crisis] is [ChatTranscript.crisis]: a turn of the panel this call belongs to tripped
+     * [com.kevin.legion.ai.CrisisDetector] (ticket #462), so a memory-saving call ([savesAMemory])
+     * is refused whatever else the turn did. Judged first, because unlike the outside-text rule
+     * this one does not lift on his next message.
      */
-    fun refusal(wireName: String, wireArgs: JSONObject, readThrough: Boolean): JSONObject? {
+    fun refusal(
+        wireName: String,
+        wireArgs: JSONObject,
+        readThrough: Boolean,
+        crisis: Boolean = false,
+    ): JSONObject? {
         val (name, args) = LiveSurface.resolve(wireName, wireArgs)
+        if (crisis && savesAMemory(name, args)) {
+            return JSONObject()
+                .put("success", false)
+                .put("crisis", true)
+                .put("tool", name)
+                .put("message", CRISIS_REFUSAL.format(name))
+        }
         if (!readThrough || runsAfterRead(name, args)) return null
         // A memory keeps the words it always had (the engine special-cases `remember` the same way).
         val words = if (name == MemoryToolbox.TOOL_NAME && args.optString("action") == "remember") {

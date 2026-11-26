@@ -53,6 +53,14 @@ data class ChatTranscript(
     val endedByVoiceClose: Boolean = false,
     /** The active companion's name, stamped onto each ASSISTANT line as it is added. Null until known. */
     val speaker: String? = null,
+    /**
+     * A turn of THIS panel tripped the crisis detector (ticket #462), so nothing from it is saved
+     * as a memory. It rides on the panel because the panel is what carries the exchange forward:
+     * [typedSent] continues a panel a crisis teardown ended, and [textHistory] hands those lines to
+     * the text model, which holds the memory tool. A panel started afresh ([beginIfEnded],
+     * [AssistantChatStore.clear]) no longer holds the exchange, so the flag goes with it.
+     */
+    val crisis: Boolean = false,
     private val nextId: Long = 1,
 ) {
     val isEmpty: Boolean get() = entries.isEmpty() && pendingTypedReply == null
@@ -144,6 +152,12 @@ data class ChatTranscript(
         return add(ChatEntry.Kind.SYSTEM, "Conversation ended.")
             .copy(ended = true, voiceSinceEnd = false, endedByVoiceClose = true)
     }
+
+    /**
+     * A turn of this panel tripped the crisis detector (#462). Latched: only a panel started afresh
+     * drops it, because only then are the words no longer here to be saved.
+     */
+    fun crisisHappened(): ChatTranscript = if (crisis) this else copy(crisis = true)
 
     /** The first spoken line of a NEW session replaces an ended panel instead of stacking under it. */
     fun beginIfEnded(): ChatTranscript =
