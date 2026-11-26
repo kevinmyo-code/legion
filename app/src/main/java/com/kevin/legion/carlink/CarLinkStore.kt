@@ -107,9 +107,8 @@ class CarLinkStore(
 
     /** True only when [current] is byte for byte the key already stored. Unreadable = not the same. */
     private fun sameCurrentKey(current: ByteArray?): Boolean {
-        if (current == null) return false
-        val stored = file.read()[CURRENT] ?: return false
-        return openWithRetry(stored)?.contentEquals(current) == true
+        val stored = file.read()[CURRENT]
+        return current != null && stored != null && openWithRetry(stored)?.contentEquals(current) == true
     }
 
     /** A REVOKE-only record exists (5.4, rev 5): a forgotten pairing whose unit was not yet told. */
