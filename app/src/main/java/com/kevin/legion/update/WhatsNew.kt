@@ -29,12 +29,11 @@ object ReleaseHistoryJson {
         return notes.takeIf { it.size == array.size }
     }
 
-    private fun note(o: JsonObject): ReleaseNote? = ReleaseNote(
-        versionCode = num(o, "version_code")?.takeIf { it > 0 } ?: return null,
-        versionName = str(o, "version_name") ?: return null,
-        notes = str(o, "notes").orEmpty(),
-        publishedAt = str(o, "published_at").orEmpty(),
-    )
+    private fun note(o: JsonObject): ReleaseNote? {
+        val code = num(o, "version_code")?.takeIf { it > 0 } ?: return null
+        val name = str(o, "version_name") ?: return null
+        return ReleaseNote(code, name, str(o, "notes").orEmpty(), str(o, "published_at").orEmpty())
+    }
 
     private fun str(o: JsonObject, key: String): String? =
         (o[key] as? JsonPrimitive)?.takeIf { it.isString }?.content
