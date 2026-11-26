@@ -30,9 +30,13 @@ object ReleaseHistoryJson {
     }
 
     private fun note(o: JsonObject): ReleaseNote? {
-        val code = num(o, "version_code")?.takeIf { it > 0 } ?: return null
-        val name = str(o, "version_name") ?: return null
-        return ReleaseNote(code, name, str(o, "notes").orEmpty(), str(o, "published_at").orEmpty())
+        val code = num(o, "version_code")?.takeIf { it > 0 }
+        val name = str(o, "version_name")
+        return if (code == null || name == null) {
+            null
+        } else {
+            ReleaseNote(code, name, str(o, "notes").orEmpty(), str(o, "published_at").orEmpty())
+        }
     }
 
     private fun str(o: JsonObject, key: String): String? =
