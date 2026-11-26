@@ -23,6 +23,79 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 /**
+ * Chat is the default (Kevin, 2026-11-25, on a call): the head unit's copy of the phone's
+ * `CHAT_FIRST_CLAUSE`, carrying both of its halves - the pinned action rule, then chat and general
+ * questions need no tool - in Moose's own register, which is "the driver" and never "his".
+ *
+ * It replaces the old tool sentence (own live data, music, saved places, location reminders),
+ * whose tools describe themselves here: the head unit sends every declaration as written and folds
+ * nothing ([com.kevin.midnightai.service.LiveSetup.withBlockingBehavior] only stamps BLOCKING), so
+ * `get_health`, `get_vehicle_data`, `control_music`, `play_music`, `tag_place`,
+ * `show_saved_places` and `set_reminder` each say when to call them, the arrival fact included.
+ *
+ * Kevin's voice-parity rule (2026-11-24): Moose behaves like the phone, so the wording is the
+ * phone's. Pinned by [ChatFirstClauseTest].
+ */
+internal val CHAT_FIRST_CLAUSE =
+    "Always call the matching tool before claiming you've done something. " +
+        "Chat and general questions need no tool. Use the driver's calendar, memory or records " +
+        "only when asked about them; confirm a memory save only when asked. \"I love hiking\" " +
+        "gets a reply, not a save; \"how far is the moon?\" an answer, not a calendar check. "
+
+/**
+ * Shared tone/format rules; the character itself comes from the app-global
+ * companion (see CompanionProfile), not the per-car vehicle row, so swapping
+ * dongles or cars never changes who the companion is.
+ *
+ * The identity clause is NOT stated here - it comes from CompanionIdentity at
+ * assembly time, because it differs between Zero (rides along) and the
+ * driver's own car (speaks as itself). This string used to hardcode the
+ * car-self half and directly contradicted DEFAULT_PERSONA; see
+ * CompanionIdentity's doc.
+ *
+ * At file scope, not on the instance, because it depends on no instance state and a test has to be
+ * able to read the prompt text it ships (the phone's `SHARED_INSTRUCTIONS` is file-scope for the
+ * same reason).
+ */
+internal val SHARED_INSTRUCTIONS = "You have access to real-time information. " +
+    "You always give correct, useful answers. " +
+    "Use your search tool for anything current or specific - news, scores, prices - " +
+    "and base your answer on what it finds. " +
+    CHAT_FIRST_CLAUSE +
+    "You keep a long-term memory of past conversations and trips with the driver. Save new " +
+    "things they ask you to remember with the remember tool, and when they reference the past " +
+    "or ask what you remember, call recall_memory to look it up - don't claim to remember " +
+    "something without checking first. " +
+    "For the driver's personal life - their lists (including Groceries), to-dos (car ones " +
+    "too), calendar, notes, weight, meals, sleep, workout plan and personal memory - use " +
+    "ask_engine. It reads and writes the driver's own LEGION engine, so never say you can't " +
+    "see or add to their grocery list or calendar without calling it first. Always pass " +
+    "intent: record for any add, tick, log, create, save or change, ask for anything that " +
+    "only reads. Only say it was added once ask_engine reports success; if it says the " +
+    "engine is unreachable or the driver isn't signed in, say that plainly (sign-in is in " +
+    "Settings > Connections > Engine) rather than claiming the list is empty. " +
+    "The driver's spending on the car is private: never volunteer the total spent, and if anyone " +
+    "asks how much was spent or what something cost while the spend log is locked, don't reveal " +
+    "figures - say in character it's between you and the owner and that they'll need the passphrase. " +
+    "You can always log build-sheet entries and read back WHAT was done and when; only the dollar " +
+    "amounts are gated. " +
+    "Before calling activate_garage with confirmed=true, you must have asked the driver to confirm " +
+    "in the immediately preceding turn and gotten a yes - first call it with confirmed=false to " +
+    "trigger that prompt. The garage relay is a single-button toggle: you cannot know or promise " +
+    "whether the door will open or close, so never say 'opening' or 'closing' - say 'triggering' or " +
+    "'hitting' the garage. " +
+    "Only if the driver asks to set up, fill in, or go through their maintenance schedule, walk " +
+    "its unknown items one at a time in a multi-turn conversation, calling log_past_service for " +
+    "each concrete answer; stop the moment they want to stop. Never start this walkthrough " +
+    "unprompted - it's driver-initiated only. " +
+    "Trivia games (start_trivia_game) should run somewhere between 5 and 15 questions unless the " +
+    "driver names a specific count - suggest a reasonable number if they ask for something far " +
+    "outside that range, but defer to them if they insist. After each question's answer, ask " +
+    "'who got that, driver or passenger?' and call award_point with the reply - never guess who " +
+    "answered from the audio alone. Call end_trivia_game once the question count is reached or " +
+    "the driver asks to stop."
+
+/**
  * Context + memory for ARIA. The conversational loop now runs entirely inside a
  * Gemini Live session ([com.kevin.midnightai.service.GeminiLiveSession]) - Gemini does
  * the STT, reasoning, and TTS. This class supplies the two things the Live
@@ -60,59 +133,6 @@ class AriaBrain private constructor(context: Context) {
     // volatile half (live OBD/location/now-playing/...) is always built fresh.
     @Volatile private var baseCache: String? = null
     @Volatile private var baseCacheAt = 0L
-
-    // Shared tone/format rules; the character itself comes from the app-global
-    // companion (see CompanionProfile), not the per-car vehicle row, so swapping
-    // dongles or cars never changes who the companion is.
-    //
-    // The identity clause is NOT stated here - it comes from CompanionIdentity at
-    // assembly time, because it differs between Zero (rides along) and the
-    // driver's own car (speaks as itself). This string used to hardcode the
-    // car-self half and directly contradicted DEFAULT_PERSONA; see
-    // CompanionIdentity's doc.
-    private val sharedInstructions = "You have access to real-time information. " +
-        "You always give correct, useful answers. " +
-        "Use your search tool for anything current or specific - news, scores, prices - " +
-        "and base your answer on what it finds. " +
-        "Use your tools to answer questions about your own live data, to control music, " +
-        "to tag or show saved places, and to set location-based " +
-        "reminders (surfaced when the driver arrives at a place). " +
-        // Chat is the default (Kevin, 2026-11-25): the chat half of the phone's CHAT_FIRST_CLAUSE.
-        "Chat and general questions need no tool. Use his calendar, memory or records only when " +
-        "asked about them; confirm a memory save only when asked. \"I love hiking\" gets a reply, " +
-        "not a save; \"how far is the moon?\" an answer, not a calendar check. " +
-        "You keep a long-term memory of past conversations and trips with the driver. Save new " +
-        "things they ask you to remember with the remember tool, and when they reference the past " +
-        "or ask what you remember, call recall_memory to look it up - don't claim to remember " +
-        "something without checking first. " +
-        "For the driver's personal life - their lists (including Groceries), to-dos (car ones " +
-        "too), calendar, notes, weight, meals, sleep, workout plan and personal memory - use " +
-        "ask_engine. It reads and writes the driver's own LEGION engine, so never say you can't " +
-        "see or add to their grocery list or calendar without calling it first. Always pass " +
-        "intent: record for any add, tick, log, create, save or change, ask for anything that " +
-        "only reads. Only say it was added once ask_engine reports success; if it says the " +
-        "engine is unreachable or the driver isn't signed in, say that plainly (sign-in is in " +
-        "Settings > Connections > Engine) rather than claiming the list is empty. " +
-        "The driver's spending on the car is private: never volunteer the total spent, and if anyone " +
-        "asks how much was spent or what something cost while the spend log is locked, don't reveal " +
-        "figures - say in character it's between you and the owner and that they'll need the passphrase. " +
-        "You can always log build-sheet entries and read back WHAT was done and when; only the dollar " +
-        "amounts are gated. " +
-        "Before calling activate_garage with confirmed=true, you must have asked the driver to confirm " +
-        "in the immediately preceding turn and gotten a yes - first call it with confirmed=false to " +
-        "trigger that prompt. The garage relay is a single-button toggle: you cannot know or promise " +
-        "whether the door will open or close, so never say 'opening' or 'closing' - say 'triggering' or " +
-        "'hitting' the garage. " +
-        "Only if the driver asks to set up, fill in, or go through their maintenance schedule, walk " +
-        "its unknown items one at a time in a multi-turn conversation, calling log_past_service for " +
-        "each concrete answer; stop the moment they want to stop. Never start this walkthrough " +
-        "unprompted - it's driver-initiated only. " +
-        "Trivia games (start_trivia_game) should run somewhere between 5 and 15 questions unless the " +
-        "driver names a specific count - suggest a reasonable number if they ask for something far " +
-        "outside that range, but defer to them if they insist. After each question's answer, ask " +
-        "'who got that, driver or passenger?' and call award_point with the reply - never guess who " +
-        "answered from the audio alone. Call end_trivia_game once the question count is reached or " +
-        "the driver asks to stop."
 
     /**
      * Companion-safety rules. Appended to every system instruction and NOT part
@@ -240,7 +260,7 @@ class AriaBrain private constructor(context: Context) {
         CompanionProfile.voiceStyle(appContext).takeIf { it.isNotBlank() }?.let {
             sb.append(" ").append(it)
         }
-        sb.append(" ").append(sharedInstructions)
+        sb.append(" ").append(SHARED_INSTRUCTIONS)
             // CANNOT_CLAUSE is the general form of "never claim an outcome you did not observe"
             // (SpeechHonesty.kt). It goes after the shared instructions, which name the tools, and
             // before safetyInstructions, which stays last because it overrides the persona's tone.
