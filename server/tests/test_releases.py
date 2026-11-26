@@ -172,6 +172,27 @@ def test_latest_is_the_highest_version_code_and_open_to_members(owner_client, me
     assert member_client.get("/api/releases/latest?app=toaster").status_code == 400
 
 
+def test_history_lists_every_release_newest_first_with_notes_and_no_object_name(
+    owner_client, member_client
+):
+    assert member_client.get("/api/releases/history?app=phone").data == []
+    for code, notes in ((10, "first"), (12, "third"), (11, "second")):
+        owner_client.post("/api/releases/", _body(version_code=code, notes=notes), format="json")
+    owner_client.post("/api/releases/", _body(app="headunit", version_code=99), format="json")
+    response = member_client.get("/api/releases/history?app=phone")
+    assert response.status_code == 200
+    assert [r["version_code"] for r in response.data] == [12, 11, 10]
+    assert [r["notes"] for r in response.data] == ["third", "second", "first"]
+    assert set(response.data[0]) == {"version_name", "version_code", "notes", "published_at"}
+    assert member_client.get("/api/releases/history").data[0]["version_code"] == 12
+    assert member_client.get("/api/releases/history?app=headunit").data[0]["version_code"] == 99
+    assert member_client.get("/api/releases/history?app=toaster").status_code == 400
+
+
+def test_history_is_closed_to_anonymous_callers():
+    assert APIClient().get("/api/releases/history").status_code in (401, 403)
+
+
 def test_releases_are_engine_wide_so_another_household_reads_them(owner_client, token_b):
     """Not household-scoped (`releases/models.py`, `tenancy.ENGINE_WIDE_TABLES`)."""
     owner_client.post("/api/releases/", _body(), format="json")
@@ -238,6 +259,7 @@ def test_a_recruiter_is_refused_every_release_route(owner_client):
     expected = denied_refusal(RECRUITER_DENIED["releases.views.ReleaseLatestView"])
     for method, path in (
         ("get", "/api/releases/latest"),
+        ("get", "/api/releases/history"),
         ("get", f"/api/releases/{release_id}/download"),
         ("post", "/api/releases/"),
     ):

@@ -18,7 +18,7 @@ class SystemUpdatesStatusTest {
     @Test fun everyOtherSystemRowStaysInItsOldOrder() {
         assertEquals(
             listOf(
-                SystemRow.UPDATES, SystemRow.CLOCK, SystemRow.PERMISSIONS, SystemRow.PREFERENCES,
+                SystemRow.UPDATES, SystemRow.WHATS_NEW, SystemRow.CLOCK, SystemRow.PERMISSIONS, SystemRow.PREFERENCES,
                 SystemRow.LOGS, SystemRow.DEVELOPER_TOOLS, SystemRow.RESET,
             ),
             systemRows(),

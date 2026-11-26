@@ -59,6 +59,7 @@ class TypesetReachabilityTest {
         LegionRoute.SETTINGS_DATA_PRIVACY to Screen(LegionRoute.SETTINGS, "Data and privacy"),
         LegionRoute.SETTINGS_PERMISSIONS_DIAGNOSTICS to Screen(LegionRoute.SETTINGS, "Permissions"),
         LegionRoute.SETTINGS_UPDATES to Screen(LegionRoute.SETTINGS, "Updates"),
+        LegionRoute.SETTINGS_WHATS_NEW to Screen(LegionRoute.SETTINGS, "What's new"),
         LegionRoute.SETTINGS_CAR_LINK to Screen(LegionRoute.SETTINGS, "Car link"),
         LegionRoute.SETTINGS_HELP to Screen(LegionRoute.SETTINGS, "Voice guide"),
         LegionRoute.SETTINGS_COMPANIONS to Screen(LegionRoute.SETTINGS, "Companions"),
