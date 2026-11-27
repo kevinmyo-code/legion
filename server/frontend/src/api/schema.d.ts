@@ -5156,6 +5156,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/member-memories/turns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The caller's own conversation turns, newest first. */
+        get: operations["api_member_memories_turns_list"];
+        put?: never;
+        /** @description Saves one finished turn for the caller the moment it ends. Saving the same session and turn again rewrites it (200). A turn that read third-party text, holds a crisis phrase (every turn of that session is then deleted), or looks like it holds an identity or bank number is not kept: 200 with `kept: false`, never retry it. */
+        post: operations["api_member_memories_turns_save"];
+        /** @description Deletes every turn of one of the caller's conversations, for good. */
+        delete: operations["api_member_memories_turns_forget"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/memory/companion_memories/": {
         parameters: {
             query?: never;
@@ -12355,6 +12374,25 @@ export interface components {
             /** Format: double */
             trend_lbs: number;
         };
+        Turn: {
+            /** Format: uuid */
+            id: string;
+            session: string;
+            turn: number;
+            source: components["schemas"]["AppEnum"];
+            user_text: string;
+            assistant_text: string;
+            /** @description Names only. */
+            tools: string[];
+            /** Format: date-time */
+            spoken_at: string;
+        };
+        TurnForget: {
+            deleted: number;
+        };
+        TurnList: {
+            results: components["schemas"]["Turn"][];
+        };
         /**
          * @description A refusal of `POST /api/assistant/turn` (round 3 N8): the words, and the `code` the page
          *     acts on (`TURN_REFUSAL_CODES`).
@@ -12448,6 +12486,38 @@ export interface components {
          * @enum {string}
          */
         TurnRequestKindEnum: "user" | "greeting" | "opener" | "check_in" | "proactive" | "say";
+        TurnSave: {
+            /** @description The client's own id for the conversation. */
+            session: string;
+            /** @description Counted from 0 within the session. */
+            turn: number;
+            /** @default phone */
+            source: components["schemas"]["AppEnum"];
+            /** @default  */
+            user_text: string;
+            /**
+             * @description What was spoken back, a tool turn's included. Never a tool's result.
+             * @default
+             */
+            assistant_text: string;
+            /** @description The names of the tools the turn called, never arguments. */
+            tools?: string[];
+            /**
+             * @description The client saw third-party text in this turn; the turn is then not kept.
+             * @default false
+             */
+            read_through: boolean;
+            /** Format: date-time */
+            spoken_at?: string | null;
+        };
+        TurnSaved: {
+            kept: boolean;
+            /** @description Why it was not kept: read_through, crisis, sensitive or empty. Null when kept. */
+            reason: string | null;
+            /** @description The reason in words. */
+            detail: string | null;
+            turn: components["schemas"]["Turn"] | null;
+        };
         /**
          * @description * `next_income` - next_income
          *     * `30_days` - 30_days
@@ -24200,6 +24270,125 @@ export interface operations {
                 };
             };
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_member_memories_turns_list: {
+        parameters: {
+            query?: {
+                /** @description Default 50, max 200. */
+                limit?: number;
+                /** @description Only this conversation's turns. */
+                session?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TurnList"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_member_memories_turns_save: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TurnSave"];
+                "application/x-www-form-urlencoded": components["schemas"]["TurnSave"];
+                "multipart/form-data": components["schemas"]["TurnSave"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TurnSaved"];
+                };
+            };
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TurnSaved"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_member_memories_turns_forget: {
+        parameters: {
+            query: {
+                /** @description The conversation to forget. */
+                session: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TurnForget"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
