@@ -1364,6 +1364,8 @@ class AssistantTurnView(_AssistantView):
                 cascade=True,
             )
             _audit(request, AssistantCall.SESSION, Outcome.OK)
+            reply = web_conversation.last_reply(row)
+            withheld = web_conversation.withheld_reply(reply)
             turn_input = cascade.TurnInput(
                 audio=audio,
                 text=text or None,
@@ -1372,7 +1374,8 @@ class AssistantTurnView(_AssistantView):
                 greeting_history=_greeting_history(data.get("greeting_history")),
                 spoken=bool(data.get("spoken")) and bool(text),
                 barge_in=bool(data.get("barge_in")) and audio is not None,
-                last_reply=web_conversation.last_reply(row),
+                last_reply="" if withheld else reply,
+                last_reply_withheld=withheld,
                 chip=suggestions.chip_for(request.user, data.get("chip"), text),
             )
             response = StreamingHttpResponse(

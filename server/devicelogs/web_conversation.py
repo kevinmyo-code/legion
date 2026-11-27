@@ -44,6 +44,7 @@ import uuid
 from django.db import DatabaseError, transaction
 from django.utils import timezone
 
+from agents.legion.redact import OUTSIDE_ANSWER_NOTE
 from assistant import read_through
 from devicelogs import read_through_lines
 from devicelogs.models import (
@@ -65,8 +66,6 @@ TID_ENGINE = 2
 CAP_TOOL = 400
 CAP_TURN = 2000
 _WORD = re.compile(r"\s+")
-# "MM-DD HH:MM:SS.mmm": a line's sort key.
-_STAMP_LEN = 18
 
 
 def _trim(text: str, cap: int) -> str:
@@ -181,7 +180,8 @@ def append(row: DeviceLog, stamped: list[tuple[datetime.datetime, str]]) -> int:
             latest = at
     if not fresh:
         return 0
-    merged = sorted(existing + fresh, key=lambda text: text[:_STAMP_LEN])
+    opened = (existing or fresh)[0]
+    merged = sorted(existing + fresh, key=lambda text: read_through_lines.sort_key(opened, text))
     body = _body(merged)
     if len(body) > MAX_UPLOAD_BYTES:
         raise TooLarge(
@@ -392,6 +392,21 @@ def engine_user_line(at: datetime.datetime, text: str, *, typed: bool) -> tuple:
     return (at, line(at, TID_ENGINE, AUDIT, f"user final=true{flag} text={quoted(text, CAP_TURN)}"))
 
 
+# A barge-in over a reply that was withheld: his transcript may be that reply heard back through
+# the speaker, and the echo check has no words to compare it with, so it is not kept (#475).
+WITHHELD_USER = "user_withheld reason=overlapped_withheld_answer"
+_WITHHELD = f"  0  {TID_ENGINE} I {AUDIT}: {WITHHELD_USER}"
+
+
+def engine_withheld_user_line(at: datetime.datetime) -> tuple:
+    return (at, line(at, TID_ENGINE, AUDIT, WITHHELD_USER))
+
+
+def withheld_reply(reply: str) -> bool:
+    """Whether `last_reply`'s answer is the marker: the reply was not kept."""
+    return reply == read_through_lines.REDACTED
+
+
 def engine_assistant_line(at: datetime.datetime, text: str) -> tuple:
     return (at, line(at, TID_ENGINE, AUDIT, f"assistant text={quoted(text, CAP_TURN)}"))
 
@@ -471,8 +486,8 @@ def last_reply(row: DeviceLog) -> str:
         except ValueError:
             continue
         if words == read_through_lines.REDACTED:
-            # Its words were not kept, so there is nothing to hear back: no echo check.
-            return ""
+            # Its words were not kept: the caller sees the marker (`withheld_reply`), not text.
+            return words
         if isinstance(words, str) and words.strip():
             return words
     return ""
@@ -526,6 +541,11 @@ def history(
             # the page (a hang-up mid-turn, finding 5), so a repeated ask is not made twice.
             note(f"(Done: {done.group('name')}.)")
             continue
+        if _WITHHELD in text:
+            # His turn happened; its words were not kept (`engine_withheld_user_line`). It still
+            # counts, so turn numbers (the read-through marks, the carry) stay his.
+            users += 1
+            continue
         if "interrupted source=" in text:
             # The person talked over the reply: the model is told, so the next answer picks up
             # what they said instead of finishing or repeating this one (voice-persona section 8).
@@ -546,9 +566,11 @@ def history(
             # The marker written before this line stands in for its words.
             words, replay = replay, None
         if role == "model" and words == read_through_lines.REDACTED:
-            # A reply that read outside text was not kept (section 7): never hand the model the
-            # marker as its own words.
-            continue
+            # A reply that read outside text was not kept (section 7): the model is told it
+            # answered and that the answer is gone, as the agent trace tells it, never the marker.
+            if turns and turns[-1]["parts"][0]["text"].endswith(OUTSIDE_ANSWER_NOTE):
+                continue
+            words = OUTSIDE_ANSWER_NOTE
         if not isinstance(words, str) or not words.strip():
             continue
         if role == "user":

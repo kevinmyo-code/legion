@@ -1,3 +1,4 @@
+# ruff: noqa: F811 - fixtures imported from the cascade tests
 """Third-party text never reaches a stored web conversation record (CLAUDE.md section 7, #475).
 
 The web record is written by the engine (`devicelogs.web_conversation`), so it redacts at write
@@ -16,12 +17,25 @@ from types import SimpleNamespace
 import pytest
 from django.core.management import call_command
 
+from agents.legion import redact as trace
+from agents.legion.redact import OUTSIDE_ANSWER_NOTE
+from agents.runtime.model import FakeModel, call, say
 from devicelogs import web_conversation as wc
 from devicelogs.models import DeviceLog
 from devicelogs.read_through_lines import READ_THROUGH_TOOLS, REDACTED, redact
 from engine_mcp import web_search
 from member_memory import consolidate
 from tests.test_assistant import _start, browser, google  # noqa: F401 - fixture
+from tests.test_assistant_cascade import (  # noqa: F401 - fixtures
+    PCM,
+    _clean,
+    _events,
+    _of,
+    _post,
+    _record,
+    engine,
+    member,
+)
 
 T0 = datetime(2026, 11, 26, 9, 0, tzinfo=UTC)
 PAGE = "Example Motors says the pump fails at 60,000 miles."
@@ -140,18 +154,102 @@ def _row(lines) -> DeviceLog:
     return DeviceLog(body_gz=gzip.compress(body))
 
 
-def test_history_and_last_reply_never_hand_back_the_marker():
-    lines = [
-        _user(0, "Hi"),
-        _said(1, "Morning."),
-        _user(5),
-        *redact([], [*_tool(6, "web_search"), _said(8, PAGE)]),
-    ]
+def test_history_replays_the_outside_answer_note_and_keeps_his_turns_apart():
+    """Review F1: a withheld reply is replayed as the agent trace's note (answered, not kept,
+    done), never the marker and never dropped, so his turns stay separate and alternate."""
+    lines = redact(
+        [],
+        [
+            _user(0, "Hi"),
+            _said(1, "Morning."),
+            _user(5),
+            *_tool(6, "web_search"),
+            _said(8, PAGE),
+            _user(10, "What is on my calendar?"),
+            _said(11, "Nothing today."),
+        ],
+    )
     row = _row(lines)
     turns, users = wc.history(row, max_turns=10)
+    assert [t["role"] for t in turns] == ["user", "model", "user", "model", "user", "model"]
+    assert [t["parts"][0]["text"] for t in turns][3::2] == [OUTSIDE_ANSWER_NOTE] * 2
     assert REDACTED not in json.dumps(turns) and PAGE not in json.dumps(turns)
+    assert users == 3
+    assert wc.withheld_reply(wc.last_reply(row))
+
+
+def test_a_withheld_user_line_counts_as_his_turn_and_holds_no_words():
+    row = _row([_user(0, "Hi"), _said(1, "Morning."), wc.engine_withheld_user_line(_at(5))])
+    turns, users = wc.history(row, max_turns=10)
     assert users == 2
-    assert wc.last_reply(row) == ""
+    assert "withheld" not in json.dumps(turns)
+
+
+def _call(s, name, args, text, ok=True):
+    return wc.tool_lines(
+        call_id=f"x{s}",
+        name=name,
+        args=args,
+        started=_at(s),
+        ended=_at(s + 0.1),
+        success=ok,
+        outcome="ok" if ok else "refused",
+        text=text,
+    )
+
+
+def test_tool_arguments_after_a_read_are_blanked_by_the_trace_rule():
+    """Review F3: the search's own query and a later call's arguments, as `agents.legion.redact`
+    keeps them; a call before the read keeps its arguments."""
+    before = _call(0.5, "list_events", {"day": "today"}, "Nothing.")
+    later = _call(4, "add_checklist_item", {"item": "pump recall 24V-123"}, "Not added.", ok=False)
+    kept = "\n".join(
+        _texts(redact([], [*before, _user(1), *_tool(2, "web_search"), _said(3, PAGE), *later]))
+    )
+    blank = json.dumps(trace.OUTSIDE_ARGS, separators=(",", ":"))
+    assert 'args={"day":"today"}' in kept
+    assert "24V-123" not in kept and '"query":"pump"' not in kept
+    assert kept.count(f"args={blank}") == 2
+
+
+def test_a_stage_four_mail_name_reads_outside_text():
+    kept = "\n".join(_texts(redact([], [_user(0), *_tool(1, "gmail_search"), _said(3, PAGE)])))
+    assert PAGE not in kept
+
+
+def _old_briefing():
+    old = [_user(0), *_tool(1, "run_procedure"), _said(3, PAGE)]
+    old[1] = (old[1][0], old[1][1].replace('{"query":"pump"}', '{"name":"morning_briefing"}'))
+    return old
+
+
+def test_an_old_procedure_reply_is_found_by_the_procedure_it_ran():
+    """Review F4: an old record's `run_procedure` reply carries no listed name; the procedure's
+    own name, read from its arguments, decides."""
+    old = _old_briefing()
+    assert redact([], old) == old  # an unknown procedure: left alone
+    kept = "\n".join(_texts(redact([], old, procedures=frozenset({"morning_briefing"}))))
+    assert PAGE not in kept and "morning_briefing" not in kept
+
+
+def test_a_read_just_before_midnight_on_new_years_eve_still_taints_the_answer():
+    """Review F5: the stamp has no year; a record opened on 12-31 sorts 01-01 after it."""
+    eve = datetime(2026, 12, 31, 23, 59, 50, tzinfo=UTC)
+    opened = wc.line(eve, 2, wc.AUDIT, "session_start model=x async_set=none")
+    read = wc.tool_lines(
+        call_id="c1",
+        name="web_search",
+        args={"query": "pump"},
+        started=eve + timedelta(seconds=2),
+        ended=eve + timedelta(seconds=3),
+        success=True,
+        outcome="ok",
+        text=PAGE,
+    )
+    answer = wc.engine_assistant_line(eve + timedelta(seconds=15), PAGE)
+    kept = _texts(redact([opened], [wc.engine_user_line(eve, "pump?", typed=True), *read, answer]))
+    assert kept[-1].endswith(f"assistant text={MARK}")
+    assert PAGE not in "\n".join(kept)
 
 
 # ---- through the doors, on a database -------------------------------------------------------
@@ -254,9 +352,50 @@ def test_count_command_counts_old_records_and_prints_no_words(household_user):
     out = StringIO()
     call_command("count_read_through_web", stdout=out)
     printed = out.getvalue()
-    assert "2 scanned, 1 hold third-party text in clear, 2 lines" in printed
+    assert "2 scanned, 1 the current rule would redact, 3 lines" in printed
     assert "pump" not in printed.lower()
     assert (
         gzip.decompress(bytes(DeviceLog.objects.get(batch_id=cid).body_gz)).decode().count(PAGE)
         == 2
     )  # nothing was rewritten
+
+
+@pytest.mark.django_db
+@pytest.mark.usefixtures("google")
+def test_count_command_finds_an_old_morning_briefing_reply(household_user):
+    cid = _mint(browser(household_user))
+    row = DeviceLog.objects.get(batch_id=cid)
+    old = _texts(_old_briefing())
+    row.body_gz = gzip.compress(("\n".join(old) + "\n").encode())
+    row.save(update_fields=["body_gz"])
+    out = StringIO()
+    call_command("count_read_through_web", stdout=out)
+    # The call's arguments, its reply and the answer after it; his line is never counted.
+    assert "1 scanned, 1 the current rule would redact, 3 lines" in out.getvalue()
+
+
+# ---- the cascade door (ADR 0102) --------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_the_cascade_stores_no_web_text_and_a_barge_in_over_it_keeps_no_transcript(
+    member, engine, fake_web
+):
+    """Review F7 and F2: a search through `POST /api/assistant/turn` leaves no page text in the
+    record; a barge-in over that withheld answer (the answer heard back, here) keeps no words."""
+    asked = "What does the web say about the pump?"
+    engine.model = FakeModel([call("web_search", {"query": "pump"}), say(f"It says: {PAGE}")])
+    first = _events(_post(member, text=asked))
+    assert f"It says: {PAGE}" in [s["text"] for s in _of(first, "sentence")]  # said, not kept
+    conversation = _of(first, "turn")[0]["conversation_id"]
+    record = _record(conversation)
+    assert PAGE not in record and "60,000" not in record
+    assert f"text={json.dumps(asked)}" in record
+    assert f"assistant text={MARK}" in record
+
+    engine.model = FakeModel([say("Okay.")])
+    engine.speech.heard = f"It says: {PAGE}"
+    _events(_post(member, audio=PCM, conversation_id=conversation, barge_in="1"))
+    record = _record(conversation)
+    assert "60,000" not in record and "Example Motors" not in record
+    assert wc.WITHHELD_USER in record

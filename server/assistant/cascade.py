@@ -685,6 +685,9 @@ class TurnInput:
     # that was playing: only then is the transcript checked for an echo (round 4 ruling).
     barge_in: bool = False
     last_reply: str = ""
+    # That reply read outside text and was not kept (#475): there is nothing to compare an echo
+    # with, so a barge-in over it keeps no transcript (`record_user`).
+    last_reply_withheld: bool = False
     # A tapped suggestion chip offered to this visitor (`demo.suggestions.chip_for`): its checked
     # lookup is the turn's first round, never the model's pick.
     chip: object | None = None
@@ -1135,11 +1138,12 @@ def _answer(
         if user_recorded:
             return
         user_recorded = True
-        web_conversation.record_lines(
-            request,
-            conversation_id_of(door),
-            [web_conversation.engine_user_line(heard_at, words, typed=not speak)],
-        )
+        if turn_input.barge_in and turn_input.last_reply_withheld:
+            # Possibly the withheld answer heard back: not saved as his words.
+            said = web_conversation.engine_withheld_user_line(heard_at)
+        else:
+            said = web_conversation.engine_user_line(heard_at, words, typed=not speak)
+        web_conversation.record_lines(request, conversation_id_of(door), [said])
 
     # An ordinary visitor's "that sounded robotic" is just words (the marker is the strip's).
     if door.strip and is_robotic_remark(words):
