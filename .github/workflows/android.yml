@@ -134,6 +134,7 @@ jobs:
           key: robolectric-android-all-${{ hashFiles('.github/robolectric-android-all.txt', '.github/scripts/robolectric_prefetch.sh', 'gradle/libs.versions.toml') }}
 
       - name: Pre-fetch and verify Robolectric android-all jars
+        timeout-minutes: 15
         run: bash .github/scripts/robolectric_prefetch.sh .robolectric-android-all
 
       - name: Save Robolectric android-all jars (trunk only)
@@ -278,6 +279,7 @@ jobs:
           key: robolectric-android-all-${{ hashFiles('.github/robolectric-android-all.txt', '.github/scripts/robolectric_prefetch.sh', 'gradle/libs.versions.toml') }}
 
       - name: Pre-fetch and verify Robolectric android-all jars
+        timeout-minutes: 15
         run: bash .github/scripts/robolectric_prefetch.sh .robolectric-android-all
 
       - name: Save Robolectric android-all jars (trunk only)

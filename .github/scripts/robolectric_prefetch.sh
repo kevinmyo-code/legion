@@ -5,7 +5,10 @@
 set -euo pipefail
 dest="${1:?usage: robolectric_prefetch.sh <dest-dir>}"
 table=".github/robolectric-android-all.txt"
-base=https://repo1.maven.org/maven2/org/robolectric/android-all-instrumented
+# Google's mirror of Central first, Central second: Central rate-limits (429) shared runner IPs.
+# No curl --retry: it obeys Retry-After, and Central's can be minutes, which hung a run for 20+
+# minutes. Rounds and timeouts are explicit below instead.
+bases=(https://maven-central.storage-download.googleapis.com/maven2 https://repo1.maven.org/maven2)
 
 want=$(sed -n 's/^robolectric = "\(.*\)"$/\1/p' gradle/libs.versions.toml)
 have=$(sed -n 's/^version //p' "$table")
@@ -22,20 +25,31 @@ verified() { # <jar>
     [ "$(sha512sum "$1" | cut -d' ' -f1)" = "$(tr -d ' \r\n' < "$1.sha512")" ]
 }
 
-for v in $(grep -vE '^(#|version |$)' "$table"); do
-  jar="$dest/android-all-instrumented-$v.jar"
-  ok=0
-  for attempt in 1 2 3; do
-    if verified "$jar"; then ok=1; break; fi
-    [ "$attempt" = 3 ] && break
-    # Corrupt or absent: drop it and fetch again (a bad cached jar must not stick).
-    rm -f "$jar" "$jar.sha512"
-    for ext in jar.sha512 jar; do
-      curl --fail --silent --show-error --location --connect-timeout 20 --max-time 300 \
-        --retry 8 --retry-all-errors --retry-delay 20 \
-        --output "$dest/android-all-instrumented-$v.$ext" "$base/$v/android-all-instrumented-$v.$ext"
+# Fetch <file> of <coordinate> into dest from the first host that answers; 4 rounds over both hosts.
+fetch() { # <coordinate> <file>
+  local round b
+  for round in 1 2 3 4; do
+    for b in "${bases[@]}"; do
+      echo "fetch $2 from ${b%%/maven2} (round $round)"
+      if curl --fail --silent --show-error --location --connect-timeout 15 --max-time 120 \
+        --output "$dest/$2" "$b/org/robolectric/android-all-instrumented/$1/$2"; then
+        return 0
+      fi
     done
+    sleep 15
   done
-  [ "$ok" = 1 ] || { echo "::error::android-all-instrumented-$v.jar failed its sha512 check after a refetch"; exit 1; }
+  echo "::error::could not fetch $2 from any host"
+  return 1
+}
+
+for v in $(grep -vE '^(#|version |$)' "$table"); do
+  jar="android-all-instrumented-$v.jar"
+  if ! verified "$dest/$jar"; then
+    # Absent, or corrupt in the cache: fetch again so a bad jar never sticks.
+    rm -f "$dest/$jar" "$dest/$jar.sha512"
+    fetch "$v" "$jar.sha512"
+    fetch "$v" "$jar"
+    verified "$dest/$jar" || { echo "::error::$jar failed its sha512 check after a fresh fetch"; exit 1; }
+  fi
   echo "ok $v"
 done
