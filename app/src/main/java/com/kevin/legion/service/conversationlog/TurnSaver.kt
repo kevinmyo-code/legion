@@ -31,7 +31,7 @@ class TurnSaver(
     /** The save in words, or null before anything was queued this run. */
     val status: StateFlow<String?> = _status.asStateFlow()
 
-    /** Turns that could not be saved this run: refused by the engine, or not writable on this phone. */
+    /** Turns that could not be saved this run: refused, not writable, or thrown away by a full queue. */
     val lostTurns: Int get() = lost.get()
 
     @Volatile private var lastOutcome: String? = null
@@ -42,7 +42,12 @@ class TurnSaver(
         if (!keep()) return
         writer.execute {
             try {
-                box.enqueue(turn)
+                val cut = box.enqueue(turn)
+                if (cut > 0) {
+                    lost.addAndGet(cut)
+                    log("the turn queue was full: ${TurnOutbox.turnsWord(cut)} thrown away", null)
+                    publish()
+                }
             } catch (e: Exception) {
                 lost.incrementAndGet()
                 log("a chat turn could not be written on this phone", e)

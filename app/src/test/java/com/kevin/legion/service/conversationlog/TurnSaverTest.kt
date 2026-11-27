@@ -35,9 +35,7 @@ class TurnSaverTest {
         seq = seq,
         surface = "voice",
         userText = "line $seq",
-        assistantText = "reply $seq",
         toolCalls = emptyList(),
-        readThrough = false,
         spokenAtMs = 1_700_000_000_000L,
     )
 
@@ -122,5 +120,13 @@ class TurnSaverTest {
         saver.discardQueued()
         assertEquals(0, box.pending())
         assertNull(saver.status.value)
+    }
+
+    @Test fun `a full queue counts the turns it threw away and says so`() {
+        val box = TurnOutbox(tmp.root.resolve("full.jsonl"), Fake(usable = false), max = 2)
+        val saver = saver(box)
+        (0..3).forEach { saver.save(turn(it)) }
+        assertEquals(2, saver.lostTurns)
+        assertTrue(saver.status.value!!, saver.status.value!!.contains("2 chat turns could not be saved this run."))
     }
 }

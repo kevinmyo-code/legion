@@ -35,9 +35,7 @@ class TurnOutboxTest {
         seq = seq,
         surface = "voice",
         userText = user,
-        assistantText = "reply $seq",
-        toolCalls = listOf(SavedToolCall("start_timer", ok = true, result = "ok")),
-        readThrough = false,
+        toolCalls = listOf(SavedToolCall("start_timer", ok = true)),
         spokenAtMs = 1_700_000_000_000L,
     )
 
@@ -65,9 +63,7 @@ class TurnOutboxTest {
         assertEquals(2, body.getInt("seq"))
         assertEquals("voice", body.getString("surface"))
         assertEquals("line 2", body.getString("user_text"))
-        assertEquals("reply 2", body.getString("assistant_text"))
         assertEquals("start_timer", body.getJSONArray("tool_calls").getJSONObject(0).getString("name"))
-        assertFalse(body.getBoolean("read_through"))
         assertTrue(body.has("spoken_at"))
     }
 
@@ -197,21 +193,24 @@ class TurnOutboxTest {
         assertEquals(TurnOutbox.Outcome.Sent(2, 1), outcome)
     }
 
-    @Test fun `a folded call's action goes on the wire and a plain call has none`() = runBlocking {
+    @Test fun `the wire body is his words and tool names only`() = runBlocking {
         val fake = Fake()
         val box = box(fake)
-        box.enqueue(
-            turn(0).copy(
-                toolCalls = listOf(
-                    SavedToolCall("look_up", ok = true, result = null, action = "ask_mail"),
-                    SavedToolCall("start_timer", ok = true, result = "ok"),
-                ),
-            ),
-        )
+        box.enqueue(turn(0))
         box.drain()
-        val calls = fake.sent.single().getJSONArray("tool_calls")
-        assertEquals("ask_mail", calls.getJSONObject(0).getString("action"))
-        assertFalse(calls.getJSONObject(1).has("action"))
+        val body = fake.sent.single()
+        assertEquals(
+            setOf("chat_id", "seq", "surface", "user_text", "tool_calls", "spoken_at"),
+            body.keys().asSequence().toSet(),
+        )
+        val call = body.getJSONArray("tool_calls").getJSONObject(0)
+        assertEquals(setOf("name", "ok"), call.keys().asSequence().toSet())
+    }
+
+    @Test fun `a full queue says how many turns it threw away`() {
+        val box = box(Fake(usable = false), max = 3)
+        val cuts = (0..4).map { box.enqueue(turn(it)) }
+        assertEquals(listOf(0, 0, 0, 1, 1), cuts)
     }
 
     @Test fun `clear throws the queue away`() = runBlocking {

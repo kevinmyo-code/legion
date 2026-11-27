@@ -371,7 +371,7 @@ class MemoryReviewChange(models.Model):
 # has read it. The job and the summary on close (451) distil it; the next chat loads it (452).
 # Private to the member who spoke (`owner_user = member`, `OWNER_PATHS`), kept
 # `member_memory.turns.RETENTION_DAYS`, and written only through `member_memory.turns.save`, which
-# applies CLAUDE.md section 7: read-through content never reaches this table.
+# stores only his words and tool names (CLAUDE.md section 7): a reply or tool result never does.
 # ---------------------------------------------------------------------------------------------
 
 SURFACE_VOICE = "voice"
@@ -391,16 +391,14 @@ class ConversationTurn(models.Model):
     chat_id = models.UUIDField()
     seq = models.IntegerField()
     surface = models.TextField(default=SURFACE_VOICE)
-    # Null when there was nothing to keep: no words, a withheld reply, an identity number.
+    # His own words, first-party (CLAUDE.md section 7). Null when there were none or they looked like
+    # an identity number. The assistant's reply and any tool result are NEVER stored: either can
+    # carry text other people wrote, and not storing it is the only guard that cannot leak.
     user_text = models.TextField(null=True, blank=True)
-    assistant_text = models.TextField(null=True, blank=True)
-    # [{"name": str, "ok": bool, "result": str | null}], the result one clipped line, null for a
-    # read-through tool. Never a payload.
+    # [{"name": str, "ok": bool}]: which tools ran and whether they worked. Never a result.
     tool_calls = models.JSONField(default=list, blank=True)
-    # True when read-through content was dropped from this turn (CLAUDE.md section 7).
-    withheld = models.BooleanField(default=False)
-    # True when the engine cut a too-long reply or dropped tool calls past the cap, so a reader
-    # knows the row is not the whole turn.
+    # True when the engine cut his words or dropped tool calls past the cap, so a reader knows the
+    # row is not the whole turn.
     trimmed = models.BooleanField(default=False)
     # The device's clock, untrusted. `received_at` is the database's and orders retention.
     spoken_at = models.DateTimeField(null=True, blank=True)

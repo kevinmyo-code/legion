@@ -27,19 +27,6 @@ TAGS = ["member-memories"]
 class ToolCallSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=turns.NAME_MAX_CHARS)
     ok = serializers.BooleanField(default=True)
-    action = serializers.CharField(
-        required=False,
-        allow_null=True,
-        allow_blank=True,
-        max_length=turns.NAME_MAX_CHARS,
-        help_text="The tool a folded wrapper (`look_up`, `day`) resolved to; checked as a name.",
-    )
-    result = serializers.CharField(
-        required=False,
-        allow_null=True,
-        allow_blank=True,
-        help_text="One clipped line, never a payload. The engine drops it for read-through tools.",
-    )
 
 
 class TurnWriteSerializer(serializers.Serializer):
@@ -49,27 +36,16 @@ class TurnWriteSerializer(serializers.Serializer):
     user_text = serializers.CharField(
         required=False, allow_null=True, allow_blank=True, max_length=turns.TEXT_ACCEPT_CHARS
     )
-    assistant_text = serializers.CharField(
-        required=False, allow_null=True, allow_blank=True, max_length=turns.TEXT_ACCEPT_CHARS
-    )
     tool_calls = ToolCallSerializer(
         many=True, required=False, max_length=turns.MAX_TOOL_CALLS_ACCEPTED
-    )
-    read_through = serializers.BooleanField(
-        required=False,
-        default=False,
-        help_text="The phone marked the turn read-through; the engine withholds it.",
     )
     spoken_at = serializers.DateTimeField(required=False, allow_null=True)
 
 
 class TurnSavedSerializer(serializers.Serializer):
     id = serializers.UUIDField()
-    withheld = serializers.BooleanField(
-        help_text="True when read-through content was dropped from the stored turn."
-    )
     trimmed = serializers.BooleanField(
-        help_text="True when a too-long reply was cut or tool calls past the cap were dropped."
+        help_text="True when his words were cut or tool calls past the cap were dropped."
     )
 
 
@@ -79,9 +55,7 @@ class TurnSerializer(serializers.Serializer):
     seq = serializers.IntegerField()
     surface = serializers.ChoiceField(choices=SURFACES)
     user_text = serializers.CharField(allow_null=True)
-    assistant_text = serializers.CharField(allow_null=True)
     tool_calls = ToolCallSerializer(many=True)
-    withheld = serializers.BooleanField()
     trimmed = serializers.BooleanField()
     spoken_at = serializers.DateTimeField(allow_null=True)
     received_at = serializers.DateTimeField()
@@ -109,9 +83,7 @@ def _as_dict(row: ConversationTurn) -> dict:
         "seq": row.seq,
         "surface": row.surface,
         "user_text": row.user_text,
-        "assistant_text": row.assistant_text,
         "tool_calls": row.tool_calls,
-        "withheld": row.withheld,
         "trimmed": row.trimmed,
         "spoken_at": row.spoken_at,
         "received_at": row.received_at,
@@ -136,8 +108,8 @@ class TurnListCreateView(APIView):
         responses={200: TurnListSerializer, 400: DetailSerializer, 403: DetailSerializer},
         description=(
             "The caller's own recent conversation turns, newest first (oldest first within one "
-            "`chat_id`). Another member's turns are never returned. Withheld turns carry only the "
-            "person's words."
+            "`chat_id`). Another member's turns are never returned. A turn is his words and the "
+            "names of the tools called, nothing else."
         ),
     )
     def get(self, request):
@@ -154,7 +126,10 @@ class TurnListCreateView(APIView):
             rows = rows.filter(chat_id=chat_id)
         since = request.query_params.get("since")
         if since:
-            moment = parse_datetime(since)
+            try:
+                moment = parse_datetime(since)
+            except ValueError:
+                moment = None
             if moment is None:
                 return _nothing_read("since is not an ISO time")
             rows = rows.filter(received_at__gt=moment)
@@ -179,10 +154,10 @@ class TurnListCreateView(APIView):
         },
         description=(
             "Saves one finished turn for the caller. Idempotent on `(chat_id, seq)`: a repeat is "
-            "a 200 with the stored row, unchanged; the same pair from another member is a 409. "
-            "Read-through content (mail, the web) is withheld by the engine from what it is told "
-            "(the flag, a redaction mark, a tool name or the `action` a folded call resolved to). "
-            "Text past 4000 characters and tool calls past 20 are trimmed and the row marked."
+            "a 200 with the stored row; the same pair with other content, or from another member, "
+            "is a 409 and nothing is overwritten. Only his words and the tool names are stored: "
+            "never the assistant's reply or a tool result. Words past 4000 characters and tool "
+            "calls past 20 are trimmed and the row marked."
         ),
     )
     def post(self, request):
@@ -204,11 +179,11 @@ class TurnListCreateView(APIView):
             return Response(
                 {
                     "detail": "Nothing was saved. That chat id and turn number "
-                    "already belong to someone else."
+                    "already hold a different turn."
                 },
                 status=status.HTTP_409_CONFLICT,
             )
         return Response(
-            {"id": row.id, "withheld": row.withheld, "trimmed": row.trimmed},
+            {"id": row.id, "trimmed": row.trimmed},
             status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
         )

@@ -1,10 +1,9 @@
 """Each finished turn is saved as it happens (memory chain ticket 450, CLAUDE.md sections 4 and 7).
 
-One row is one TURN: the person's words, the assistant's spoken reply and the tools it ran. The
-phone sends it the moment the turn completes, so a chat that closed a minute ago is readable
-before the hourly consolidation job has looked at it. Read-through content (mail, the web) is
-withheld by the engine whatever the phone says, the row is private to the member who spoke, and a
-repeated send of the same turn is a no-op. Made-up examples only.
+One row is one TURN: the person's own words and the NAMES of the tools it ran, nothing else. The
+assistant's reply and any tool result are never stored (either can carry text other people wrote),
+so there is no read-through machinery to get wrong. The row is private to the member who spoke and
+a repeated send of the same turn is a no-op. Made-up examples only.
 """
 
 from __future__ import annotations
@@ -21,7 +20,6 @@ from member_memory.models import ConversationTurn
 from tests.conftest import _client_for, _member
 
 URL = "/api/member-memories/turns"
-MARK = "[redacted: third-party content]"
 
 
 def _turn(chat, seq, **fields):
@@ -52,38 +50,36 @@ def chat():
 def test_a_turn_is_readable_straight_after_it_is_sent(auth_client, chat):
     sent = _send(
         auth_client,
-        _turn(
-            chat,
-            0,
-            tool_calls=[{"name": "list_checklists", "ok": True, "result": "2 lists: Milk, Eggs"}],
-        ),
+        _turn(chat, 0, tool_calls=[{"name": "list_lists", "ok": True, "result": "Milk, Eggs"}]),
     )
     assert sent.status_code == 201, sent.data
-    assert sent.data["withheld"] is False
-
     got = auth_client.get(URL, {"chat_id": str(chat)})
     assert got.status_code == 200
     (row,) = got.data["results"]
     assert row["user_text"] == "what is on my list"
-    assert row["assistant_text"] == "Milk and eggs."
-    assert row["tool_calls"] == [
-        {"name": "list_checklists", "ok": True, "result": "2 lists: Milk, Eggs"}
-    ]
+    assert row["tool_calls"] == [{"name": "list_lists", "ok": True}]
 
 
-def test_a_tool_turn_keeps_the_spoken_words(auth_client, chat):
-    # The consolidation job drops the assistant line of any turn that ran a tool; this does not.
-    _send(auth_client, _turn(chat, 0, tool_calls=[{"name": "start_timer", "ok": True}]))
+def test_a_text_only_turn_is_readable_too(auth_client, chat):
+    _send(auth_client, _turn(chat, 0))
     (row,) = auth_client.get(URL).data["results"]
-    assert row["assistant_text"] == "Milk and eggs."
+    assert row["user_text"] == "what is on my list"
+    assert row["tool_calls"] == []
 
 
 def test_sending_the_same_turn_twice_stores_it_once(auth_client, chat):
     first = _send(auth_client, _turn(chat, 3))
-    again = _send(auth_client, _turn(chat, 3, assistant_text="A different reply."))
+    again = _send(auth_client, _turn(chat, 3))
     assert first.status_code == 201 and again.status_code == 200
     assert ConversationTurn.objects.filter(chat_id=chat).count() == 1
-    assert ConversationTurn.objects.get(chat_id=chat).assistant_text == "Milk and eggs."
+
+
+def test_the_same_chat_and_seq_with_other_words_is_a_409_and_changes_nothing(auth_client, chat):
+    _send(auth_client, _turn(chat, 3))
+    again = _send(auth_client, _turn(chat, 3, user_text="something else entirely"))
+    assert again.status_code == 409
+    assert "Nothing was saved" in again.data["detail"]
+    assert ConversationTurn.objects.get(chat_id=chat).user_text == "what is on my list"
 
 
 def test_turns_read_back_in_the_order_they_were_spoken(auth_client, chat):
@@ -93,61 +89,51 @@ def test_turns_read_back_in_the_order_they_were_spoken(auth_client, chat):
     assert [r["user_text"] for r in rows] == ["line 0", "line 1", "line 2"]
 
 
-# --- read-through (CLAUDE.md section 7) ------------------------------------------------------
+def test_a_malformed_since_is_a_worded_400(auth_client):
+    response = auth_client.get(URL, {"since": "2026-13-45T00:00:00"})
+    assert response.status_code == 400
+    assert "Nothing was read" in response.data["detail"]
 
 
-@pytest.mark.parametrize("tool", sorted(turns.READ_THROUGH_TOOLS))
-def test_a_read_through_tool_turn_keeps_his_words_and_nothing_else(auth_client, chat, tool):
-    sent = _send(
+# --- third-party text is never stored (CLAUDE.md section 7) ----------------------------------
+
+
+MAIL_TOOLS = ["search_mail", "read_mail", "ask_mail", "get_sitrep", "web_search"]
+
+
+@pytest.mark.parametrize("tool", MAIL_TOOLS)
+def test_a_mail_turn_stores_only_his_words_and_tool_names(auth_client, chat, tool):
+    secret = "Subject: Trip on Friday at nine"
+    _send(
         auth_client,
         _turn(
             chat,
             0,
             user_text="anything from the school",
-            assistant_text="The email from the school says the trip is on Friday.",
-            tool_calls=[{"name": tool, "ok": True, "result": "Subject: Trip on Friday"}],
+            assistant_text=f"The school says: {secret}",
+            tool_calls=[{"name": tool, "ok": True, "result": secret, "action": "ask_mail"}],
         ),
     )
-    assert sent.data["withheld"] is True
     row = ConversationTurn.objects.get(chat_id=chat)
     assert row.user_text == "anything from the school"
-    assert row.assistant_text is None
-    assert row.tool_calls == [{"name": tool, "ok": True, "result": None}]
+    assert row.tool_calls == [{"name": tool, "ok": True}]
+    stored = str(
+        list(ConversationTurn.objects.values()) + [f.name for f in ConversationTurn._meta.fields]
+    )
+    assert "Friday" not in stored
+    assert "assistant_text" not in stored and "withheld" not in stored
 
 
-def test_a_redaction_mark_from_the_phone_withholds_the_turn(auth_client, chat):
-    # The phone's own LiveAudit already redacted it; the engine does not trust that alone, but it
-    # does honour the mark.
-    _send(auth_client, _turn(chat, 0, assistant_text=MARK))
-    row = ConversationTurn.objects.get(chat_id=chat)
-    assert row.withheld is True and row.assistant_text is None
-
-
-def test_the_phone_can_flag_a_turn_read_through_without_naming_a_tool(auth_client, chat):
-    _send(auth_client, _turn(chat, 0, read_through=True))
-    row = ConversationTurn.objects.get(chat_id=chat)
-    assert row.withheld is True and row.assistant_text is None
-
-
-def test_a_read_through_turn_taints_the_rest_of_its_chat(auth_client, chat):
-    # An async mail result can be spoken turns after the call (the consolidation job's rule too).
-    _send(auth_client, _turn(chat, 0, tool_calls=[{"name": "search_mail", "ok": True}]))
-    _send(auth_client, _turn(chat, 1, assistant_text="They also wrote about Saturday."))
-    later = ConversationTurn.objects.get(chat_id=chat, seq=1)
-    assert later.withheld is True and later.assistant_text is None
-    assert later.user_text == "what is on my list"
-
-
-def test_another_chat_is_not_tainted(auth_client, chat):
+def test_a_later_turn_restating_mail_stores_only_his_words(auth_client, chat):
     _send(auth_client, _turn(chat, 0, tool_calls=[{"name": "read_mail", "ok": True}]))
-    other = uuid.uuid4()
-    _send(auth_client, _turn(other, 0))
-    assert ConversationTurn.objects.get(chat_id=other).withheld is False
+    later = _turn(chat, 1, user_text="when is that again", assistant_text="Friday at nine")
+    _send(auth_client, later)
+    assert "Friday" not in str(list(ConversationTurn.objects.values()))
 
 
-def test_a_web_search_turn_is_withheld_like_the_consolidation_job_does(auth_client, chat):
-    _send(auth_client, _turn(chat, 0, tool_calls=[{"name": "web_search", "ok": True}]))
-    assert ConversationTurn.objects.get(chat_id=chat).withheld is True
+def test_the_row_has_no_column_for_a_reply_or_a_result():
+    names = {f.name for f in ConversationTurn._meta.fields}
+    assert not names & {"assistant_text", "withheld", "tool_result", "result"}
 
 
 # --- what is never kept ----------------------------------------------------------------------
@@ -156,20 +142,11 @@ def test_a_web_search_turn_is_withheld_like_the_consolidation_job_does(auth_clie
 def test_an_identity_number_is_never_stored(auth_client, chat):
     _send(
         auth_client,
-        _turn(chat, 0, user_text="my account number is 123456789012", assistant_text="Noted."),
+        _turn(chat, 0, user_text="my account number is 123456789012"),
     )
     row = ConversationTurn.objects.get(chat_id=chat)
     assert row.user_text is None
     assert "123456789012" not in str(row.__dict__)
-
-
-def test_a_tool_result_is_clipped_to_a_line(auth_client, chat):
-    _send(
-        auth_client,
-        _turn(chat, 0, tool_calls=[{"name": "list_events", "ok": True, "result": "x" * 5000}]),
-    )
-    (call,) = ConversationTurn.objects.get(chat_id=chat).tool_calls
-    assert len(call["result"]) <= turns.RESULT_MAX_CHARS
 
 
 def test_an_absurd_turn_is_still_refused_in_words(auth_client, chat):
@@ -246,14 +223,12 @@ def test_the_turn_view_is_denied_to_recruiters_by_name():
 # --- a 4xx must not lose a turn ----------------------------------------------------------------
 
 
-def test_an_overlong_reply_is_trimmed_and_marked_not_refused(auth_client, chat):
-    long_reply = "word " * 5_000
-    response = _send(auth_client, _turn(chat, 0, assistant_text=long_reply))
+def test_overlong_words_are_trimmed_and_marked_not_refused(auth_client, chat):
+    response = _send(auth_client, _turn(chat, 0, user_text="word " * 5_000))
     assert response.status_code == 201
     row = ConversationTurn.objects.get(chat_id=chat)
-    assert len(row.assistant_text) <= turns.TEXT_MAX_CHARS
+    assert len(row.user_text) <= turns.TEXT_MAX_CHARS
     assert row.trimmed is True
-    assert row.user_text == "what is on my list"
 
 
 def test_too_many_tool_calls_keep_the_first_ones_and_mark_it(auth_client, chat):
@@ -264,38 +239,9 @@ def test_too_many_tool_calls_keep_the_first_ones_and_mark_it(auth_client, chat):
     assert row.trimmed is True
 
 
-def test_a_read_through_call_past_the_cap_still_withholds_the_turn(auth_client, chat):
-    calls = [{"name": f"tool_{i}", "ok": True} for i in range(turns.MAX_TOOL_CALLS)]
-    calls.append({"name": "search_mail", "ok": True})
-    _send(auth_client, _turn(chat, 0, tool_calls=calls))
-    assert ConversationTurn.objects.get(chat_id=chat).withheld is True
-    _send(auth_client, _turn(chat, 1, assistant_text="They also wrote about Saturday."))
-    assert ConversationTurn.objects.get(chat_id=chat, seq=1).assistant_text is None
-
-
 def test_a_normal_turn_is_not_marked_trimmed(auth_client, chat):
     _send(auth_client, _turn(chat, 0))
     assert ConversationTurn.objects.get(chat_id=chat).trimmed is False
-
-
-# --- the engine's own read-through check -------------------------------------------------------
-
-
-@pytest.mark.parametrize("action", ["ask_mail", "get_sitrep", "search_mail"])
-def test_a_folded_mail_call_is_withheld_by_the_engine_itself(auth_client, chat, action):
-    # The phone sends the wire name (`look_up`, `day`) and the tool it resolved to; no phone flag.
-    calls = [{"name": "look_up", "ok": True, "action": action, "result": "From the school"}]
-    _send(auth_client, _turn(chat, 0, tool_calls=calls, read_through=False))
-    row = ConversationTurn.objects.get(chat_id=chat)
-    assert row.withheld is True
-    assert row.assistant_text is None
-    assert row.tool_calls[0]["result"] is None
-
-
-def test_a_folded_call_that_reads_nothing_third_party_is_kept(auth_client, chat):
-    calls = [{"name": "look_up", "ok": True, "action": "list_events", "result": "Two events"}]
-    _send(auth_client, _turn(chat, 0, tool_calls=calls))
-    assert ConversationTurn.objects.get(chat_id=chat).withheld is False
 
 
 # --- retention for every member -----------------------------------------------------------------

@@ -27,8 +27,8 @@ internal class TypedChatAudit(
 
     /**
      * "New conversation": the next typed message is turn 0 of a new chat (memory chain ticket 450).
-     * That is the one moment typed history is cleared, so a chat id lasts exactly as long as the
-     * model's typed context does, and the engine's per-chat read-through taint covers all of it.
+     * That is the one moment typed history is cleared, so a chat id groups exactly one typed conversation
+     * for the summary the engine makes when it ends.
      */
     fun newConversation() = audit.startChat()
 

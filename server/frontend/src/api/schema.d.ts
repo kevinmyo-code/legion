@@ -5163,10 +5163,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description The caller's own recent conversation turns, newest first (oldest first within one `chat_id`). Another member's turns are never returned. Withheld turns carry only the person's words. */
+        /** @description The caller's own recent conversation turns, newest first (oldest first within one `chat_id`). Another member's turns are never returned. A turn is his words and the names of the tools called, nothing else. */
         get: operations["api_member_memories_turns_list"];
         put?: never;
-        /** @description Saves one finished turn for the caller. Idempotent on `(chat_id, seq)`: a repeat is a 200 with the stored row, unchanged; the same pair from another member is a 409. Read-through content (mail, the web) is withheld by the engine from what it is told (the flag, a redaction mark, a tool name or the `action` a folded call resolved to). Text past 4000 characters and tool calls past 20 are trimmed and the row marked. */
+        /** @description Saves one finished turn for the caller. Idempotent on `(chat_id, seq)`: a repeat is a 200 with the stored row; the same pair with other content, or from another member, is a 409 and nothing is overwritten. Only his words and the tool names are stored: never the assistant's reply or a tool result. Words past 4000 characters and tool calls past 20 are trimmed and the row marked. */
         post: operations["api_member_memories_turns_create"];
         delete?: never;
         options?: never;
@@ -12241,10 +12241,6 @@ export interface components {
             name: string;
             /** @default true */
             ok: boolean;
-            /** @description The tool a folded wrapper (`look_up`, `day`) resolved to; checked as a name. */
-            action?: string | null;
-            /** @description One clipped line, never a payload. The engine drops it for read-through tools. */
-            result?: string | null;
         };
         ToolResult: {
             call_id: string;
@@ -12371,9 +12367,7 @@ export interface components {
             seq: number;
             surface: components["schemas"]["SurfaceEnum"];
             user_text: string | null;
-            assistant_text: string | null;
             tool_calls: components["schemas"]["ToolCall"][];
-            withheld: boolean;
             trimmed: boolean;
             /** Format: date-time */
             spoken_at: string | null;
@@ -12479,9 +12473,7 @@ export interface components {
         TurnSaved: {
             /** Format: uuid */
             id: string;
-            /** @description True when read-through content was dropped from the stored turn. */
-            withheld: boolean;
-            /** @description True when a too-long reply was cut or tool calls past the cap were dropped. */
+            /** @description True when his words were cut or tool calls past the cap were dropped. */
             trimmed: boolean;
         };
         TurnWrite: {
@@ -12495,13 +12487,7 @@ export interface components {
             /** @default voice */
             surface: components["schemas"]["SurfaceEnum"];
             user_text?: string | null;
-            assistant_text?: string | null;
             tool_calls?: components["schemas"]["ToolCall"][];
-            /**
-             * @description The phone marked the turn read-through; the engine withholds it.
-             * @default false
-             */
-            read_through: boolean;
             /** Format: date-time */
             spoken_at?: string | null;
         };

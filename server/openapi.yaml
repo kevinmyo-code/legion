@@ -12179,8 +12179,8 @@ paths:
     get:
       operationId: api_member_memories_turns_list
       description: The caller's own recent conversation turns, newest first (oldest
-        first within one `chat_id`). Another member's turns are never returned. Withheld
-        turns carry only the person's words.
+        first within one `chat_id`). Another member's turns are never returned. A
+        turn is his words and the names of the tools called, nothing else.
       parameters:
       - in: query
         name: chat_id
@@ -12224,11 +12224,11 @@ paths:
     post:
       operationId: api_member_memories_turns_create
       description: 'Saves one finished turn for the caller. Idempotent on `(chat_id,
-        seq)`: a repeat is a 200 with the stored row, unchanged; the same pair from
-        another member is a 409. Read-through content (mail, the web) is withheld
-        by the engine from what it is told (the flag, a redaction mark, a tool name
-        or the `action` a folded call resolved to). Text past 4000 characters and
-        tool calls past 20 are trimmed and the row marked.'
+        seq)`: a repeat is a 200 with the stored row; the same pair with other content,
+        or from another member, is a 409 and nothing is overwritten. Only his words
+        and the tool names are stored: never the assistant''s reply or a tool result.
+        Words past 4000 characters and tool calls past 20 are trimmed and the row
+        marked.'
       tags:
       - member-memories
       requestBody:
@@ -27726,17 +27726,6 @@ components:
         ok:
           type: boolean
           default: true
-        action:
-          type: string
-          nullable: true
-          description: The tool a folded wrapper (`look_up`, `day`) resolved to; checked
-            as a name.
-          maxLength: 80
-        result:
-          type: string
-          nullable: true
-          description: One clipped line, never a payload. The engine drops it for
-            read-through tools.
       required:
       - name
     ToolResult:
@@ -27994,15 +27983,10 @@ components:
         user_text:
           type: string
           nullable: true
-        assistant_text:
-          type: string
-          nullable: true
         tool_calls:
           type: array
           items:
             $ref: '#/components/schemas/ToolCall'
-        withheld:
-          type: boolean
         trimmed:
           type: boolean
         spoken_at:
@@ -28013,7 +27997,6 @@ components:
           type: string
           format: date-time
       required:
-      - assistant_text
       - chat_id
       - id
       - received_at
@@ -28023,7 +28006,6 @@ components:
       - tool_calls
       - trimmed
       - user_text
-      - withheld
     TurnList:
       type: object
       properties:
@@ -28174,18 +28156,13 @@ components:
         id:
           type: string
           format: uuid
-        withheld:
-          type: boolean
-          description: True when read-through content was dropped from the stored
-            turn.
         trimmed:
           type: boolean
-          description: True when a too-long reply was cut or tool calls past the cap
-            were dropped.
+          description: True when his words were cut or tool calls past the cap were
+            dropped.
       required:
       - id
       - trimmed
-      - withheld
     TurnWrite:
       type: object
       properties:
@@ -28205,19 +28182,10 @@ components:
           type: string
           nullable: true
           maxLength: 100000
-        assistant_text:
-          type: string
-          nullable: true
-          maxLength: 100000
         tool_calls:
           type: array
           items:
             $ref: '#/components/schemas/ToolCall'
-        read_through:
-          type: boolean
-          default: false
-          description: The phone marked the turn read-through; the engine withholds
-            it.
         spoken_at:
           type: string
           format: date-time

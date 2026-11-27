@@ -1,10 +1,10 @@
 package com.kevin.legion.service
 
+import com.kevin.legion.service.conversationlog.SavedToolCall
 import com.kevin.legion.service.conversationlog.SavedTurn
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -41,10 +41,8 @@ class LiveAuditTurnTest {
         say("what is on my list", "Milk and eggs.")
         val t = turns.single()
         assertEquals("what is on my list", t.userText)
-        assertEquals("Milk and eggs.", t.assistantText)
         assertEquals(0, t.seq)
         assertEquals("voice", t.surface)
-        assertFalse(t.readThrough)
         assertTrue(t.toolCalls.isEmpty())
     }
 
@@ -77,7 +75,7 @@ class LiveAuditTurnTest {
     }
 
     @Test
-    fun `assistant chunks join and a non final transcript chunk is not his words`() {
+    fun `a non final transcript chunk is not his words`() {
         audit.sessionStart("model", emptySet())
         audit.user("wha", final = false)
         audit.user("what time is it", final = true)
@@ -85,23 +83,20 @@ class LiveAuditTurnTest {
         audit.assistant("noon.", readThrough = false)
         audit.turnComplete()
         assertEquals("what time is it", turns.single().userText)
-        assertEquals("It is noon.", turns.single().assistantText)
     }
 
     @Test
-    fun `a tool turn keeps the spoken reply and records the call with a clipped result`() {
+    fun `a tool turn records the call's name and that it worked, never the result`() {
         audit.sessionStart("model", emptySet())
         audit.user("start a ten minute timer", final = true)
         audit.toolCall("t1", "start_timer", async = false, argsJson = """{"minutes":10}""")
-        audit.toolResult(toolResult("t1", "start_timer", """{"success":true,"text":"${"x".repeat(900)}"}"""))
+        audit.toolResult(toolResult("t1", "start_timer", """{"success":true,"text":"a long invented result"}"""))
         audit.assistant("Ten minutes, started.", readThrough = false)
         audit.turnComplete()
         val t = turns.single()
-        assertEquals("Ten minutes, started.", t.assistantText)
-        val call = t.toolCalls.single()
-        assertEquals("start_timer", call.name)
-        assertTrue(call.ok)
-        assertTrue("the result is one clipped line, not the payload", call.result!!.length <= 200)
+        assertEquals(listOf(SavedToolCall("start_timer", ok = true)), t.toolCalls)
+        assertFalse(t.toString().contains("invented"))
+        assertFalse(t.toString().contains("Ten minutes"))
     }
 
     @Test
@@ -114,7 +109,7 @@ class LiveAuditTurnTest {
     }
 
     @Test
-    fun `a read through tool turn keeps his words and drops the reply and the result`() {
+    fun `a mail turn hands on his words and the tool name and nothing the mail said`() {
         audit.sessionStart("model", emptySet())
         audit.user("anything from the school", final = true)
         audit.toolCall("m1", "read_mail", async = false, argsJson = "{}")
@@ -123,42 +118,16 @@ class LiveAuditTurnTest {
         audit.turnComplete()
         val t = turns.single()
         assertEquals("anything from the school", t.userText)
-        assertNull(t.assistantText)
-        assertTrue(t.readThrough)
-        assertNull(t.toolCalls.single().result)
+        assertEquals(listOf(SavedToolCall("read_mail", ok = true)), t.toolCalls)
         assertFalse(t.toString().contains("Friday"))
     }
 
     @Test
-    fun `a turn the session marked read through drops the reply`() {
+    fun `a spoken reply alone leaves no turn`() {
         audit.sessionStart("model", emptySet())
-        audit.user("look at this", final = true)
         audit.assistant("It is a menu with soup.", readThrough = true)
         audit.turnComplete()
-        assertNull(turns.single().assistantText)
-        assertTrue(turns.single().readThrough)
-    }
-
-    @Test
-    fun `an explicit read through mark is carried`() {
-        audit.sessionStart("model", emptySet())
-        audit.user("what is new", final = true)
-        audit.readThrough("grounding")
-        audit.assistant("Some headlines.", readThrough = false)
-        audit.turnComplete()
-        assertTrue(turns.single().readThrough)
-        assertNull(turns.single().assistantText)
-    }
-
-    @Test
-    fun `the next turn is clean again`() {
-        audit.sessionStart("model", emptySet())
-        audit.user("any mail", final = true)
-        audit.toolCall("m1", "read_mail", async = false, argsJson = "{}")
-        audit.turnComplete()
-        say("hello", "Hi.")
-        assertFalse(turns[1].readThrough)
-        assertEquals("Hi.", turns[1].assistantText)
+        assertTrue(turns.isEmpty())
     }
 
     @Test
@@ -255,7 +224,7 @@ class LiveAuditTurnTest {
     }
 
     @Test
-    fun `a folded call carries the tool it resolved to and a plain call carries none`() {
+    fun `a folded mail call stores only its wire name and that it worked`() {
         val folded = LiveAudit(
             sink = {},
             isReadThroughTool = { it == "ask_mail" },
@@ -269,10 +238,11 @@ class LiveAuditTurnTest {
         folded.toolCall("p1", "start_timer", async = false, argsJson = "{}")
         folded.toolResult(toolResult("p1", "start_timer", """{"success":true}"""))
         folded.turnComplete()
-        val (lookUp, timer) = turns.single().toolCalls
-        assertEquals("ask_mail", lookUp.action)
-        assertNull(lookUp.result)
-        assertNull(timer.action)
+        assertEquals(
+            listOf(SavedToolCall("look_up", ok = true), SavedToolCall("start_timer", ok = true)),
+            turns.single().toolCalls,
+        )
+        assertFalse(turns.single().toString().contains("Friday"))
     }
 
     @Test

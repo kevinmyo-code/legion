@@ -8,27 +8,22 @@ import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import org.json.JSONObject
 
-/**
- * One tool a turn ran. [result] is one clipped line, null when the tool read third-party content.
- * [action] is the tool a folded wrapper (`look_up`, `day`) resolved to, so the engine can check a
- * mail or sitrep call by its own list and not only by the phone's flag.
- */
-data class SavedToolCall(val name: String, val ok: Boolean, val result: String?, val action: String? = null)
+/** One tool a turn ran: its name and whether it worked. Never its result (CLAUDE.md sec 7). */
+data class SavedToolCall(val name: String, val ok: Boolean)
 
 /**
  * One finished conversation turn, as the engine's `conversation_turns` row holds it (memory chain
  * ticket 450): who spoke is the signed-in member, [chatId] is the Live session or typed chat, [seq]
- * is the turn's place in it. [assistantText] is null and [readThrough] true when the turn read mail
- * or the web (CLAUDE.md sec 7); the engine withholds such a turn again whatever this says.
+ * is the turn's place in it. A turn is his own words and the tool NAMES, nothing else: the assistant's
+ * reply and tool results can carry text other people wrote, so they are never collected, queued on
+ * disk or sent.
  */
 data class SavedTurn(
     val chatId: String,
     val seq: Int,
     val surface: String,
     val userText: String?,
-    val assistantText: String?,
     val toolCalls: List<SavedToolCall>,
-    val readThrough: Boolean,
     val spokenAtMs: Long,
 ) {
     fun toJson(): String = JSONObject()
@@ -36,17 +31,7 @@ data class SavedTurn(
         .put("seq", seq)
         .put("surface", surface)
         .put("user_text", userText ?: JSONObject.NULL)
-        .put("assistant_text", assistantText ?: JSONObject.NULL)
-        .put(
-            "tool_calls",
-            JSONArray(
-                toolCalls.map {
-                    JSONObject().put("name", it.name).put("ok", it.ok).put("result", it.result ?: JSONObject.NULL)
-                        .apply { it.action?.let { action -> put("action", action) } }
-                },
-            ),
-        )
-        .put("read_through", readThrough)
+        .put("tool_calls", JSONArray(toolCalls.map { JSONObject().put("name", it.name).put("ok", it.ok) }))
         .put("spoken_at", Instant.ofEpochMilli(spokenAtMs).toString())
         .toString()
 }
@@ -122,12 +107,15 @@ class TurnOutbox(
         synchronized(lock) { if (file.exists()) write(emptyList()) }
     }
 
-    /** Appends [turn]; trims the oldest past [max]. Safe from any thread. */
-    fun enqueue(turn: SavedTurn) {
-        synchronized(lock) {
-            val lines = read() + turn.toJson()
-            write(if (lines.size > max) lines.takeLast(max) else lines)
-        }
+    /**
+     * Appends [turn]; trims the oldest past [max]. Returns how many turns the trim threw away (0 when
+     * none), so the caller can say so. Safe from any thread.
+     */
+    fun enqueue(turn: SavedTurn): Int = synchronized(lock) {
+        val lines = read() + turn.toJson()
+        val cut = (lines.size - max).coerceAtLeast(0)
+        write(lines.drop(cut))
+        cut
     }
 
     fun pending(): Int = synchronized(lock) { read().size }

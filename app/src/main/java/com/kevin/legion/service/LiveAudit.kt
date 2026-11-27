@@ -48,14 +48,13 @@ internal class LiveAudit(
 
     // The turn in progress, handed to [onTurn] at turn_complete or session end (memory chain
     // ticket 450). Built from the same redacted inputs as the lines above, never from the logged
-    // (truncated) text, so a whole reply is kept; read-through content is dropped here as it is there.
+    // (truncated) text. Only his words and the tool NAMES are kept: the assistant's reply and any tool
+    // result are never collected, because either can carry text other people wrote (CLAUDE.md sec 7).
     // The chat id and the turn counter live in [thread], which a resumed socket shares.
     private var thread: ChatThread? = null
     private var pendingChat: ChatThread? = null
     private val turnUser = ArrayList<String>()
-    private val turnAssistant = StringBuilder()
     private val turnTools = ArrayList<SavedToolCall>()
-    private var turnReadThrough = false
     private var turnTyped = false
 
     // Ids of calls whose result is redacted because the call stands for a read-through tool under
@@ -63,9 +62,6 @@ internal class LiveAudit(
     // carries only the called name (2026-11-17, ADR 0090 gap 1, CLAUDE.md §7).
     private val readThroughIds = HashSet<String>()
 
-    // The tool a folded call resolved to, by call id, so the saved turn can carry it (the engine
-    // checks it against its own read-through list).
-    private val resolvedActions = HashMap<String, String>()
     private var readThroughToolThisTurn = false
     private var redactionLoggedThisTurn = false
     private val readThroughLoggedThisTurn = HashSet<String>()
@@ -81,7 +77,6 @@ internal class LiveAudit(
     fun sessionStart(model: String, asyncSet: Set<String>, pack: String? = null) {
         toolNames.clear()
         readThroughIds.clear()
-        resolvedActions.clear()
         resetTurn()
         startChat(pendingChat)
         pendingChat = null
@@ -118,11 +113,9 @@ internal class LiveAudit(
     @Synchronized
     fun assistant(chunk: String, readThrough: Boolean) {
         if (readThrough || readThroughToolThisTurn) {
-            turnReadThrough = true
             if (!redactionLoggedThisTurn) emit("assistant text=${quote(REDACTED)}")
             redactionLoggedThisTurn = true
         } else {
-            if (enabled) turnAssistant.append(scrub(chunk))
             emit("assistant text=${quote(chunk)}")
         }
     }
@@ -131,11 +124,8 @@ internal class LiveAudit(
     fun toolCall(id: String, name: String, async: Boolean, argsJson: String, via: String? = null) {
         toolNames[id] = name
         val args = runCatching { JSONObject(argsJson) }.getOrNull() ?: JSONObject()
-        val resolved = LiveSurface.resolve(name, args).name
-        if (resolved != name) resolvedActions[id] = resolved
-        if (isReadThroughTool(name) || isReadThroughTool(resolved)) {
+        if (isReadThroughTool(name) || isReadThroughTool(LiveSurface.resolve(name, args).name)) {
             readThroughToolThisTurn = true
-            turnReadThrough = true
             readThroughIds.add(id)
         }
         // ADR 0086: an email's body never reaches this log; EmailToolbox.redactArgs keeps its length.
@@ -180,17 +170,9 @@ internal class LiveAudit(
     fun toolResult(result: ToolResult) {
         toolNames.remove(result.id)
         val folded = readThroughIds.remove(result.id)
-        val action = resolvedActions.remove(result.id)
         val withheld = folded || isReadThroughTool(result.name)
-        if (enabled) {
-            turnTools += SavedToolCall(
-                result.name,
-                result.success,
-                if (withheld) null else collapse(scrub(result.responseJson)).take(TURN_RESULT_CHARS),
-                action,
-            )
-            if (withheld) turnReadThrough = true
-        }
+        // The name and whether it worked; never the result (it may be mail or the web).
+        if (enabled) turnTools += SavedToolCall(result.name, result.success)
         val body = if (withheld) quote(REDACTED) else json(result.responseJson)
         emit(
             "tool_result id=${token(result.id)} name=${token(result.name)} success=${result.success} " +
@@ -214,7 +196,6 @@ internal class LiveAudit(
     @Synchronized
     fun readThrough(source: String, tool: String? = null) {
         val line = "read_through source=${token(source)}" + (tool?.let { " tool=${token(it)}" } ?: "")
-        turnReadThrough = true
         if (readThroughLoggedThisTurn.add(line)) emit(line)
     }
 
@@ -229,8 +210,8 @@ internal class LiveAudit(
     /**
      * The next [sessionStart] belongs to [chat] instead of a fresh chat. A socket resumed from the last
      * one's handle calls this with the same [ChatThread], so its turns keep the chat id (and count on)
-     * and the engine's read-through taint, which is per chat, still covers the model context the
-     * resume restores (ticket 450).
+     * (one conversation is one chat, so the summary the engine makes when it ends covers it all;
+     * ticket 450).
      */
     @Synchronized
     fun continueChat(chat: ChatThread) {
@@ -245,36 +226,29 @@ internal class LiveAudit(
     @Synchronized
     fun startChat(chat: ChatThread? = null) {
         turnUser.clear()
-        turnAssistant.setLength(0)
         turnTools.clear()
-        turnReadThrough = false
         turnTyped = false
         thread = chat ?: ChatThread(newChatId())
     }
 
     /** Hands the turn in progress to [onTurn] when it holds anything, then clears it. Caller holds the lock. */
     private fun flushTurn() {
-        val hasContent = turnUser.isNotEmpty() || turnAssistant.isNotEmpty() || turnTools.isNotEmpty()
+        val hasContent = turnUser.isNotEmpty() || turnTools.isNotEmpty()
         if (enabled && hasContent) {
             val chat = thread ?: ChatThread(newChatId()).also { thread = it }
-            val reply = if (turnReadThrough) null else collapse(turnAssistant.toString()).ifEmpty { null }
             onTurn(
                 SavedTurn(
                     chatId = chat.id,
                     seq = chat.nextSeq++,
                     surface = if (turnTyped) "typed" else "voice",
                     userText = turnUser.joinToString(" ").ifEmpty { null },
-                    assistantText = reply,
                     toolCalls = turnTools.toList(),
-                    readThrough = turnReadThrough,
                     spokenAtMs = now(),
                 ),
             )
         }
         turnUser.clear()
-        turnAssistant.setLength(0)
         turnTools.clear()
-        turnReadThrough = false
         turnTyped = false
     }
 
@@ -342,9 +316,6 @@ internal class LiveAudit(
         const val MAX_TEXT = 400
         const val REDACTED = "[redacted: third-party content]"
 
-        /** A saved tool result is one line this long, never a payload (memory chain ticket 450). */
-        private const val TURN_RESULT_CHARS = 200
-
         private val GOOGLE_KEY = Regex("AIza[0-9A-Za-z_\\-]{20,}")
 
         /** A Mapbox public or secret token (`pk.eyJ...` / `sk.eyJ...`); a router error can echo its URL (NAV_AUDIT). */
@@ -403,7 +374,7 @@ internal class LiveAudit(
 /**
  * One conversation's chat id and the number its next saved turn takes. The phone owns one per
  * conversation, not per socket: a socket resumed from a handle shares it, so a resumed chat keeps its
- * id and the engine's per-chat read-through taint keeps covering it (memory chain ticket 450).
+ * id, so the engine can group a conversation's turns (memory chain ticket 450).
  */
 class ChatThread(val id: String = UUID.randomUUID().toString()) {
     @Volatile var nextSeq = 0
