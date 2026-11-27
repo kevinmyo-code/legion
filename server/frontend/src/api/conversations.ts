@@ -17,8 +17,11 @@ export type ConversationBatch = components['schemas']['ConversationBatch']
 
 /** A non-2xx answer, with its status so the screen can tell a refusal from an outage. */
 export class ConversationsError extends Error {
-  constructor(readonly status: number) {
+  readonly status: number
+
+  constructor(status: number) {
     super(`GET /api/device-logs/conversations/ answered ${status}`)
+    this.status = status
   }
 }
 
