@@ -13,10 +13,12 @@
 #     GATE_RULE fail_twice, heard-back only: when the ONLY failure is one of the two heard-back asserts
 #     (the gate's own transcription of the reply audio, gate_money), the WHOLE gate runs once more in a
 #     fresh folder with a fresh 0.09 cap; any other first failure stops with no retry.
-#  2. One real chip turn: tests/realrun_demo_suggestions.py, under the demo's own budget lowered to 0.30 USD
+#  2. One real chip turn: tests/realrun_demo_suggestions.py, under the demo's own budget lowered to 0.40 USD
 #     (REALRUN_DEMO_BUDGET_USD); exactly one test passed, none skipped. The cap bounds what a turn may
-#     RESERVE, not what it spends: a greeting reserves its worst case up front, and on a fresh runner
-#     (no filler audio cached) that is about 0.18 USD, so 0.10 refused the greeting with a 429.
+#     RESERVE, not what it spends: a greeting reserves its worst case up front, about 0.18 USD on a
+#     fresh runner with no filler audio cached, so 0.10 refused it with a 429. The greeting may spend
+#     most of that if it makes every filler clip, and the chips call and chip turn reserve about 0.09
+#     more after it, so 0.40 leaves room. A passing turn still spends about a cent.
 #  3. Extra checks a ship names (at most 3): repo files server/tests/realrun_<name>.py AT THE GATED
 #     COMMIT (never passed in as code), each with its own folder and the extra cap; a pass is pytest
 #     exit 0 AND a line "<WORDS> VERDICT: PASS" (the carry checks print "CARRY VERDICT: PASS").
@@ -82,7 +84,7 @@ else
 fi
 
 # 2. one real chip turn
-( cd "$SERVER" && REALRUN_DEMO_BUDGET_USD=0.30 $PYTEST -q -p no:cacheprovider -rs tests/realrun_demo_suggestions.py -s ) > "$RAW/chip.txt" 2>&1
+( cd "$SERVER" && REALRUN_DEMO_BUDGET_USD=0.40 $PYTEST -q -p no:cacheprovider -rs tests/realrun_demo_suggestions.py -s ) > "$RAW/chip.txt" 2>&1
 rc=$?
 if [ "$rc" = 0 ] && grep -qE '(^| )1 passed' "$RAW/chip.txt" && ! grep -qE '[0-9]+ skipped' "$RAW/chip.txt"; then
   note "chip turn: PASS"
