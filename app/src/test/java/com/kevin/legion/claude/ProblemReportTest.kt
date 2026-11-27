@@ -24,7 +24,7 @@ class ProblemReportTest {
     ) = runBlocking { controller.reportProblem(note, source, reply, NOW) }
 
     @Test
-    fun `a report goes to the full machine with his words verbatim and the header the worker keys on`() {
+    fun `a report goes to the full machine with his words verbatim and a free-text header`() {
         backend.machines(machine("work laptop", scope = "listed"), machine("Alienware"))
         val result = report()
         assertTrue(result is ClaudeSendResult.Sent)
@@ -32,7 +32,7 @@ class ProblemReportTest {
         assertEquals("Alienware", draft.machine)
         assertEquals(ClaudeTaskDraft.ORIGIN_NAMED, draft.origin)
         assertEquals(null, draft.deliver)
-        assertTrue(draft.request.startsWith("Problem report (kind: fix). Reported by voice at $NOW"))
+        assertTrue(draft.request.startsWith("Problem report (a fix request, free text; the engine kind is ask). Reported by voice at $NOW"))
         assertTrue(draft.request.endsWith("Kevin's words: it said Tuesday, it is Wednesday"))
     }
 
