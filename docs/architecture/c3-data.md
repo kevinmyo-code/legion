@@ -67,25 +67,42 @@ Migration discipline: [[0017-room-migrations-additive]].
 
 ### The copy taken before a migration
 
-`data/local/PreMigrationBackup.kt` runs inside `CarDatabase.getDatabase`, before Room is built. When
-the file's stored `user_version` differs from `CarDatabase.SCHEMA_VERSION`, it copies
-`legion_database` and its `-wal`/`-shm`/`-journal` files to
-`noBackupFilesDir/pre-migration-backups/<epochMs>_v<from>_to_v<to>/` and keeps the newest three. A
-file whose version cannot be read is copied too, as `vunknown`. A failed copy never stops the app;
-the Drive sync screen says so in words. The copy never leaves the phone and is excluded from Android
-device backup by living in `noBackupFilesDir`.
+`data/local/PreMigrationBackup.kt` wraps Room's open helper (`openHelperFactory` in
+`CarDatabase.getDatabase`). At Room's first open, before any migration runs, it reads the file's
+stored `user_version`. On an upgrade (stored between 1 and `CarDatabase.SCHEMA_VERSION`, or
+unreadable) it copies `legion_database` and its `-wal`/`-shm`/`-journal` files to
+`noBackupFilesDir/pre-migration-backups/<epochMs>_v<from>_to_v<to>/`. A downgrade or an equal
+version takes no copy, and a `(from, to)` pair already kept is never copied again. The newest three
+pairs are kept. A failed copy never stops the app; the Drive sync screen says "failed: <reason>" in
+words. The copy never leaves the phone: `noBackupFilesDir` is outside Android device backup.
 
-Restore is manual (no button, v1). The daily `fast` build is not debuggable, so `run-as` needs a
-`debug` build of the version the copy was taken under (the `<from>` in its name), signed with the
-same debug key, installed over the top with data intact:
+**Restore is manual (no button, v1). These steps are UNTESTED on a device.**
+
+1. Find the commit that introduced schema `<from>` (the number in the copy's folder name):
+   `git log -S "const val SCHEMA_VERSION = <from>" --oneline -- app/src/main/java/com/kevin/legion/data/local/CarDatabase.kt`.
+   A build of that commit, or a build with the migration fixed, can open the copy.
+2. `run-as` needs a debuggable build installed, and the daily `fast` build is not debuggable.
+   `debug` has versionCode 1 and `fast` uses `yyDDDHHmm`, so installing `debug` over `fast` is a
+   DOWNGRADE: plain `adb install -r` refuses it (`INSTALL_FAILED_VERSION_DOWNGRADE`). Android allows
+   `-d` only when the installed app or the OS build is debuggable, so on a user-build phone with
+   `fast` installed it is expected to be refused too (reasoned, not tried). Uninstalling deletes the
+   database. So these steps work only when a `debug` build is ALREADY the installed one. With `fast`
+   installed there is no shell restore today; one needs a `debug` build that takes the `fast`
+   versionCode, a build-script change not made here.
+3. With a `debug` build installed (same debug key), pass each remote command to `adb shell` as ONE
+   quoted argument. adb joins its arguments with spaces and does not re-quote them, so the inner
+   single quotes must reach the phone intact:
 
 ```
 adb shell am force-stop com.kevin.legion
-adb shell run-as com.kevin.legion ls no_backup/pre-migration-backups
-adb shell run-as com.kevin.legion sh -c 'cd databases && rm -f legion_database-wal legion_database-shm legion_database-journal && cp ../no_backup/pre-migration-backups/<dir>/legion_database* .'
+adb shell "run-as com.kevin.legion ls no_backup/pre-migration-backups"
+adb shell "run-as com.kevin.legion sh -c 'cd databases && rm -f legion_database-wal legion_database-shm legion_database-journal && cp ../no_backup/pre-migration-backups/<dir>/legion_database* .'"
+adb shell "run-as com.kevin.legion ls -l databases"
 ```
 
-Then start the app. Installing the newer build again runs the migration again, so fix it first.
+`run-as` starts in the app's data folder, where `databases` and `no_backup` sit side by side. The
+last line shows the restored files. Starting a build whose migration is still broken runs that
+migration again, so fix it first.
 
 ## Two storage shapes, both live
 

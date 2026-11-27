@@ -43,6 +43,10 @@ class PreMigrationBackupTest {
         }
     }
 
+    private fun makeDbVersion(version: Int) {
+        SQLiteDatabase.openDatabase(dbFile.path, null, SQLiteDatabase.OPEN_READWRITE).use { it.version = version }
+    }
+
     private fun rowsIn(file: File): Int =
         SQLiteDatabase.openDatabase(file.path, null, SQLiteDatabase.OPEN_READONLY).use { db ->
             db.rawQuery("SELECT COUNT(*) FROM t", null).use { c -> c.moveToFirst(); c.getInt(0) }
@@ -119,10 +123,50 @@ class PreMigrationBackupTest {
     @Test
     fun `only the newest three are kept`() {
         makeDb(version = 79)
-        for (now in listOf(1_000L, 2_000L, 3_000L, 4_000L)) run(target = 80, now = now)
+        for ((now, target) in listOf(1_000L to 80, 2_000L to 81, 3_000L to 82, 4_000L to 83)) run(target, now)
 
         val kept = PreMigrationBackup.list(root).map { it.takenAtMs }
         assertEquals(listOf(4_000L, 3_000L, 2_000L), kept)
+    }
+
+    @Test
+    fun `stored version zero takes no copy`() {
+        makeDb(version = 0)
+        assertEquals(PreMigrationBackup.Outcome.NotNeeded, run(target = 80, now = 1_000))
+    }
+
+    @Test
+    fun `starts of an older build take no copy and never push out the pre-migration copy`() {
+        makeDb(version = 79)
+        run(target = 80, now = 1_000)
+        makeDbVersion(80)
+
+        for (now in listOf(2_000L, 3_000L, 4_000L, 5_000L)) {
+            assertEquals(PreMigrationBackup.Outcome.NotNeeded, run(target = 79, now = now))
+        }
+
+        val kept = PreMigrationBackup.list(root).map { Triple(it.takenAtMs, it.fromVersion, it.toVersion) }
+        assertEquals(listOf(Triple(1_000L, 79, 80)), kept)
+    }
+
+    @Test
+    fun `the same upgrade is copied once, however many starts see it`() {
+        makeDb(version = 79)
+        run(target = 80, now = 1_000)
+
+        for (now in listOf(2_000L, 3_000L, 4_000L)) {
+            assertEquals(PreMigrationBackup.Outcome.NotNeeded, run(target = 80, now = now))
+        }
+        assertEquals(listOf(1_000L), PreMigrationBackup.list(root).map { it.takenAtMs })
+    }
+
+    @Test
+    fun `a failure outside the copy loop is still recorded, never shown as none yet`() {
+        makeDb(version = 79)
+        PreMigrationBackup.recordFailure(root, 2_000, "database path unavailable")
+
+        val status = PreMigrationBackup.status(root) as PreMigrationBackup.Status.Failed
+        assertEquals("database path unavailable", status.reason)
     }
 
     @Test
