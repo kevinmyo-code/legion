@@ -83,10 +83,10 @@ class PreMigrationBackupTest {
         // read would see 79, and every later launch would take a needless backup.
         SQLiteDatabase.openOrCreateDatabase(dbFile, null).use { db ->
             db.enableWriteAheadLogging()
-            db.execSQL("PRAGMA wal_autocheckpoint=0")
+            db.rawQuery("PRAGMA wal_autocheckpoint=0", null).use { it.moveToFirst() }
             db.execSQL("CREATE TABLE t (v TEXT)")
             db.version = 79
-            db.execSQL("PRAGMA wal_checkpoint(TRUNCATE)")
+            db.rawQuery("PRAGMA wal_checkpoint(TRUNCATE)", null).use { it.moveToFirst() }
             db.version = 80
             assertEquals("precondition: header still says 79", 79, headerUserVersion(dbFile))
 
@@ -97,13 +97,13 @@ class PreMigrationBackupTest {
     @Test
     fun `wal and shm sidecars are copied with the main file`() {
         makeDb(version = 79)
-        File(dbFile.path + "-wal").writeText("wal")
-        File(dbFile.path + "-shm").writeText("shm")
-        // A real WAL beside the file would be replayed by the read; fake ones only need copying.
+        val wal = File(dbFile.path + "-wal").apply { writeText("wal") }
+        val shm = File(dbFile.path + "-shm").apply { writeText("shm") }
         val taken = (run(target = 80, now = 1_000) as PreMigrationBackup.Outcome.Taken).backup
 
-        assertEquals("wal", File(taken.dir, dbFile.name + "-wal").readText())
-        assertEquals("shm", File(taken.dir, dbFile.name + "-shm").readText())
+        // The version read may rewrite these, so compare against what they hold after the run.
+        assertTrue(File(taken.dir, wal.name).readBytes().contentEquals(wal.readBytes()))
+        assertTrue(File(taken.dir, shm.name).readBytes().contentEquals(shm.readBytes()))
     }
 
     @Test
@@ -151,7 +151,8 @@ class PreMigrationBackupTest {
         assertEquals(2_000L, status.atMs)
         assertEquals("No space left on device", status.reason)
         assertEquals(1_000L, status.latest?.takenAtMs)
-        assertEquals("the half-written copy is not listed", listOf(1_000L), PreMigrationBackup.list(root).map { it.takenAtMs })
+        val listed = PreMigrationBackup.list(root).map { it.takenAtMs }
+        assertEquals("the half-written copy is not listed", listOf(1_000L), listed)
     }
 
     @Test

@@ -145,7 +145,8 @@ class DriveBackupResolverTest {
 
     @Test
     fun `a before-update copy names its time and both versions`() {
-        val line = DriveBackupResolver.preMigrationBackupLine(PreMigrationBackup.Status.Taken(premig(100, 79, 80)), fixedFormat)
+        val taken = PreMigrationBackup.Status.Taken(premig(100, 79, 80))
+        val line = DriveBackupResolver.preMigrationBackupLine(taken, fixedFormat)
         assertTrue(line, line.contains("T100") && line.contains("version 79 to 80"))
         assertTrue(line, line.contains("manual"))
     }
@@ -156,7 +157,8 @@ class DriveBackupResolverTest {
         val line = DriveBackupResolver.preMigrationBackupLine(failed, fixedFormat)
         assertTrue(line, line.contains("T200, failed: No space left on device"))
         assertTrue(line, line.contains("T100") && line.contains("could not be read"))
-        val none = DriveBackupResolver.preMigrationBackupLine(PreMigrationBackup.Status.Failed(200, "x", null), fixedFormat)
+        val failedNoCopy = PreMigrationBackup.Status.Failed(200, "x", null)
+        val none = DriveBackupResolver.preMigrationBackupLine(failedNoCopy, fixedFormat)
         assertTrue(none, none.contains("No earlier copy"))
     }
 }
