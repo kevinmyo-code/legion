@@ -1,9 +1,13 @@
+@file:Suppress("MaxLineLength") // source strings and phrasings read best on one line
+
 package com.kevin.legion.service.cascade
 
 import org.json.JSONArray
+import java.io.File
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -135,10 +139,66 @@ class ToolGateTest {
     }
 
     @Test
-    fun `the chat set is stable so its cache is reused`() {
+    fun `the chat prefix is the same every time, though it is never cached`() {
         val decls = JSONArray().put(JSONObject().put("name", "end_conversation")).put(JSONObject().put("name", "a"))
         val a = ToolGate.chatPrefix(CascadePrefix("m", "i", decls)).key
         val b = ToolGate.chatPrefix(CascadePrefix("m", "i", decls)).key
         assertEquals(a, b)
+    }
+
+    @Test
+    fun `a pleasantry followed by a request in another script is full`() {
+        val mixed = listOf(
+            "thanks, 明天早上七点叫我", // Mandarin: wake me at seven tomorrow
+            "hi 提醒我五点给妈妈打电话", // remind me to call mom at five
+            "hello ตั้งปลุกเจ็ดโมง", // Thai: set an alarm for seven
+            "ok thanks မနက်ငါးနာရီမှာ နှိုးပေးပါ", // Burmese: wake me at five
+            "good night 明天", "bye ตั้งปลุก", "ขอบคุณ", "谢谢", "မင်္ဂလာပါ",
+        )
+        mixed.forEach { assertEquals(it, ToolGate.Set.FULL, set(it)) }
+        assertEquals("a pure non-Latin turn is not empty", "not_a_pleasantry", ToolGate.choose("谢谢", false).why)
+    }
+
+    @Test
+    fun `after Alfred asked or offered something even a pleasantry is full`() {
+        fun decide(heard: String, asked: Boolean) = ToolGate.decide(heard, true, false, asked, false, null)
+        assertEquals(ToolGate.Set.CHAT, decide("ok thanks", asked = false).set)
+        assertEquals("offer_open", decide("ok thanks", asked = true).why)
+        assertEquals(ToolGate.Set.FULL, decide("thanks", asked = true).set)
+    }
+
+    @Test
+    fun `an opener, a carried turn or a non-user turn is full whatever the words`() {
+        assertEquals("not_his_words", ToolGate.decide("hi", true, true, false, false, null).why)
+        assertEquals("not_his_words", ToolGate.decide("hi", false, false, false, false, null).why)
+        assertEquals("sticky", ToolGate.decide("hi", true, false, false, true, null).why)
+    }
+
+    /** The wiring in CascadeSession: nothing else here fails if it is cut. Read from source (a session needs a phone). */
+    @Test
+    fun `the session decides through the gate, sends what it chose, and arms sticky only on a real turn`() {
+        val src = source("service/cascade/CascadeSession.kt")
+        assertTrue(src.contains("ToolGate.decide("))
+        assertTrue("it asks whether Alfred's last line asked", src.contains("askedLast = lastTurnAsked"))
+        assertTrue("opener and carried turns", src.contains("notHisWords = opener != null || carriedBlock.isNotEmpty()"))
+        assertTrue("a draft arms nothing", src.contains("if (log && verdict.set == ToolGate.Set.FULL) fullToolsUsed = true"))
+        assertTrue("the loop gets the chosen prefix", src.contains("sent ?: checkNotNull(pfx)"))
+        val engine = src.substring(src.indexOf("val sent = if (engineStart != null)"))
+        assertTrue("an engine turn arms sticky and logs", engine.substring(0, 300).let {
+            it.contains("fullToolsUsed = true") && it.contains("tool_set=engine")
+        })
+        assertTrue("a draft is sent with its own verdict, unlogged", src.contains("toolsFor(pfx, heard, fromUser = true, log = false)"))
+    }
+
+    private fun source(path: String): String {
+        var dir: File? = File(System.getProperty("user.dir") ?: ".").absoluteFile
+        while (dir != null) {
+            listOf("app/src/main/java/com/kevin/legion", "src/main/java/com/kevin/legion").forEach {
+                val f = File(File(dir, it), path)
+                if (f.isFile) return f.readText()
+            }
+            dir = dir.parentFile
+        }
+        error("source $path not found")
     }
 }

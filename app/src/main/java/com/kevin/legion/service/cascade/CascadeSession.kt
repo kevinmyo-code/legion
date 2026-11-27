@@ -874,18 +874,18 @@ internal class CascadeSession(
     )
 
     /**
-     * The prefix a turn is sent with: [full], or its chat cut ([ToolGate]) when [heard] is plainly small
-     * talk or general knowledge. Never the cut for an opener, a carried or prompt turn, or once a turn of
-     * this conversation went out FULL. A draft ([log] false) decides the same way from the same words, and
-     * is only adopted on the same words, so the verdict it made is the turn's.
+     * The prefix a turn is sent with: [full], or its chat cut ([ToolGate]) when [heard] is a whole-utterance
+     * pleasantry. Never the cut for an opener, a carried or prompt turn, after Alfred asked or offered
+     * something, or once a turn of this conversation went out FULL. A draft ([log] false) decides the same
+     * way from the same words and sets nothing: only the real turn arms [fullToolsUsed], so a discarded
+     * draft leaves no trace.
      */
     private fun toolsFor(full: CascadePrefix, heard: String, fromUser: Boolean, log: Boolean): CascadePrefix {
-        val verdict = if (!fromUser || opener != null || carriedBlock.isNotEmpty()) {
-            ToolGate.Verdict(ToolGate.Set.FULL, "not_his_words")
-        } else {
-            ToolGate.choose(heard, fullToolsUsed, CompanionProfile.name(ctx))
-        }
-        if (verdict.set == ToolGate.Set.FULL) fullToolsUsed = true
+        val verdict = ToolGate.decide(
+            heard, fromUser, notHisWords = opener != null || carriedBlock.isNotEmpty(),
+            askedLast = lastTurnAsked, sticky = fullToolsUsed, companion = CompanionProfile.name(ctx),
+        )
+        if (log && verdict.set == ToolGate.Set.FULL) fullToolsUsed = true
         val sent = ToolGate.prefixFor(full, verdict)
         if (log) {
             val n = sent.functionDeclarations.length()
@@ -1943,6 +1943,7 @@ internal class CascadeSession(
         // way, from the same words). A turn the engine answers may have used any tool: later turns stay full.
         val sent = if (engineStart != null) {
             fullToolsUsed = true
+            LiveLatency.log(LiveLatency.TAG, "tool_set=engine why=engine_answered")
             null
         } else {
             toolsFor(checkNotNull(pfx), heard, record.fromUser, log = true)

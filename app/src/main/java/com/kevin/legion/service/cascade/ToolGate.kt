@@ -38,12 +38,14 @@ internal object ToolGate {
     )
 
     /**
-     * Lowercase, straight apostrophes, punctuation to spaces, whitespace squeezed, and a leading
-     * "hey <name>" call removed when [companion] is the name he is talking to.
+     * Lowercase, straight apostrophes, punctuation to spaces (letters and digits of EVERY
+     * script are kept, so a request in Mandarin, Thai or Burmese after "thanks" leaves words that fail the
+     * match), whitespace squeezed, and a leading "hey <name>" call removed when [companion] is the name
+     * he is talking to.
      */
     internal fun normalise(heard: String, companion: String?): String {
         var t = heard.lowercase().replace('’', '\'')
-        t = t.replace(Regex("[^a-z0-9' ]"), " ").replace(Regex("\\s+"), " ").trim()
+        t = t.replace(Regex("[^\\p{L}\\p{N}' ]"), " ").replace(Regex("\\s+"), " ").trim()
         val name = companion?.lowercase()?.trim().orEmpty()
         if (name.isNotEmpty()) {
             t = t.replace(Regex("^(?:(?:hey|hi|hello|ok|okay|yo) )?${Regex.escape(name)}(?: |$)"), "").trim()
@@ -63,6 +65,24 @@ internal object ToolGate {
             PLEASANTRY.matches(text) -> Verdict(Set.CHAT, "pleasantry")
             else -> Verdict(Set.FULL, "not_a_pleasantry")
         }
+    }
+
+    /**
+     * The verdict for a turn. FULL without looking at the words when it is not his own speech, an opener
+     * or a carried turn is in play ([notHisWords]), or [askedLast]: Alfred's last line asked or offered
+     * something, so even "ok thanks" may be the answer to it.
+     */
+    fun decide(
+        heard: String,
+        fromUser: Boolean,
+        notHisWords: Boolean,
+        askedLast: Boolean,
+        sticky: Boolean,
+        companion: String?,
+    ): Verdict = when {
+        !fromUser || notHisWords -> Verdict(Set.FULL, "not_his_words")
+        askedLast -> Verdict(Set.FULL, "offer_open")
+        else -> choose(heard, sticky, companion)
     }
 
     /** [full] cut to [CHAT_TOOLS], sent inline: the same instruction and search, no cache of its own. */
