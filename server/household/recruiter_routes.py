@@ -235,6 +235,8 @@ RECRUITER_DENIED: dict[str, str] = {
     "member_memory.review_views.ReviewRevertView": _MEMORY,
     "member_memory.review_views.ReviewClusterAcceptView": _MEMORY,
     "member_memory.review_views.ReviewRunView": _MEMORY,
+    # issue #450: each spoken turn, saved as it happens.
+    "member_memory.turn_views.ConversationTurnsView": _MEMORY,
     "id_vault.views.VaultListCreateView": _VAULT,
     "id_vault.views.VaultDetailView": _VAULT,
     "id_vault.views.VaultRevealView": _VAULT,
