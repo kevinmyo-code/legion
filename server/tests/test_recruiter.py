@@ -395,6 +395,7 @@ def test_the_named_outside_account_and_body_routes_are_denied():
         "/api/ingest/receipt",
         "/api/ingest/files/",
         "/api/device-logs/",
+        "/api/device-logs/conversations/",
         "/api/auth/devices",
         "/api/auth/password",
         "/api/households/me/invites",
@@ -448,6 +449,17 @@ def test_the_doors_a_view_opens_to_recruiters_itself_are_named():
         "/api/demo/shop/state",
     }
     assert "/api/device-logs/" not in opened
+
+
+def test_a_recruiter_is_refused_the_conversation_page_in_words(
+    recruiter_web, recruiter_token_client
+):
+    """Conversation batches are a member's own record; a visit never reads them (#160)."""
+    expected = denied_refusal(RECRUITER_DENIED["devicelogs.conversations.ConversationsView"])
+    for client in (recruiter_web, recruiter_token_client):
+        response = client.get("/api/device-logs/conversations/")
+        assert response.status_code == 403
+        assert response.data["detail"] == expected
 
 
 DENIED_ROUTES = [(p, c) for p, c in ROUTES if view_key(c) in RECRUITER_DENIED]

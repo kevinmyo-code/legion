@@ -149,7 +149,7 @@ def test_an_unreadable_batch_is_named_not_dropped(token_a, household_a, househol
     assert by_id[good]["readable"] is True
     bad = by_id[str(row.id)]
     assert bad["readable"] is False and bad["lines"] == []
-    assert "cannot be read" in bad["problem"]
+    assert bad["problem"].startswith("could not be read: ")
 
 
 def test_another_household_and_another_member_see_nothing(token_a, token_b, household_a):
@@ -165,4 +165,124 @@ def test_a_recruiter_visits_record_is_never_listed(token_a):
     from tests.test_device_logs_records import _visit_row
 
     _visit_row(FIXTURE)
+    assert token_a.get(URL).data == {"devices": []}
+
+
+# --- read-through: what the engine withholds at render time (CLAUDE.md section 7) --------------
+
+MAIL_SECRET = "Dana wrote that the invented pickup is at noon"
+ASSISTANT_SECRET = "Dana says the invented pickup is at noon"
+AUDIT = "10-28 16:{} 0 {} I LIVE_AUDIT: {}"
+MAIL_BATCH = "\n".join(
+    [
+        AUDIT.format("20:00.000", 2, "session_start model=invented"),
+        AUDIT.format("20:01.000", 1, 'user final=true text="Anything from Dana?"'),
+        AUDIT.format("20:02.000", 2, "tool_call id=m1 name=read_mail async=false args={}"),
+        AUDIT.format(
+            "20:02.500",
+            2,
+            "tool_result id=m1 name=read_mail success=true ms=500 scheduling=none sent=true "
+            f'response={{"body":"{MAIL_SECRET}"}}',
+        ),
+        AUDIT.format("20:03.000", 1, "turn_complete"),
+        AUDIT.format("20:04.000", 1, f'assistant text="{ASSISTANT_SECRET}"'),
+        AUDIT.format("20:04.500", 1, 'assistant text=" and more of it"'),
+        AUDIT.format("20:05.000", 1, "turn_complete"),
+        AUDIT.format("20:06.000", 1, 'user final=true text="Thanks"'),
+        AUDIT.format("20:07.000", 1, 'assistant text="Any time."'),
+        AUDIT.format("20:08.000", 2, 'session_end reason="idle"'),
+        AUDIT.format("21:00.000", 2, "session_start model=invented"),
+        AUDIT.format("21:01.000", 1, 'user final=true text="Next day"'),
+        AUDIT.format("21:02.000", 1, 'assistant text="A clean session."'),
+        AUDIT.format("21:03.000", 2, 'session_end reason="idle"'),
+    ]
+)
+
+
+def _joined(token_a) -> str:
+    return "\n".join(token_a.get(URL).data["devices"][0]["batches"][0]["lines"])
+
+
+def test_mail_text_in_a_stored_batch_is_withheld_at_render_time(token_a):
+    """The web record stores a tool's reply and the assistant's words un-redacted; the engine,
+    not the uploading device, withholds them, for the rest of the session."""
+    _upload(token_a, MAIL_BATCH)
+    joined = _joined(token_a)
+    assert MAIL_SECRET not in joined and ASSISTANT_SECRET not in joined
+    assert "and more of it" not in joined and "Any time." not in joined
+    assert joined.count("ASSISTANT: withheld: read from mail") == 2  # one run, then the next turn
+    assert "= withheld: read from mail" in joined
+    # the person's own words and the next, clean session are untouched
+    assert "USER: Anything from Dana?" in joined and "USER: Thanks" in joined
+    assert "ASSISTANT: A clean session." in joined
+
+
+def test_a_third_party_web_tool_is_withheld_too(token_a):
+    secret = "an invented headline"
+    _upload(
+        token_a,
+        "\n".join(
+            [
+                AUDIT.format("20:00.000", 2, "session_start model=invented"),
+                AUDIT.format("20:02.000", 2, "tool_call id=w1 name=web_search async=false args={}"),
+                AUDIT.format(
+                    "20:02.500",
+                    2,
+                    "tool_result id=w1 name=web_search success=true ms=5 scheduling=none "
+                    f'sent=true response={{"answer":"{secret}"}}',
+                ),
+            ]
+        ),
+    )
+    joined = _joined(token_a)
+    assert secret not in joined and "= withheld: read from mail" in joined
+
+
+def test_an_unredacted_read_through_mark_withholds_the_turn(token_a):
+    _upload(
+        token_a,
+        "\n".join(
+            [
+                AUDIT.format("20:00.000", 2, "session_start model=invented"),
+                AUDIT.format("20:01.000", 2, "read_through source=grounding"),
+                AUDIT.format("20:02.000", 1, 'assistant text="invented grounded fact"'),
+            ]
+        ),
+    )
+    joined = _joined(token_a)
+    assert "invented grounded fact" not in joined
+    assert "ASSISTANT: withheld: read from mail" in joined
+
+
+def test_one_batch_that_blows_up_does_not_500_the_page(token_a, monkeypatch):
+    """Any render error, not only a bad gzip, names that batch and leaves the others."""
+    from devicelogs import conversations
+
+    bad = _upload(token_a, "bad\n")
+    good = _upload(token_a)
+    real = conversations.render
+
+    def boom(text, **kwargs):
+        if "oddbatch" in text:
+            raise KeyError("invented parser failure with text that must not be echoed")
+        return real(text, **kwargs)
+
+    monkeypatch.setattr(conversations, "render", boom)
+    response = token_a.get(URL)
+    assert response.status_code == 200
+    by_id = {str(b["id"]): b for b in response.data["devices"][0]["batches"]}
+    assert by_id[good]["readable"] is True and by_id[good]["lines"] == TIMELINE
+    assert by_id[bad]["readable"] is False and by_id[bad]["lines"] == []
+    assert by_id[bad]["problem"] == "could not be read: KeyError"
+
+
+def test_a_head_unit_token_is_refused_and_its_upload_never_listed(token_a):
+    from tests.test_headunit_signin import _log_upload, _mint, unit_client
+
+    issued = _mint(token_a)
+    assert issued.status_code == 201, issued.data
+    unit = unit_client(issued.data["token"])
+    upload = {**_log_upload(), "reason": "conversation"}
+    assert unit.post(UPLOAD, upload, format="multipart").status_code == 201
+    assert unit.get(URL).status_code in (401, 403, 404)
     assert token_a.get(URL).data == {"devices": []}
