@@ -65,6 +65,28 @@ Grouped by what they are for:
 
 Migration discipline: [[0017-room-migrations-additive]].
 
+### The copy taken before a migration
+
+`data/local/PreMigrationBackup.kt` runs inside `CarDatabase.getDatabase`, before Room is built. When
+the file's stored `user_version` differs from `CarDatabase.SCHEMA_VERSION`, it copies
+`legion_database` and its `-wal`/`-shm`/`-journal` files to
+`noBackupFilesDir/pre-migration-backups/<epochMs>_v<from>_to_v<to>/` and keeps the newest three. A
+file whose version cannot be read is copied too, as `vunknown`. A failed copy never stops the app;
+the Drive sync screen says so in words. The copy never leaves the phone and is excluded from Android
+device backup by living in `noBackupFilesDir`.
+
+Restore is manual (no button, v1). The daily `fast` build is not debuggable, so `run-as` needs a
+`debug` build of the version the copy was taken under (the `<from>` in its name), signed with the
+same debug key, installed over the top with data intact:
+
+```
+adb shell am force-stop com.kevin.legion
+adb shell run-as com.kevin.legion ls no_backup/pre-migration-backups
+adb shell run-as com.kevin.legion sh -c 'cd databases && rm -f legion_database-wal legion_database-shm legion_database-journal && cp ../no_backup/pre-migration-backups/<dir>/legion_database* .'
+```
+
+Then start the app. Installing the newer build again runs the migration again, so fix it first.
+
 ## Two storage shapes, both live
 
 This is the single most confusing thing about the data layer and it is a migration in progress, not
