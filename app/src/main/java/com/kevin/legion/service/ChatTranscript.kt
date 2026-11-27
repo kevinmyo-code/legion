@@ -13,6 +13,8 @@ data class ChatEntry(
      * relabel it. Null: the current name.
      */
     val speaker: String? = null,
+    /** When the line was added (epoch ms); 0 for a line built without one. A report anchors on it. */
+    val atMillis: Long = 0L,
 ) {
     enum class Kind { USER, ASSISTANT, TOOL, SYSTEM, NOT_SENT }
 
@@ -169,6 +171,7 @@ data class ChatTranscript(
             entries + ChatEntry(
                 nextId, kind, text, via, note,
                 speaker = if (kind == ChatEntry.Kind.ASSISTANT) speaker else null,
+                atMillis = System.currentTimeMillis(),
             )
         ).takeLast(MAX_ENTRIES),
         nextId = nextId + 1,

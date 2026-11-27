@@ -144,7 +144,7 @@ class ClaudeSessionController(
     suspend fun reportProblem(
         note: String,
         source: String,
-        replyIndex: Int? = null,
+        reply: ProblemReport.ReplyRef? = null,
         at: java.time.Instant = java.time.Instant.now(),
     ): ClaudeSendResult {
         val words = when {
@@ -160,7 +160,7 @@ class ClaudeSessionController(
         val target = (fixers.firstOrNull { it.isOnline } ?: fixers.firstOrNull())?.name
             ?: return ClaudeSendResult.NotSent(ProblemReport.NO_FIX_MACHINE)
         val out = send(
-            request = ProblemReport.request(words, source, replyIndex, at),
+            request = ProblemReport.request(words, source, reply, at),
             machine = target,
             origin = ClaudeTaskDraft.ORIGIN_NAMED,
             emailMe = false,

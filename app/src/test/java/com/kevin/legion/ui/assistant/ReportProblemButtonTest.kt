@@ -3,6 +3,8 @@ package com.kevin.legion.ui.assistant
 import android.app.Application
 import com.kevin.legion.claude.ClaudeOutcome
 import com.kevin.legion.claude.ClaudeSessionController
+import com.kevin.legion.claude.ClaudeWording
+import com.kevin.legion.claude.ProblemReport
 import com.kevin.legion.claude.FakeClaudeBackend
 import com.kevin.legion.claude.FakeClaudeBackend.Companion.machine
 import com.kevin.legion.service.AssistantChatStore
@@ -15,7 +17,7 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
-import org.junit.Assert.assertFalse
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -42,6 +44,8 @@ class ReportProblemButtonTest {
         AssistantChatStore.clear()
     }
 
+    private val ref = ProblemReport.ReplyRef(1_700_000_000_000L, ProblemReport.hashOf("a reply"))
+
     private fun viewModel() = AssistantChatViewModel(RuntimeEnvironment.getApplication() as Application).also {
         it.reportController = { ClaudeSessionController(backend) }
     }
@@ -52,20 +56,20 @@ class ReportProblemButtonTest {
     @Test
     fun `a filed report is said as filed, with the reply position and no reply text`() = runTest(dispatcher) {
         backend.machines(machine("Alienware"))
-        viewModel().reportProblem(1, "wrong day")
+        viewModel().reportProblem(ref, "wrong day")
         advanceUntilIdle()
         assertTrue(lastLine().startsWith("Report filed."))
         val request = backend.created.single().request
-        assertTrue(request.contains("reply number 2"))
+        assertTrue(request.contains("text hash ${ref.hash}"))
         assertTrue(request.endsWith("Kevin's words: wrong day"))
     }
 
     @Test
     fun `an engine that is down says nothing was reported`() = runTest(dispatcher) {
         backend.statusOut = ClaudeOutcome.Unreachable("down")
-        viewModel().reportProblem(0, "wrong day")
+        viewModel().reportProblem(ref, "wrong day")
         advanceUntilIdle()
-        assertFalse(lastLine().startsWith("Report filed"))
+        assertEquals(ClaudeWording.failed(backend.statusOut, "report it"), lastLine())
         assertTrue(backend.created.isEmpty())
     }
 }

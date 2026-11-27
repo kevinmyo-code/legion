@@ -20,7 +20,7 @@ class ProblemReportTest {
     private fun report(
         note: String = "it said Tuesday, it is Wednesday",
         source: String = "voice",
-        reply: Int? = null,
+        reply: ProblemReport.ReplyRef? = null,
     ) = runBlocking { controller.reportProblem(note, source, reply, NOW) }
 
     @Test
@@ -37,6 +37,15 @@ class ProblemReportTest {
     }
 
     @Test
+    fun `the header says free text and a spoken report says it has no anchor`() {
+        backend.machines(machine("Alienware"))
+        report()
+        val request = backend.created.single().request
+        assertTrue(request.contains("free text; the engine kind is ask"))
+        assertTrue(request.contains("No reply anchor (spoken report)"))
+    }
+
+    @Test
     fun `filed is said, fixed never`() {
         backend.machines(machine("Alienware"))
         val sentence = report().sentence
@@ -46,12 +55,16 @@ class ProblemReportTest {
     }
 
     @Test
-    fun `the button carries the reply position and no reply text`() {
+    fun `the button carries the reply time and hash and no reply text`() {
         backend.machines(machine("Alienware"))
-        report(note = "wrong amount", source = "button", reply = 2)
+        val text = "You owe the landlord 1200 dollars."
+        val ref = ProblemReport.ReplyRef(1_700_000_000_000L, ProblemReport.hashOf(text))
+        report(note = "wrong amount", source = "button", reply = ref)
         val request = backend.created.single().request
         assertTrue(request.contains("Reported by button"))
-        assertTrue(request.contains("reply number 3 of that conversation"))
+        assertTrue(request.contains("added 2023-11-14T22:13:20Z, text hash ${ref.hash}"))
+        assertTrue(request.contains("do not pick the newest record"))
+        assertFalse(request.contains("landlord"))
     }
 
     @Test
@@ -73,8 +86,7 @@ class ProblemReportTest {
     fun `an unreachable engine says nothing was reported and creates nothing`() {
         backend.statusOut = ClaudeOutcome.Unreachable("down")
         val result = report()
-        assertTrue(result is ClaudeSendResult.NotSent)
-        assertFalse(result.sentence.startsWith("Report filed"))
+        assertEquals(ClaudeWording.failed(backend.statusOut, "report it"), result.sentence)
         assertTrue(backend.created.isEmpty())
     }
 
@@ -92,7 +104,7 @@ class ProblemReportTest {
         backend.createOut = { ClaudeOutcome.Refused("no", 400) }
         val result = report()
         assertTrue(result is ClaudeSendResult.NotSent)
-        assertFalse(result.sentence.startsWith("Report filed"))
+        assertEquals(ClaudeWording.failed(ClaudeOutcome.Refused("no", 400), "send it"), result.sentence)
     }
 
     @Test

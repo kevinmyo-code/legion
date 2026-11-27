@@ -91,10 +91,10 @@ class AssistantChatViewModel(application: Application) : AndroidViewModel(applic
      * (ADR 0035). The outcome lands in the panel as a line in words, filed or not; nothing says
      * "reported" before the engine took it.
      */
-    fun reportProblem(replyIndex: Int, note: String) {
+    fun reportProblem(reply: ProblemReport.ReplyRef, note: String) {
         val app = getApplication<Application>()
         viewModelScope.launch {
-            val out = reportController(app).reportProblem(note, ProblemReport.SOURCE_BUTTON, replyIndex)
+            val out = reportController(app).reportProblem(note, ProblemReport.SOURCE_BUTTON, reply)
             AssistantChatStore.update { it.add(ChatEntry.Kind.SYSTEM, out.sentence) }
         }
     }

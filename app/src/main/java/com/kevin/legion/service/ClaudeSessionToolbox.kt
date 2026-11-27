@@ -53,7 +53,7 @@ object ClaudeSessionToolbox {
             "task (yes=true only for his yes to its question); assign picks the machine it asked for; " +
             "send_file only on his yes to a found file; open_page opens a task's page on his yes; " +
             "quiet/unquiet stop/restart result announcements; where reads the board; needs, what waits on him; " +
-            "idea adds a backlog idea; report files a problem he named (request = his words). " +
+            "idea adds a backlog idea; report files the problem he just said. " +
             "A sent task is not done."
 
     fun declarations(): JSONArray = JSONArray().put(
@@ -171,7 +171,7 @@ object ClaudeSessionToolbox {
                 watchFactory(context).setAnnouncements(true)
                 result(true, "Result announcements are on again.")
             }
-            "report" -> ProblemReportVoice.file(c, args.optString("request"), userText, readThrough)
+            "report" -> ProblemReportVoice.file(c, userText)
             "where", "needs", "idea" -> BoardActions.dispatch(context, action, args, userText)
             else -> result(
                 false,

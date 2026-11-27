@@ -10,25 +10,15 @@ import org.json.JSONObject
  * action. It calls [ClaudeSessionController.reportProblem], the controller the chat panel's
  * long-press Report calls too (ADR 0035).
  *
- * In a read-through turn (mail, web, a camera look) the model's `request` could be text another
- * person wrote, so only his own utterance is filed there; with none, nothing is. Outside one the
- * model's `request` is used because it is his words, tidied. Success only from a 2xx.
+ * **What is filed is always [userText]**, his transcribed or typed words for this turn, never the
+ * model's `request`: the worker takes the note as the spec, and a model argument can carry text
+ * from mail or a page. With no utterance (an unsolicited raise) nothing is filed. A turn after an
+ * outside read never reaches here: [ReadThroughWriteGuard] refuses `claude_session` first.
  */
 internal object ProblemReportVoice {
-    const val NEEDS_OWN_WORDS =
-        "Nothing was reported. I won't file a problem from words I just read out of mail, a page or a " +
-            "camera look. Say what was wrong in your own words and I will."
-
-    suspend fun file(
-        controller: ClaudeSessionController,
-        request: String,
-        userText: String?,
-        readThrough: Boolean,
-    ): JSONObject {
-        val note = if (readThrough) userText.orEmpty() else request
-        if (note.isBlank()) {
-            return result(false, if (readThrough) NEEDS_OWN_WORDS else ProblemReport.EMPTY_NOTE)
-        }
+    suspend fun file(controller: ClaudeSessionController, userText: String?): JSONObject {
+        val note = userText.orEmpty()
+        if (note.isBlank()) return result(false, ProblemReport.EMPTY_NOTE)
         val out = controller.reportProblem(note, ProblemReport.SOURCE_VOICE)
         // `done: false` on a filed report: the engine took the task, nothing is fixed.
         return result(out is ClaudeSendResult.Sent, out.sentence).apply {

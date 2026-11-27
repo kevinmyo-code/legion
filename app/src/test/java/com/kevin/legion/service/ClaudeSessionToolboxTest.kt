@@ -8,6 +8,8 @@ import com.kevin.legion.claude.ClaudeSessionController
 import com.kevin.legion.claude.ClaudeTask
 import com.kevin.legion.claude.ClaudeTaskDraft
 import com.kevin.legion.claude.ClaudeTaskFile
+import com.kevin.legion.claude.ClaudeWording
+import com.kevin.legion.claude.ProblemReport
 import com.kevin.legion.claude.ClaudeWatchStore
 import com.kevin.legion.claude.FakeClaudeBackend
 import com.kevin.legion.claude.FakeClaudeBackend.Companion.machine
@@ -74,51 +76,46 @@ class ClaudeSessionToolboxTest {
     }
 
     @Test
-    fun `report files a fix task and says filed and not fixed`() {
+    fun `report files his own words and says filed, not fixed`() {
         backend.machines(machine("Alienware"))
-        val out = call("action" to "report", "request" to "that total was wrong")
+        val out = callWith(mapOf("action" to "report", "request" to "model paraphrase"), "that total was wrong")
         assertTrue(out.getBoolean("success"))
         assertEquals(false, out.getBoolean("done"))
         assertTrue(out.getString("message").contains("not fixed yet"))
-        assertTrue(backend.created.single().request.contains("Kevin's words: that total was wrong"))
-    }
-
-    @Test
-    fun `report with the engine down says nothing was reported`() {
-        backend.statusOut = ClaudeOutcome.Unreachable("down")
-        val out = call("action" to "report", "request" to "that total was wrong")
-        assertFalse(out.getBoolean("success"))
-        assertFalse(out.getString("message").startsWith("Report filed"))
-        assertTrue(backend.created.isEmpty())
-    }
-
-    @Test
-    fun `report in a read-through turn files only his own words, or nothing`() {
-        backend.machines(machine("Alienware"))
-        val none = callRT("that came from a mail", userText = null)
-        assertFalse(none.getBoolean("success"))
-        assertEquals(ProblemReportVoice.NEEDS_OWN_WORDS, none.getString("message"))
-        assertTrue(backend.created.isEmpty())
-        val own = callRT("model words", userText = "report a problem, the date was wrong")
-        assertTrue(own.getBoolean("success"))
         val request = backend.created.single().request
-        assertTrue(request.endsWith("Kevin's words: report a problem, the date was wrong"))
-        assertFalse(request.contains("model words"))
+        assertTrue(request.endsWith("Kevin's words: that total was wrong"))
+        assertFalse(request.contains("model paraphrase"))
     }
 
     @Test
-    fun `report with no words files nothing`() {
+    fun `report with no utterance files nothing even when the model supplied a request`() {
         backend.machines(machine("Alienware"))
-        val out = call("action" to "report")
+        val out = callWith(mapOf("action" to "report", "request" to "text from a mail"), null)
         assertFalse(out.getBoolean("success"))
+        assertEquals(ProblemReport.EMPTY_NOTE, out.getString("message"))
         assertTrue(backend.created.isEmpty())
     }
 
-    private fun callRT(request: String, userText: String?): JSONObject = runBlocking {
-        val json = JSONObject().put("action", "report").put("request", request)
-        ClaudeSessionToolbox.dispatch(
-            context, "claude_session", json, touchedReadThroughToolThisTurn = true, userText = userText,
-        )!!
+    @Test
+    fun `report with the engine down says exactly that nothing was reported`() {
+        backend.statusOut = ClaudeOutcome.Unreachable("down")
+        val out = callWith(mapOf("action" to "report"), "that total was wrong")
+        assertFalse(out.getBoolean("success"))
+        assertEquals(ClaudeWording.failed(backend.statusOut, "report it"), out.getString("message"))
+        assertTrue(backend.created.isEmpty())
+    }
+
+    @Test
+    fun `the read-through guard refuses report before it can run`() {
+        val args = JSONObject().put("action", "report").put("request", "x")
+        val refusal = ReadThroughWriteGuard.refusal("claude_session", args, readThrough = true)
+        assertEquals(false, refusal?.getBoolean("success"))
+        assertTrue(refusal!!.getString("message").startsWith("Nothing was done"))
+    }
+
+    private fun callWith(args: Map<String, String>, userText: String?): JSONObject = runBlocking {
+        val json = JSONObject().apply { args.forEach { (k, v) -> put(k, v) } }
+        ClaudeSessionToolbox.dispatch(context, "claude_session", json, userText = userText)!!
     }
 
     private fun call(vararg args: Pair<String, Any>): JSONObject = runBlocking {

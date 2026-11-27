@@ -31,6 +31,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.kevin.legion.claude.ProblemReport
 import com.kevin.legion.service.ChatEntry
 import com.kevin.legion.ui.theme.soft.SoftColors
 import com.kevin.legion.ui.theme.soft.SoftTheme
@@ -53,8 +54,8 @@ data class TypedChatUi(
     val unreadReply: Boolean = false,
     /** The chat button's tap. The default keeps the pre-panel call sites compiling. */
     val onOpenChat: () -> Unit = {},
-    /** Long-press Report on a reply: its position among the assistant's lines, and an optional note. */
-    val onReport: (replyIndex: Int, note: String) -> Unit = { _, _ -> },
+    /** Long-press Report on a reply: when it was added and a hash of its text, and an optional note. */
+    val onReport: (reply: ProblemReport.ReplyRef, note: String) -> Unit = { _, _ -> },
 ) {
     val hasConversation: Boolean get() = entries.isNotEmpty() || pendingReply != null
 }
@@ -134,23 +135,22 @@ internal fun AssistantReplyPanel(
     }
 }
 
-/** The transcript's lines; a reply's press-and-hold reports its position among the replies. */
+/** The transcript's lines; a reply's press-and-hold reports that reply. */
 @Composable
 private fun ChatEntries(chat: TypedChatUi) {
-    var reportAt by remember { mutableStateOf<Int?>(null) }
-    reportAt?.let { index ->
+    var reportAt by remember { mutableStateOf<ChatEntry?>(null) }
+    reportAt?.let { reply ->
         ReportProblemDialog(
             onSend = { note ->
-                chat.onReport(index, note)
+                chat.onReport(ProblemReport.ReplyRef(reply.atMillis, ProblemReport.hashOf(reply.text)), note)
                 reportAt = null
             },
             onDismiss = { reportAt = null },
         )
     }
-    var replies = 0
     chat.entries.forEach { entry ->
-        val replyIndex = if (entry.kind == ChatEntry.Kind.ASSISTANT) replies++ else null
-        ChatEntryRow(entry, chat.companionName, replyIndex?.let { i -> { reportAt = i } })
+        val report = if (entry.kind == ChatEntry.Kind.ASSISTANT) ({ reportAt = entry }) else null
+        ChatEntryRow(entry, chat.companionName, report)
     }
 }
 
