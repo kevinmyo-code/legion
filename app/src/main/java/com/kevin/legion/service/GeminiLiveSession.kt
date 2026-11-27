@@ -1785,6 +1785,7 @@ class GeminiLiveSession(
         if (crisisFiredThisTurn) return
         if (!CrisisDetector.detect(userTurnText.toString())) return
         crisisFiredThisTurn = true
+        audit.discardWords() // a crisis line is not saved as "what we talked about" (ticket 450)
         Log.w(TAG, "Crisis phrase detected in transcript - flushing audio, notifying owner")
         flushAudio()
         speakingThisTurn = false

@@ -52,6 +52,8 @@ class TypedChat(
     /** True when a typed turn starts, false when it ends: the controller's phase hook. */
     private val onInFlightChanged: (Boolean) -> Unit = {},
     private val record: (TypedTurnRecord) -> Unit = {},
+    /** The message is being sent to the model (never for a crisis, a refusal or an ignored line). */
+    private val onSent: (String) -> Unit = {},
     private val clock: () -> Long = System::currentTimeMillis,
     private val readPanel: () -> ChatTranscript = { AssistantChatStore.transcript.value },
     private val updatePanel: ((ChatTranscript) -> ChatTranscript) -> Unit = { AssistantChatStore.update(it) },
@@ -84,6 +86,7 @@ class TypedChat(
         // History is read BEFORE this message joins the panel, so it is not sent twice.
         val history = TextChatEngine.capHistory(readPanel().textHistory())
         updatePanel { it.withSpeaker(speakerName()).typedSent(typed) }
+        onSent(typed)
         inFlight = true
         onInFlightChanged(true)
         val turnSeq = clock()

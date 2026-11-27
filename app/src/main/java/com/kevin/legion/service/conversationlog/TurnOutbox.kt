@@ -3,6 +3,7 @@ package com.kevin.legion.service.conversationlog
 import com.kevin.legion.backend.engine.EngineHttp
 import java.io.File
 import java.time.Instant
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
@@ -101,6 +102,13 @@ class TurnOutbox(
 
     private val lock = Any()
     private val drainLock = Mutex()
+    private val refusedDropped = AtomicInteger(0)
+
+    /**
+     * How many turns the engine refused (and the queue dropped) since the last call, whatever stopped
+     * the drain afterwards: a refusal followed by an offline stop must still be counted.
+     */
+    fun takeRefused(): Int = refusedDropped.getAndSet(0)
 
     /** Throws away everything queued (the log was switched off: nothing may be sent later). */
     fun clear() {
@@ -142,6 +150,7 @@ class TurnOutbox(
                     }
                     Attempt.Refused -> {
                         refused++
+                        refusedDropped.incrementAndGet()
                         null
                     }
                     is Attempt.Stop -> Outcome.Kept(sent, pending(), attempt.reason)

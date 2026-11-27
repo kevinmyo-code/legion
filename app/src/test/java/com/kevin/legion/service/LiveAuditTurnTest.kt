@@ -264,4 +264,37 @@ class LiveAuditTurnTest {
         audit.turnComplete()
         assertEquals("what is on my list", turns.single().userText)
     }
+
+    @Test
+    fun `a line logged but never sent to the model is not saved or folded into the next turn`() {
+        audit.sessionStart("model", emptySet())
+        audit.user("remind me to call the vet", final = true, save = false)
+        audit.turnComplete()
+        assertTrue(turns.isEmpty())
+        say("what is the weather", "Mild.")
+        assertEquals("what is the weather", turns.single().userText)
+    }
+
+    @Test
+    fun `a line kept once the turn goes to the model is saved`() {
+        audit.sessionStart("model", emptySet())
+        audit.user("what is on my list", final = true, save = false)
+        audit.keepWords("what is on my list")
+        audit.turnComplete()
+        assertEquals("what is on my list", turns.single().userText)
+    }
+
+    @Test
+    fun `a crisis line is dropped with the rest of its turn and the next turn is clean`() {
+        audit.sessionStart("model", emptySet())
+        audit.user("I want to", final = true)
+        audit.discardWords()
+        audit.user("I want to end it all", final = true)
+        audit.user("I want to end it all", final = true, whole = true)
+        audit.sessionEnd("crisis")
+        assertTrue(turns.isEmpty())
+        audit.sessionStart("model", emptySet())
+        say("what is the weather", "Mild.")
+        assertEquals(listOf("what is the weather"), turns.map { it.userText })
+    }
 }

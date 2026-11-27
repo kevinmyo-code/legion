@@ -221,6 +221,9 @@ class LiveSessionController(context: Context) {
             TypedTurnRecorder.record(appContext, it)
             typedAudit.turn(it)
         },
+        // Only a message actually sent to the model joins the saved turn (ticket 450): a crisis line, a
+        // refusal or an ignored line is not "what we talked about".
+        onSent = typedAudit::user,
     )
 
     /**
@@ -265,9 +268,10 @@ class LiveSessionController(context: Context) {
     private var sessionResumeHandle: String? = null
 
     // The conversation the held resume handle belongs to (memory chain ticket 450). A socket that
-    // resumes from [sessionResumeHandle] restores the model's context, mail it read included, so its
-    // saved turns must keep the chat id the engine's read-through taint is keyed on. Kept exactly
-    // while a handle is, so every place that drops the handle also ends the chat.
+    // resumes from [sessionResumeHandle] continues the same conversation, so its saved turns keep the
+    // chat id and turn count: one conversation is one chat for the summary. Kept exactly while a handle
+    // is, so every place that drops the handle also ends the chat. (No read-through taint hangs on
+    // it: the engine stores no reply or tool result.)
     private var chatThread: ChatThread? = null
 
     private fun chatThreadForStart(): ChatThread =
@@ -552,7 +556,6 @@ class LiveSessionController(context: Context) {
     fun onTyped(text: String) {
         // Typed questions get the same cards as voice (Kevin, 2026-11-10, ADR 0081).
         ConversationCards.beginTyped()
-        typedAudit.user(text)
         typedChat.onTyped(text)
     }
 

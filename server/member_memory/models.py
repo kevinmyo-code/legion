@@ -366,7 +366,8 @@ class MemoryReviewChange(models.Model):
 
 # ---------------------------------------------------------------------------------------------
 # The raw recent record (memory chain, ticket 450, 2026-11-26). One row is one TURN, saved when
-# the turn completes: the person's words, the assistant's spoken reply and the tools it ran. It is
+# the turn completes: the person's words and the NAMES of the tools it ran (never the reply or a
+# tool result: either can carry text other people wrote, CLAUDE.md section 7). It is
 # what lets a chat that closed a minute ago be answered about before the hourly consolidation job
 # has read it. The job and the summary on close (451) distil it; the next chat loads it (452).
 # Private to the member who spoke (`owner_user = member`, `OWNER_PATHS`), kept

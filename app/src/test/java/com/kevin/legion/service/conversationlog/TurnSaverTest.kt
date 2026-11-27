@@ -129,4 +129,52 @@ class TurnSaverTest {
         assertEquals(2, saver.lostTurns)
         assertTrue(saver.status.value!!, saver.status.value!!.contains("2 chat turns could not be saved this run."))
     }
+
+    @Test fun `a refused turn is still counted when the next one hits an offline engine`() {
+        var calls = 0
+        val fake = Fake().apply {
+            script = {
+                if (calls++ == 0) PostResult.Http(409, "Nothing was saved.") else PostResult.Unreachable("no route")
+            }
+        }
+        val box = box(fake)
+        box.enqueue(turn(0))
+        box.enqueue(turn(1))
+        val saver = saver(box)
+        runBlocking { saver.drain() }
+        assertEquals(1, box.pending())
+        assertEquals(1, saver.lostTurns)
+        val status = saver.status.value!!
+        assertTrue(status, status.contains("1 chat turn not saved yet"))
+        assertTrue(status, status.contains("1 chat turn could not be saved this run."))
+    }
+
+    @Test fun `a refused turn is counted when the engine is not signed in for the rest`() {
+        var calls = 0
+        val fake = Fake().apply {
+            script = {
+                if (calls++ == 0) PostResult.Http(400, "Nothing was saved.") else PostResult.Http(401, "no token")
+            }
+        }
+        val box = box(fake)
+        box.enqueue(turn(0))
+        box.enqueue(turn(1))
+        val saver = saver(box)
+        runBlocking { saver.drain() }
+        assertEquals(1, saver.lostTurns)
+    }
+
+    @Test fun `with the log off at start a queue left by an earlier run is cleared`() {
+        val box = box(Fake(usable = false))
+        box.enqueue(turn(0))
+        saver(box, keep = false).clearIfOff()
+        assertEquals(0, box.pending())
+    }
+
+    @Test fun `with the log on at start the queue is left alone`() {
+        val box = box(Fake(usable = false))
+        box.enqueue(turn(0))
+        saver(box, keep = true).clearIfOff()
+        assertEquals(1, box.pending())
+    }
 }

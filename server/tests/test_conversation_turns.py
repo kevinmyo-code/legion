@@ -89,6 +89,13 @@ def test_turns_read_back_in_the_order_they_were_spoken(auth_client, chat):
     assert [r["user_text"] for r in rows] == ["line 0", "line 1", "line 2"]
 
 
+def test_a_seq_past_the_column_is_a_worded_400_not_a_500(auth_client, chat):
+    response = _send(auth_client, _turn(chat, 2**31))
+    assert response.status_code == 400
+    assert "Nothing was saved" in response.data["detail"]
+    assert _send(auth_client, _turn(chat, 2**31 - 1)).status_code == 201
+
+
 def test_a_malformed_since_is_a_worded_400(auth_client):
     response = auth_client.get(URL, {"since": "2026-13-45T00:00:00"})
     assert response.status_code == 400

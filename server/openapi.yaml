@@ -28172,6 +28172,7 @@ components:
           description: 'One chat: a Live session or a typed chat.'
         seq:
           type: integer
+          maximum: 2147483647
           minimum: 0
           description: The turn's place in the chat, from 0.
         surface:

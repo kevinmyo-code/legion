@@ -31,6 +31,7 @@ class TypedChatTest {
     private var panel = ChatTranscript()
     private val bodies = mutableListOf<JSONObject>()
     private val records = mutableListOf<TypedTurnRecord>()
+    private val sent = mutableListOf<String>()
     private val inFlightEvents = mutableListOf<Boolean>()
     private var crises = 0
     private var hasKey = true
@@ -91,6 +92,7 @@ class TypedChatTest {
             onCrisis = { crises++ },
             onInFlightChanged = { inFlightEvents.add(it) },
             record = { records.add(it) },
+            onSent = { sent.add(it) },
             clock = { 42L },
             readPanel = { panel },
             updatePanel = { panel = it(panel) },
@@ -211,5 +213,50 @@ class TypedChatTest {
         assertEquals(TypedTurnPolicy.Decision.Ignore, c.onTyped("   "))
         assertTrue(panel.entries.isEmpty())
         assertTrue(inFlightEvents.isEmpty())
+    }
+
+    @Test
+    fun `only a message that is sent is handed on for the saved turn`() = runTest {
+        val c = chat(replies = arrayOf(textReply("Fine.")))
+        c.onTyped("  what time is it  ")
+        advanceUntilIdle()
+        assertEquals(listOf("what time is it"), sent)
+    }
+
+    @Test
+    fun `a crisis line is never handed on for the saved turn`() = runTest {
+        val c = chat()
+        c.onTyped("I want to end it all")
+        advanceUntilIdle()
+        assertTrue(sent.isEmpty())
+    }
+
+    @Test
+    fun `an empty line is never handed on`() = runTest {
+        val c = chat()
+        c.onTyped("   ")
+        advanceUntilIdle()
+        assertTrue(sent.isEmpty())
+    }
+
+    @Test
+    fun `a refused line, no key or offline, is never handed on`() = runTest {
+        hasKey = false
+        val c = chat()
+        c.onTyped("remind me to call the vet")
+        advanceUntilIdle()
+        assertTrue(sent.isEmpty())
+    }
+
+    @Test
+    fun `a second line while the first is answered is not handed on`() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        val c = chat(gate = gate, replies = arrayOf(textReply("First.")))
+        c.onTyped("one")
+        runCurrent()
+        c.onTyped("two")
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(listOf("one"), sent)
     }
 }

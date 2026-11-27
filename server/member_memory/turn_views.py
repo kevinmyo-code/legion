@@ -31,7 +31,9 @@ class ToolCallSerializer(serializers.Serializer):
 
 class TurnWriteSerializer(serializers.Serializer):
     chat_id = serializers.UUIDField(help_text="One chat: a Live session or a typed chat.")
-    seq = serializers.IntegerField(min_value=0, help_text="The turn's place in the chat, from 0.")
+    seq = serializers.IntegerField(
+        min_value=0, max_value=turns.SEQ_MAX, help_text="The turn's place in the chat, from 0."
+    )
     surface = serializers.ChoiceField(choices=SURFACES, default=SURFACE_VOICE)
     user_text = serializers.CharField(
         required=False, allow_null=True, allow_blank=True, max_length=turns.TEXT_ACCEPT_CHARS

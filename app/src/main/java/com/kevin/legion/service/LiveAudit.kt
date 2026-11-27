@@ -56,6 +56,7 @@ internal class LiveAudit(
     private val turnUser = ArrayList<String>()
     private val turnTools = ArrayList<SavedToolCall>()
     private var turnTyped = false
+    private var crisisHeard = false
 
     // Ids of calls whose result is redacted because the call stands for a read-through tool under
     // a folded name (`look_up` with `domain: ask_mail`, `day` with `get_sitrep`): the result line
@@ -99,14 +100,36 @@ internal class LiveAudit(
      * the saved turn rather than joining them (the same words would be saved twice).
      */
     @Synchronized
-    fun user(text: String, final: Boolean, typed: Boolean = false, whole: Boolean = false) {
-        if (enabled && final) {
-            val words = collapse(scrub(text))
-            if (whole && words.isNotEmpty()) turnUser.clear()
-            if (words.isNotEmpty()) turnUser += words
-            if (typed) turnTyped = true
-        }
+    fun user(text: String, final: Boolean, typed: Boolean = false, whole: Boolean = false, save: Boolean = true) {
+        if (save && final) takeWords(text, typed, whole)
         emit("user final=$final" + (if (typed) " typed=true" else "") + " text=${quote(text)}")
+    }
+
+    /**
+     * Joins [text] to the saved turn's words, for a caller that logged the line with `save = false` and
+     * has since seen the turn go to the model (ticket 450: a crisis line or a refused one is never saved).
+     */
+    @Synchronized
+    fun keepWords(text: String, typed: Boolean = false) = takeWords(text, typed, whole = false)
+
+    /**
+     * Drops the words held for the turn in progress and takes no more until it ends (a crisis was
+     * heard: it is not "what we talked about", and the later transcript chunks of the same turn are not
+     * either).
+     */
+    @Synchronized
+    fun discardWords() {
+        turnUser.clear()
+        turnTyped = false
+        crisisHeard = true
+    }
+
+    private fun takeWords(text: String, typed: Boolean, whole: Boolean) {
+        if (!enabled || crisisHeard) return
+        val words = collapse(scrub(text))
+        if (whole && words.isNotEmpty()) turnUser.clear()
+        if (words.isNotEmpty()) turnUser += words
+        if (typed) turnTyped = true
     }
 
     /** [readThrough] is the session's own per-turn flag (`mailToolCalledThisTurn`). */
@@ -228,6 +251,7 @@ internal class LiveAudit(
         turnUser.clear()
         turnTools.clear()
         turnTyped = false
+        crisisHeard = false
         thread = chat ?: ChatThread(newChatId())
     }
 
@@ -250,6 +274,7 @@ internal class LiveAudit(
         turnUser.clear()
         turnTools.clear()
         turnTyped = false
+        crisisHeard = false
     }
 
     /** [source] is `server` (the Live API's `interrupted`) or `barge_in` (the phone's own gate). */

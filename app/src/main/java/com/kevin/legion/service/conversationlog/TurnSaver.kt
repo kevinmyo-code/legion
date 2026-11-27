@@ -64,22 +64,35 @@ class TurnSaver(
         val outcome = try {
             box.drain()
         } catch (e: CancellationException) {
+            lost.addAndGet(box.takeRefused())
             throw e
         } catch (e: Exception) {
             log("the chat turn queue could not be sent", e)
+            lost.addAndGet(box.takeRefused())
             lastOutcome = "Chat turns could not be sent: ${e.javaClass.simpleName}. They are kept on this phone."
             publish()
             return
         }
-        if (outcome is TurnOutbox.Outcome.NothingToSend) return
+        // Counted whatever stopped the drain: a refused turn is gone for good even if the next one hit
+        // an offline engine.
+        val refused = box.takeRefused()
+        lost.addAndGet(refused)
+        if (outcome is TurnOutbox.Outcome.NothingToSend) {
+            if (refused > 0) publish()
+            return
+        }
         if (outcome is TurnOutbox.Outcome.Sent) {
-            lost.addAndGet(outcome.refused)
             lastOutcome = if (outcome.turns > 0) "Saved ${TurnOutbox.turnsWord(outcome.turns)}." else null
         } else {
             lastOutcome = outcome.sentence
         }
         log(outcome.sentence, null)
         publish()
+    }
+
+    /** App start: with the log off, a queue left by an earlier run must never be sent. */
+    fun clearIfOff() {
+        if (!keep()) discardQueued()
     }
 
     /** The log was switched off: nothing queued may be sent later. */

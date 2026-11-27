@@ -48,6 +48,8 @@ TEXT_ACCEPT_CHARS = 100_000
 MAX_TOOL_CALLS = 20
 MAX_TOOL_CALLS_ACCEPTED = 200
 NAME_MAX_CHARS = 80
+# The column is a 32-bit integer; past it the insert would be a 500, not a worded 400.
+SEQ_MAX = 2**31 - 1
 # Matches `devicelogs.models.RETENTION_DAYS`: the raw conversation record is kept as long as the
 # batch it duplicates. Distilled memory (`member_memories`) is what outlives it.
 RETENTION_DAYS = 60

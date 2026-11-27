@@ -184,6 +184,8 @@ object ConversationLog {
             keep = { keepAndSend },
             log = { message, error -> if (error == null) Log.i(SAY_TAG, message) else Log.w(SAY_TAG, message, error) },
         )
+        // applySettings ran before the saver existed: with the log off, clear what an earlier run left.
+        turnSaver?.let { saver -> writer.execute { saver.clearIfOff() } }
         recorder = ConversationRecorder(s, writer, enabled = { keepAndSend })
     }
 

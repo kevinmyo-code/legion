@@ -1832,7 +1832,9 @@ internal class CascadeSession(
         }
         carry = ""
         userTurns.incrementAndGet()
-        audit.user(heard, final = true)
+        // Logged now, saved only once the turn is going to the model: a crisis line or a language refusal
+        // below is not "what we talked about" (ticket 450).
+        audit.user(heard, final = true, save = false)
         // A brush-off of the last unprompted line quiets that rule for a day (ProactiveBus.noteReply);
         // only the first turn after a raise counts, which the bus enforces.
         scope.launch(Dispatchers.IO) { runCatching { ProactiveBus.noteReply(ctx, heard) } }
@@ -1846,6 +1848,7 @@ internal class CascadeSession(
             discardDraftOf(u, "not_answered")
             return
         }
+        audit.keepWords(heard)
         val record = TurnRecord(heard, voicedMs = (stt as? SttResult.Text)?.voicedMs)
         // Words carried from a dropped turn are not in this audio: the engine gets them as a transcript.
         record.engineUtt = u.engine?.takeIf { heard == words.trim() }
