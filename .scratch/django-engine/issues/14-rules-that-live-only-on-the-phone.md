@@ -3,8 +3,8 @@ map: django-engine
 ticket: "14"
 title: "Three rules live only on the phone, and a second app would not have them"
 type: build
-status: open
-status-detail: "Found 2026-09-07 by the rule audit in ticket 09's four-aspect pass. Owed BEFORE a head unit exists, not after."
+status: resolved
+status-detail: "Resolved 2026-11-26: label cap and CHECK on the server, memory recall scoped by ?vehicle=. The Kotlin label cap stays on purpose for the no-engine path."
 blockers: []
 blocked-by: []
 open-blockers: 0
@@ -53,3 +53,17 @@ poisons it, and the user was told the write succeeded before any of that. §7 vi
 direction ("the phone queues the write and says so"). That is its own ticket. Two of the eight are
 not duplicates in the first place: the importance clamp and the category filter sanitise an LLM's
 output before storage, which §4 requires regardless of what Django validates on arrival.
+
+## Resolution (2026-11-26)
+
+- **Label cap:** `PlaceSerializer` refuses a label over 30 in words (2026-09-07), and Postgres now
+  holds it too: `places_label_length`, `ingest/migrations/0029`, SQL in `server/api/place_columns.py`.
+  Added NOT VALID and validated only when no live row is over 30, so one stray live row cannot fail
+  the deploy. Tombstones are exempt so such a row can still be forgotten or renamed. `backup_nightly`
+  validates it later once no live row breaks it, and warns with the count until then.
+- **`car_anchored` recall:** scoped on the server by `?vehicle=` (2026-09-07, `server/api/memory.py`).
+- **Voice-note atomicity:** checked then, no bug.
+- **The Kotlin copies are not deleted, on purpose (orchestrator ruling, 2026-11-26).** The label cap
+  already stands down when the write goes to Django (`PlaceController.serverOwnsTheLabelCap`). It
+  stays for the no-engine path, where the write goes straight into Room and no server can refuse
+  it. The memory DAO filter stays because Room is the read path. Nothing more is owed here.
