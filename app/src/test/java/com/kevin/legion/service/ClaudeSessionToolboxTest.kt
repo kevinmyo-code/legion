@@ -73,6 +73,54 @@ class ClaudeSessionToolboxTest {
         assertEquals(52, modal.pending.value?.taskId)
     }
 
+    @Test
+    fun `report files a fix task and says filed and not fixed`() {
+        backend.machines(machine("Alienware"))
+        val out = call("action" to "report", "request" to "that total was wrong")
+        assertTrue(out.getBoolean("success"))
+        assertEquals(false, out.getBoolean("done"))
+        assertTrue(out.getString("message").contains("not fixed yet"))
+        assertTrue(backend.created.single().request.contains("Kevin's words: that total was wrong"))
+    }
+
+    @Test
+    fun `report with the engine down says nothing was reported`() {
+        backend.statusOut = ClaudeOutcome.Unreachable("down")
+        val out = call("action" to "report", "request" to "that total was wrong")
+        assertFalse(out.getBoolean("success"))
+        assertFalse(out.getString("message").startsWith("Report filed"))
+        assertTrue(backend.created.isEmpty())
+    }
+
+    @Test
+    fun `report in a read-through turn files only his own words, or nothing`() {
+        backend.machines(machine("Alienware"))
+        val none = callRT("that came from a mail", userText = null)
+        assertFalse(none.getBoolean("success"))
+        assertEquals(ClaudeSessionToolbox.REPORT_NEEDS_OWN_WORDS, none.getString("message"))
+        assertTrue(backend.created.isEmpty())
+        val own = callRT("model words", userText = "report a problem, the date was wrong")
+        assertTrue(own.getBoolean("success"))
+        val request = backend.created.single().request
+        assertTrue(request.endsWith("Kevin's words: report a problem, the date was wrong"))
+        assertFalse(request.contains("model words"))
+    }
+
+    @Test
+    fun `report with no words files nothing`() {
+        backend.machines(machine("Alienware"))
+        val out = call("action" to "report")
+        assertFalse(out.getBoolean("success"))
+        assertTrue(backend.created.isEmpty())
+    }
+
+    private fun callRT(request: String, userText: String?): JSONObject = runBlocking {
+        val json = JSONObject().put("action", "report").put("request", request)
+        ClaudeSessionToolbox.dispatch(
+            context, "claude_session", json, touchedReadThroughToolThisTurn = true, userText = userText,
+        )!!
+    }
+
     private fun call(vararg args: Pair<String, Any>): JSONObject = runBlocking {
         val json = JSONObject().apply { args.forEach { (k, v) -> put(k, v) } }
         ClaudeSessionToolbox.dispatch(context, "claude_session", json)!!

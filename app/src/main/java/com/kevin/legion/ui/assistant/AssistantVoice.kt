@@ -78,6 +78,7 @@ fun rememberAssistantVoice(onOpenSettings: () -> Unit): AssistantVoice {
         pendingReply = chat.pendingReply,
         onSend = chatViewModel::send,
         onNewConversation = chatViewModel::newConversation,
+        onReport = chatViewModel::reportProblem,
         unreadReply = panel.unread,
         onOpenChat = panel::show,
     )

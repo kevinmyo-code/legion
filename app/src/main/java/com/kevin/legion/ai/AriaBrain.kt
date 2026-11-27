@@ -803,7 +803,8 @@ internal const val CLAUDE_SESSION_CLAUSE =
         "A sent task is queued, not done; its outcome comes only from check or its result. Files they ask " +
         "to have on their phone: files true. Other found files: name and size, ask first; never send one unasked. " +
         "Research to write up (an itinerary, a plan, a comparison) counts: offer the Alienware, page true. " +
-        "A ready page opens only on their yes (open_page). "
+        "A ready page opens only on their yes (open_page). " +
+        "\"Report a problem\" or \"that was wrong, fix it\" is action report with their words; say filed, never fixed. "
 
 /**
  * The holding line before a slow lookup, and what it may NOT contain (ADR 0065, async-lookups

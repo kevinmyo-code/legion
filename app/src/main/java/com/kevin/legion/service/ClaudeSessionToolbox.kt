@@ -12,6 +12,7 @@ import com.kevin.legion.claude.ClaudeTaskDraft
 import com.kevin.legion.claude.ClaudeWatch
 import com.kevin.legion.claude.ClaudeWatchStore
 import com.kevin.legion.claude.ClaudeWorkflowWording
+import com.kevin.legion.claude.ProblemReport
 import com.kevin.legion.claude.ClaudeWording
 import org.json.JSONArray
 import org.json.JSONObject
@@ -53,7 +54,7 @@ object ClaudeSessionToolbox {
             "task (yes=true only for his yes to its question); assign picks the machine it asked for; " +
             "send_file only on his yes to a found file; open_page opens a task's page on his yes; " +
             "quiet/unquiet stop/restart result announcements; where reads the board; needs, what waits on him; " +
-            "idea adds a backlog idea. " +
+            "idea adds a backlog idea; report files a problem he named (request = his words). " +
             "A sent task is not done."
 
     fun declarations(): JSONArray = JSONArray().put(
@@ -68,7 +69,7 @@ object ClaudeSessionToolbox {
                         null,
                         listOf(
                             "send", "workflow", "check", "answer", "assign", "send_file", "open_page", "quiet",
-                            "unquiet", "where", "needs", "idea",
+                            "unquiet", "where", "needs", "idea", "report",
                         ),
                     ),
                 )
@@ -171,6 +172,7 @@ object ClaudeSessionToolbox {
                 watchFactory(context).setAnnouncements(true)
                 result(true, "Result announcements are on again.")
             }
+            "report" -> reportProblem(c, args, userText, readThrough)
             "where", "needs", "idea" -> BoardActions.dispatch(context, action, args, userText)
             else -> result(
                 false,
@@ -178,6 +180,29 @@ object ClaudeSessionToolbox {
             )
         }
     }
+
+    /**
+     * `report` files a `fix` task from his words. In a read-through turn (mail, web, a camera look)
+     * the model's `request` could be text another person wrote, so only his own utterance
+     * ([userText]) is filed there; with none, nothing is. Outside one the model's `request` is used
+     * because it is his words, tidied. Filed only from a 2xx ([ClaudeSessionController.reportProblem]).
+     */
+    private suspend fun reportProblem(
+        c: ClaudeSessionController,
+        args: JSONObject,
+        userText: String?,
+        readThrough: Boolean,
+    ): JSONObject {
+        val note = if (readThrough) userText.orEmpty() else args.optString("request")
+        if (note.isBlank()) {
+            return result(false, if (readThrough) REPORT_NEEDS_OWN_WORDS else ProblemReport.EMPTY_NOTE)
+        }
+        return sendResult(c.reportProblem(note, ProblemReport.SOURCE_VOICE))
+    }
+
+    internal const val REPORT_NEEDS_OWN_WORDS =
+        "Nothing was reported. I won't file a problem from words I just read out of mail, a page or a " +
+            "camera look. Say what was wrong in your own words and I will."
 
     /** The actions a read-through turn may not take: each starts Claude work on a laptop, or puts
      * words on his backlog (`idea`: text a page or a mail wrote must never become an idea). */

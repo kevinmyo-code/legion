@@ -1,7 +1,9 @@
 package com.kevin.legion.ui.assistant
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -16,7 +18,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.Alignment
@@ -48,6 +53,8 @@ data class TypedChatUi(
     val unreadReply: Boolean = false,
     /** The chat button's tap. The default keeps the pre-panel call sites compiling. */
     val onOpenChat: () -> Unit = {},
+    /** Long-press Report on a reply: its position among the assistant's lines, and an optional note. */
+    val onReport: (replyIndex: Int, note: String) -> Unit = { _, _ -> },
 ) {
     val hasConversation: Boolean get() = entries.isNotEmpty() || pendingReply != null
 }
@@ -70,6 +77,13 @@ internal fun AssistantReplyPanel(
     maxTranscriptHeight: Dp? = PANEL_MAX_HEIGHT,
 ) {
     val scroll = rememberScrollState()
+    var reportAt by remember { mutableStateOf<Int?>(null) }
+    reportAt?.let { index ->
+        ReportProblemDialog(
+            onSend = { note -> chat.onReport(index, note); reportAt = null },
+            onDismiss = { reportAt = null },
+        )
+    }
     val lastKey = chat.entries.lastOrNull()?.id
     LaunchedEffect(lastKey, chat.pendingReply) { scroll.animateScrollTo(scroll.maxValue) }
     Column(
@@ -115,7 +129,11 @@ internal fun AssistantReplyPanel(
                 .verticalScroll(scroll),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            chat.entries.forEach { ChatEntryRow(it, chat.companionName) }
+            var replies = 0
+            chat.entries.forEach { entry ->
+                val replyIndex = if (entry.kind == ChatEntry.Kind.ASSISTANT) replies++ else null
+                ChatEntryRow(entry, chat.companionName, replyIndex?.let { i -> { reportAt = i } })
+            }
             chat.pendingReply?.let { partial ->
                 ChatLine(
                     who = chat.companionName,
@@ -127,8 +145,9 @@ internal fun AssistantReplyPanel(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ChatEntryRow(entry: ChatEntry, companionName: String) {
+private fun ChatEntryRow(entry: ChatEntry, companionName: String, onReport: (() -> Unit)?) {
     when (entry.kind) {
         ChatEntry.Kind.USER -> ChatLine("You", viaTag(entry.via, assistant = false), entry.text)
         ChatEntry.Kind.ASSISTANT -> ChatLine(
@@ -136,6 +155,16 @@ private fun ChatEntryRow(entry: ChatEntry, companionName: String) {
             viaTag(entry.via, assistant = true),
             entry.text,
             entry.note,
+            // Press and hold files a problem report (alfred-builds 01); the voice twin is `report`.
+            if (onReport == null) {
+                Modifier
+            } else {
+                Modifier.combinedClickable(
+                    onClick = {},
+                    onLongClickLabel = "Report a problem",
+                    onLongClick = onReport,
+                )
+            },
         )
         ChatEntry.Kind.TOOL -> Text(
             if (entry.note == null) "Done: ${entry.text}" else "${entry.text}: ${entry.note}",
@@ -163,8 +192,14 @@ private fun viaTag(via: ChatEntry.Via, assistant: Boolean): String? = when (via)
 }
 
 @Composable
-private fun ChatLine(who: String, tag: String?, text: String, note: String? = null) {
-    Column {
+private fun ChatLine(
+    who: String,
+    tag: String?,
+    text: String,
+    note: String? = null,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(who, style = MaterialTheme.typography.labelMedium, color = SoftColors.text2)
             if (tag != null) Text(tag, style = MaterialTheme.typography.labelSmall, color = SoftColors.text3)

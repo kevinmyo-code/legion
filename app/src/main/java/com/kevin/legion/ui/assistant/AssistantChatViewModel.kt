@@ -5,6 +5,8 @@ import android.content.Intent
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.kevin.legion.ai.CompanionProfile
+import com.kevin.legion.claude.ClaudeSessionController
+import com.kevin.legion.claude.ProblemReport
 import com.kevin.legion.service.AriaForegroundService
 import com.kevin.legion.service.AssistantChatStore
 import com.kevin.legion.service.ChatEntry
@@ -37,6 +39,9 @@ data class AssistantChatUiState(
  * (see [AssistantStrip]).
  */
 class AssistantChatViewModel(application: Application) : AndroidViewModel(application) {
+    /** Test seam: production reads the engine-backed controller. */
+    internal var reportController: (Application) -> ClaudeSessionController = ClaudeSessionController::forContext
+
     private val companionName = MutableStateFlow(readCompanionName())
 
     init {
@@ -79,6 +84,19 @@ class AssistantChatViewModel(application: Application) : AndroidViewModel(applic
         )
         // Immediate, rather than waiting on the service round trip.
         AssistantChatStore.clear()
+    }
+
+    /**
+     * The button door of "report a problem": the same controller the `report` voice action calls
+     * (ADR 0035). The outcome lands in the panel as a line in words, filed or not; nothing says
+     * "reported" before the engine took it.
+     */
+    fun reportProblem(replyIndex: Int, note: String) {
+        val app = getApplication<Application>()
+        viewModelScope.launch {
+            val out = reportController(app).reportProblem(note, ProblemReport.SOURCE_BUTTON, replyIndex)
+            AssistantChatStore.update { it.add(ChatEntry.Kind.SYSTEM, out.sentence) }
+        }
     }
 
     private fun readCompanionName(): String =

@@ -136,6 +136,39 @@ class ClaudeSessionController(
     }
 
     /**
+     * Files a problem report as a `fix` task (alfred-builds ticket 01). Both doors call this (ADR 0035).
+     * It goes to the machine that can change code (scope `full`), the one online first, never the
+     * summaries-only work laptop. "Filed" is said only from a 2xx; the rest is [send]'s own sentence
+     * saying what did not happen.
+     */
+    suspend fun reportProblem(
+        note: String,
+        source: String,
+        replyIndex: Int? = null,
+        at: java.time.Instant = java.time.Instant.now(),
+    ): ClaudeSendResult {
+        val words = when {
+            note.isNotBlank() -> note
+            source == ProblemReport.SOURCE_BUTTON -> ProblemReport.BUTTON_NO_NOTE
+            else -> return ClaudeSendResult.NotSent(ProblemReport.EMPTY_NOTE)
+        }
+        val status = backend.status()
+        if (status !is ClaudeOutcome.Ok) return ClaudeSendResult.NotSent(ClaudeWording.failed(status, "report it"))
+        val machines = status.value.machines
+        if (machines.isEmpty()) return ClaudeSendResult.NotSent(ClaudeWording.NO_MACHINE_EVER)
+        val fixers = machines.filter { !it.summariesOnly }
+        val target = (fixers.firstOrNull { it.isOnline } ?: fixers.firstOrNull())?.name
+            ?: return ClaudeSendResult.NotSent(ProblemReport.NO_FIX_MACHINE)
+        val out = send(
+            request = ProblemReport.request(words, source, replyIndex, at),
+            machine = target,
+            origin = ClaudeTaskDraft.ORIGIN_NAMED,
+            emailMe = false,
+        )
+        return if (out is ClaudeSendResult.Sent) out.copy(sentence = ProblemReport.filed(out.sentence)) else out
+    }
+
+    /**
      * Starts a workflow (worker-workflows ticket 06). Both doors call this (ADR 0035):
      * - voice (`action: "workflow"`): [phrase] is Kevin's words; the engine resolves them against the
      *   machines' catalogs (`POST tasks/ {workflow}`) and the words after the name become its params.
