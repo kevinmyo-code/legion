@@ -3,24 +3,28 @@ package com.kevin.legion.data.local
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.util.Log
+import androidx.sqlite.db.SupportSQLiteOpenHelper
+import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
 import java.io.File
 
 /**
  * A local copy of the database files, taken before Room migrates them (hardening ticket 03).
  *
- * [CarDatabase.getDatabase] calls [backUpIfSchemaChanges] before it builds Room, so nothing has
- * the file open. When the stored `user_version` differs from the version this build migrates to,
- * the main file and its `-wal`/`-shm`/`-journal` sidecars are copied into
- * `<timestamp>_v<from>_to_v<to>/`. The newest [KEEP] copies are kept.
+ * [CopyBeforeOpenFactory] wraps Room's open helper, so the copy runs at Room's first open, the
+ * moment before any migration, on the thread making that first query. Room refuses DAO queries on
+ * the main thread, and building the database (`CarDatabase.getDatabase`, its LOCK) does no I/O, so
+ * no UI caller waits on the copy.
+ *
+ * Only an upgrade is copied: a stored `user_version` between 1 and the target, or one that cannot
+ * be read. The main file and its `-wal`/`-shm`/`-journal` sidecars go into
+ * `<timestamp>_v<from>_to_v<to>/`. A pair already kept is never copied again, so a migration that
+ * keeps failing, or starts of an older build (a downgrade, which Room refuses), never push out the
+ * copy a restore needs. The newest [KEEP] copies are kept, each a different pair.
  *
  * The copy lives in `noBackupFilesDir`, so Android's own device backup never carries it: it is a
  * local copy and nothing else. Restore is manual and written up in `docs/architecture/c3-data.md`.
  * It is not offered in the app, because the running build is the one whose migration a restore
  * would be undoing, and opening the copy with it runs that migration again.
- *
- * Every launch that sees a version mismatch copies again, including a downgrade that makes Room
- * throw on each launch. Those repeats copy the same unchanged file, so they cost rotation of the
- * older copies, never the newest data.
  */
 object PreMigrationBackup {
     private const val TAG = "PreMigrationBackup"
@@ -50,20 +54,53 @@ object PreMigrationBackup {
 
     fun rootDir(context: Context): File = File(context.noBackupFilesDir, DIR_NAME)
 
+    /** Room's open helper with the copy in front of its first open. Pass to `openHelperFactory`. */
+    class CopyBeforeOpenFactory(
+        private val context: Context,
+        private val targetVersion: Int,
+        private val delegate: SupportSQLiteOpenHelper.Factory = FrameworkSQLiteOpenHelperFactory(),
+    ) : SupportSQLiteOpenHelper.Factory {
+        override fun create(configuration: SupportSQLiteOpenHelper.Configuration): SupportSQLiteOpenHelper {
+            val inner = delegate.create(configuration)
+            val name = configuration.name ?: return inner
+            return object : SupportSQLiteOpenHelper by inner {
+                private var checked = false
+
+                private fun copyOnce() = synchronized(this) {
+                    if (!checked) {
+                        checked = true
+                        runBeforeOpen(context, context.getDatabasePath(name), targetVersion)
+                    }
+                }
+
+                override val writableDatabase get() = copyOnce().let { inner.writableDatabase }
+                override val readableDatabase get() = copyOnce().let { inner.readableDatabase }
+            }
+        }
+    }
+
     /** Never throws: a failed copy is recorded for the Drive screen and the app opens anyway. */
-    fun runBeforeOpen(context: Context, targetVersion: Int) {
-        val outcome = runCatching {
-            backUpIfSchemaChanges(
-                dbFile = context.getDatabasePath(CarDatabase.DATABASE_FILE_NAME),
-                root = rootDir(context),
-                targetVersion = targetVersion,
-                nowMs = System.currentTimeMillis(),
-            )
-        }.getOrElse { Outcome.Failed(it.message ?: it.javaClass.simpleName) }
+    private fun runBeforeOpen(context: Context, dbFile: File, targetVersion: Int) {
+        val root = rootDir(context)
+        val now = System.currentTimeMillis()
+        val outcome = runCatching { backUpIfSchemaChanges(dbFile, root, targetVersion, now) }
+            .getOrElse { e ->
+                val reason = e.message ?: e.javaClass.simpleName
+                recordFailure(root, now, reason)
+                Outcome.Failed(reason)
+            }
         when (outcome) {
             is Outcome.Taken -> Log.i(TAG, "copied the database to ${outcome.backup.dir.name}")
             is Outcome.Failed -> Log.w(TAG, "pre-migration copy failed: ${outcome.reason}")
             Outcome.NotNeeded -> Unit
+        }
+    }
+
+    /** Writes the failure the Drive screen shows. Best effort: an unwritable root cannot record it. */
+    internal fun recordFailure(root: File, nowMs: Long, reason: String) {
+        runCatching {
+            root.mkdirs()
+            File(root, FAILURE_FILE).writeText("$nowMs\n$reason")
         }
     }
 
@@ -76,8 +113,13 @@ object PreMigrationBackup {
     ): Outcome {
         if (!dbFile.exists()) return Outcome.NotNeeded
         val stored = storedVersion(dbFile)
-        val needed = stored != targetVersion && stored != 0
-        return if (needed) copyFiles(dbFile, root, stored, targetVersion, nowMs, copyFile) else Outcome.NotNeeded
+        val upgrade = stored == null || stored in 1 until targetVersion
+        val alreadyKept = list(root).any { it.fromVersion == stored && it.toVersion == targetVersion }
+        return if (upgrade && !alreadyKept) {
+            copyFiles(dbFile, root, stored, targetVersion, nowMs, copyFile)
+        } else {
+            Outcome.NotNeeded
+        }
     }
 
     private fun copyFiles(
@@ -105,7 +147,7 @@ object PreMigrationBackup {
         }.getOrElse { e ->
             partial.deleteRecursively()
             val reason = e.message ?: e.javaClass.simpleName
-            runCatching { File(root, FAILURE_FILE).writeText("$nowMs\n$reason") }
+            recordFailure(root, nowMs, reason)
             Outcome.Failed(reason)
         }
     }
