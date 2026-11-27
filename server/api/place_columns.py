@@ -50,3 +50,79 @@ def add_place_address(cursor) -> str | None:
         return "places: public.places does not exist here; nothing added."
     cursor.execute(ADDRESS_ADD_SQL)
     return None
+
+
+# The label cap (django-engine ticket 14): `api/places.LABEL_MAX_LENGTH` in
+# SQL, so a writer that is not `PlaceSerializer` is held to it too. The number
+# is written out rather than imported so this migration's SQL cannot change
+# under an applied database; `tests/test_places_label_check.py` fails if the
+# two ever disagree. `length(label)`, not `trim`: the serializer measures the
+# stored string, and so does this.
+#
+# NOT VALID first, VALIDATE only when no row breaks it. Every writer has
+# capped labels at 30 since the column existed (the phone's `normalizeLabel`,
+# then the serializer), so live data is expected clean, but nobody can read
+# prod from here and a CHECK that fails on one stray row fails the deploy.
+# Such a row is not renamed or cut short here: the label is the place's
+# identity (URL key, `events.trigger_place_label`, the geofence requestId),
+# and truncating it could collide with another place's label.
+#
+# A tombstone is exempt (`or deleted_at is not null`). Postgres checks a NOT
+# VALID constraint on every UPDATE, and forgetting a place or renaming it
+# both tombstone the old row, so without the exemption an overlong legacy
+# place could never be forgotten or renamed away. A tombstone is not a name
+# anyone sees; reviving one goes through the serializer, which refuses it.
+#
+# The migration runs once, so it cannot be what validates later:
+# `backup_nightly` calls `converge_place_label_check` every night, which
+# validates once no live row is over 30 and warns with the count until then.
+LABEL_CHECK_NAME = "places_label_length"
+
+LABEL_ADD_SQL = f"""
+alter table public.places drop constraint if exists {LABEL_CHECK_NAME};
+alter table public.places add constraint {LABEL_CHECK_NAME}
+    check (length(label) <= 30 or deleted_at is not null) not valid;
+"""
+
+LABEL_DROP_SQL = f"""
+alter table if exists public.places drop constraint if exists {LABEL_CHECK_NAME};
+"""
+
+
+def add_place_label_check(cursor) -> str | None:
+    """Adds `places_label_length`, validated when every row passes. None
+    when it is on and validated, or why not."""
+    if not _table_exists(cursor, "places"):
+        return "places: public.places does not exist here; nothing added."
+    cursor.execute(LABEL_ADD_SQL)
+    return converge_place_label_check(cursor)
+
+
+def converge_place_label_check(cursor) -> str | None:
+    """Validates `places_label_length` if it is NOT VALID and no live row
+    breaks it. None when it is validated (already, or now) or there is no
+    `places` table to hold it, else why not."""
+    if not _table_exists(cursor, "places"):
+        return None
+    cursor.execute(
+        "select convalidated from pg_constraint "
+        "where conname = %s and conrelid = to_regclass('public.places')",
+        [LABEL_CHECK_NAME],
+    )
+    row = cursor.fetchone()
+    if row is None:
+        return f"places: {LABEL_CHECK_NAME} is not on public.places; nothing validated."
+    if row[0]:
+        return None
+    cursor.execute(
+        "select count(*) from public.places where length(label) > 30 and deleted_at is null"
+    )
+    overlong = cursor.fetchone()[0]
+    if overlong:
+        return (
+            f"places: {overlong} place label(s) over 30 characters, so "
+            f"{LABEL_CHECK_NAME} holds new writes but is not validated. Rename or forget "
+            f"them and the nightly backup job validates it."
+        )
+    cursor.execute(f"alter table public.places validate constraint {LABEL_CHECK_NAME}")
+    return None

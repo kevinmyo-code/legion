@@ -9,9 +9,16 @@ it, and the next night is the retry.
 """
 from __future__ import annotations
 
+import logging
+
+from django.db import connection
+
+from api.place_columns import converge_place_label_check
 from ingest import backup
 from ingest.jobs import JobCommand
 from ingest.models import IngestRun, SessionSource, Source
+
+logger = logging.getLogger(__name__)
 
 
 class Command(JobCommand):
@@ -35,3 +42,11 @@ class Command(JobCommand):
         # runs ONCE, under the operator household, and every other household
         # gets a mirrored row (see ingest/backup.py's module docstring).
         backup.run_nightly(self.job, write=self.stdout.write)
+        # After the dump, so a schema check can never cost a night's backup.
+        # `ingest/migrations/0029` runs once; this is what validates the place
+        # label CHECK later if that run found an overlong label.
+        with connection.cursor() as cursor:
+            unvalidated = converge_place_label_check(cursor)
+        if unvalidated:
+            logger.warning(unvalidated)
+            self.stdout.write(unvalidated)
