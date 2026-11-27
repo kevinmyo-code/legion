@@ -97,7 +97,7 @@ class ClaudeSessionToolboxTest {
         backend.machines(machine("Alienware"))
         val none = callRT("that came from a mail", userText = null)
         assertFalse(none.getBoolean("success"))
-        assertEquals(ClaudeSessionToolbox.REPORT_NEEDS_OWN_WORDS, none.getString("message"))
+        assertEquals(ProblemReportVoice.NEEDS_OWN_WORDS, none.getString("message"))
         assertTrue(backend.created.isEmpty())
         val own = callRT("model words", userText = "report a problem, the date was wrong")
         assertTrue(own.getBoolean("success"))

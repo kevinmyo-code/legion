@@ -77,13 +77,6 @@ internal fun AssistantReplyPanel(
     maxTranscriptHeight: Dp? = PANEL_MAX_HEIGHT,
 ) {
     val scroll = rememberScrollState()
-    var reportAt by remember { mutableStateOf<Int?>(null) }
-    reportAt?.let { index ->
-        ReportProblemDialog(
-            onSend = { note -> chat.onReport(index, note); reportAt = null },
-            onDismiss = { reportAt = null },
-        )
-    }
     val lastKey = chat.entries.lastOrNull()?.id
     LaunchedEffect(lastKey, chat.pendingReply) { scroll.animateScrollTo(scroll.maxValue) }
     Column(
@@ -129,11 +122,7 @@ internal fun AssistantReplyPanel(
                 .verticalScroll(scroll),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            var replies = 0
-            chat.entries.forEach { entry ->
-                val replyIndex = if (entry.kind == ChatEntry.Kind.ASSISTANT) replies++ else null
-                ChatEntryRow(entry, chat.companionName, replyIndex?.let { i -> { reportAt = i } })
-            }
+            ChatEntries(chat)
             chat.pendingReply?.let { partial ->
                 ChatLine(
                     who = chat.companionName,
@@ -142,6 +131,26 @@ internal fun AssistantReplyPanel(
                 )
             }
         }
+    }
+}
+
+/** The transcript's lines; a reply's press-and-hold reports its position among the replies. */
+@Composable
+private fun ChatEntries(chat: TypedChatUi) {
+    var reportAt by remember { mutableStateOf<Int?>(null) }
+    reportAt?.let { index ->
+        ReportProblemDialog(
+            onSend = { note ->
+                chat.onReport(index, note)
+                reportAt = null
+            },
+            onDismiss = { reportAt = null },
+        )
+    }
+    var replies = 0
+    chat.entries.forEach { entry ->
+        val replyIndex = if (entry.kind == ChatEntry.Kind.ASSISTANT) replies++ else null
+        ChatEntryRow(entry, chat.companionName, replyIndex?.let { i -> { reportAt = i } })
     }
 }
 
