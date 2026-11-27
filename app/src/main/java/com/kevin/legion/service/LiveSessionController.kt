@@ -1239,12 +1239,12 @@ class LiveSessionController(context: Context) {
             } else {
                 null
             }
+            s.continueChat(chatThreadForStart())
             s.start(
                 LiveOpenContext.systemInstruction(base, live), LiveToolbox.declarations(),
                 vad = true, voiceName = CompanionProfile.voice(appContext),
                 keepWarm = true, connectionMode = connectionMode,
                 resumeHandle = sessionResumeHandle,
-                chatThread = chatThreadForStart(),
             )
             // The scripted line: at once (AT_TAP, overlapping the connect) or once the socket is up
             // (ON_CONNECT, never promising a socket that then fails). See [CUE_TIMING].
@@ -1371,12 +1371,12 @@ class LiveSessionController(context: Context) {
                 return@launch
             }
             val base = brain.buildBaseInstruction()
+            s.continueChat(chatThreadForStart())
             s.start(
                 base, LiveToolbox.declarations(),
                 vad = true, voiceName = CompanionProfile.voice(appContext),
                 keepWarm = true, connectionMode = connectionMode,
                 resumeHandle = sessionResumeHandle,
-                chatThread = chatThreadForStart(),
                 // Ticket 05 (`.scratch/wake-word/issues/05-mic-ownership.md`): this window is
                 // the RING_LISTENING claimant, not an ordinary LIVE_TURN - it can be preempted
                 // by a real conversation the user starts, and it should never itself refuse to
@@ -1427,12 +1427,12 @@ class LiveSessionController(context: Context) {
                 return@launch
             }
             val base = brain.buildBaseInstruction()
+            s.continueChat(chatThreadForStart())
             s.start(
                 base, LiveToolbox.declarations(),
                 vad = false, voiceName = CompanionProfile.voice(appContext),
                 keepWarm = false, connectionMode = connectionMode,
                 resumeHandle = sessionResumeHandle,
-                chatThread = chatThreadForStart(),
             )
         }
     }

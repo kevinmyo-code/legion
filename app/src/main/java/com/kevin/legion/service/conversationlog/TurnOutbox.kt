@@ -141,26 +141,51 @@ class TurnOutbox(
     private suspend fun drainLocked(): Outcome {
         var sent = 0
         var refused = 0
-        while (true) {
+        var stop: Outcome? = null
+        while (stop == null) {
             val next = synchronized(lock) { read().firstOrNull() }
-            if (next == null) {
-                return if (sent + refused == 0) Outcome.NothingToSend else Outcome.Sent(sent, refused)
-            }
-            if (!transport.isUsable()) return Outcome.NoEngine
-            val result = transport.post(next)
-            val kind = RetryRules.classify(result)
-            when {
-                kind == null -> {
-                    removeFirst(next)
-                    sent++
+            stop = when {
+                next == null -> if (sent + refused == 0) Outcome.NothingToSend else Outcome.Sent(sent, refused)
+                !transport.isUsable() -> Outcome.NoEngine
+                else -> when (val attempt = attempt(next)) {
+                    Attempt.Saved -> {
+                        sent++
+                        null
+                    }
+                    Attempt.Refused -> {
+                        refused++
+                        null
+                    }
+                    is Attempt.Stop -> Outcome.Kept(sent, pending(), attempt.reason)
                 }
-                isMissingRoute(result, kind) -> return Outcome.Kept(sent, pending(), OLD_ENGINE_REASON)
-                kind in DROPPED -> {
-                    removeFirst(next)
-                    refused++
-                }
-                else -> return Outcome.Kept(sent, pending(), RetryRules.sentence(kind, result))
             }
+        }
+        return stop
+    }
+
+    private sealed interface Attempt {
+        data object Saved : Attempt
+
+        data object Refused : Attempt
+
+        data class Stop(val reason: String) : Attempt
+    }
+
+    /** Posts the oldest queued [line]; a saved or dropped turn leaves the queue, a kept one stops the drain. */
+    private suspend fun attempt(line: String): Attempt {
+        val result = transport.post(line)
+        val kind = RetryRules.classify(result)
+        return when {
+            kind == null -> {
+                removeFirst(line)
+                Attempt.Saved
+            }
+            isMissingRoute(result, kind) -> Attempt.Stop(OLD_ENGINE_REASON)
+            kind in DROPPED -> {
+                removeFirst(line)
+                Attempt.Refused
+            }
+            else -> Attempt.Stop(RetryRules.sentence(kind, result))
         }
     }
 

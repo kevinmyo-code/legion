@@ -19,7 +19,10 @@ import org.junit.rules.TemporaryFolder
 class TurnSaverTest {
     @get:Rule val tmp = TemporaryFolder()
 
-    private class Fake(var usable: Boolean = true, var script: () -> PostResult = { PostResult.Ok(201) }) : TurnTransport {
+    private class Fake(
+        var usable: Boolean = true,
+        var script: () -> PostResult = { PostResult.Ok(201) },
+    ) : TurnTransport {
         override fun isUsable() = usable
 
         override suspend fun post(json: String): PostResult = script()

@@ -230,12 +230,14 @@ class LiveAuditTurnTest {
     @Test
     fun `a resumed socket keeps the chat id and counts on`() {
         val thread = ChatThread("chat-resumed")
-        audit.sessionStart("model", emptySet(), chat = thread)
+        audit.continueChat(thread)
+        audit.sessionStart("model", emptySet())
         say("any mail from the school", "Checking.")
         audit.sessionEnd("network drop")
         val resumed = LiveAudit(sink = {}, onSession = {}, onTurn = { turns += it }, now = { clock++ })
             .apply { enabled = true }
-        resumed.sessionStart("model", emptySet(), chat = thread)
+        resumed.continueChat(thread)
+        resumed.sessionStart("model", emptySet())
         resumed.user("what else did it say", final = true)
         resumed.turnComplete()
         assertEquals(listOf("chat-resumed", "chat-resumed"), turns.map { it.chatId })
@@ -254,8 +256,12 @@ class LiveAuditTurnTest {
 
     @Test
     fun `a folded call carries the tool it resolved to and a plain call carries none`() {
-        val folded = LiveAudit(sink = {}, isReadThroughTool = { it == "ask_mail" }, onSession = {}, onTurn = { turns += it })
-            .apply { enabled = true }
+        val folded = LiveAudit(
+            sink = {},
+            isReadThroughTool = { it == "ask_mail" },
+            onSession = {},
+            onTurn = { turns += it },
+        ).apply { enabled = true }
         folded.sessionStart("model", emptySet())
         folded.user("anything from the school", final = true)
         folded.toolCall("f1", "look_up", async = false, argsJson = """{"domain":"ask_mail","question":"newest"}""")

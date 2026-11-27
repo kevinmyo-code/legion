@@ -51,6 +51,7 @@ internal class LiveAudit(
     // (truncated) text, so a whole reply is kept; read-through content is dropped here as it is there.
     // The chat id and the turn counter live in [thread], which a resumed socket shares.
     private var thread: ChatThread? = null
+    private var pendingChat: ChatThread? = null
     private val turnUser = ArrayList<String>()
     private val turnAssistant = StringBuilder()
     private val turnTools = ArrayList<SavedToolCall>()
@@ -74,18 +75,16 @@ internal class LiveAudit(
      * (alfred-ota ticket 02), so every conversation record says which wording it ran. Null leaves
      * the token off, as before the pack existed.
      *
-     * [chat] is the conversation this socket belongs to. A socket resumed from the last one's handle
-     * passes the same [ChatThread], so its turns keep the chat id (and count on) and the engine's
-     * read-through taint, which is per chat, still covers the model context the resume restores
-     * (ticket 450). Null starts a fresh chat.
+     * The chat is the one [continueChat] left for this socket, else a fresh one (ticket 450).
      */
     @Synchronized
-    fun sessionStart(model: String, asyncSet: Set<String>, pack: String? = null, chat: ChatThread? = null) {
+    fun sessionStart(model: String, asyncSet: Set<String>, pack: String? = null) {
         toolNames.clear()
         readThroughIds.clear()
         resolvedActions.clear()
         resetTurn()
-        startChat(chat)
+        startChat(pendingChat)
+        pendingChat = null
         val async = asyncSet.sorted().joinToString(",").ifEmpty { "none" }
         val packToken = pack?.let { " pack=${token(it)}" }.orEmpty()
         emit("session_start model=${token(model)} async_set=$async$packToken")
@@ -225,6 +224,17 @@ internal class LiveAudit(
         flushTurn()
         emit("turn_complete")
         resetTurn()
+    }
+
+    /**
+     * The next [sessionStart] belongs to [chat] instead of a fresh chat. A socket resumed from the last
+     * one's handle calls this with the same [ChatThread], so its turns keep the chat id (and count on)
+     * and the engine's read-through taint, which is per chat, still covers the model context the
+     * resume restores (ticket 450).
+     */
+    @Synchronized
+    fun continueChat(chat: ChatThread) {
+        pendingChat = chat
     }
 
     /**

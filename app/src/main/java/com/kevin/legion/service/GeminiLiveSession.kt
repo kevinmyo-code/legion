@@ -392,6 +392,9 @@ class GeminiLiveSession(
 
     @VisibleForTesting internal var auditSink: (String) -> Unit = { LiveLatency.audit(LiveAudit.TAG, it) }
 
+    /** Before [start]: this socket resumes [thread]'s chat, so its saved turns keep the chat id (ticket 450). */
+    fun continueChat(thread: ChatThread) = audit.continueChat(thread)
+
     // Monotonic generation counter, bumped by [flushAudio] every time queued model
     // audio is discarded (barge-in tap in [beginConversation], the server's own
     // "interrupted" signal, [checkForCrisis], and now the short-capture retry in
@@ -720,9 +723,6 @@ class GeminiLiveSession(
         // caller that passes RING_LISTENING, for the few-second window opened while a call
         // rings. See [micClaimant]'s own doc.
         micClaimant: MicArbiter.Claimant = MicArbiter.Claimant.LIVE_TURN,
-        // Ticket 450: the conversation this socket belongs to; a resume passes the thread of the
-        // socket it resumes, so the saved turns keep one chat id. Null is a fresh chat.
-        chatThread: ChatThread? = null,
     ) {
         if (!running.compareAndSet(false, true)) return
         latency.start(System.currentTimeMillis())
@@ -751,7 +751,6 @@ class GeminiLiveSession(
             MODEL.removePrefix("models/"),
             nonBlockingTools,
             com.kevin.legion.ai.AriaBrain.get(appContext).basePackToken,
-            chatThread,
         )
         turnConfig = TurnConfig.SERVER_VAD
         turnTaker = null
