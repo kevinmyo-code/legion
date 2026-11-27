@@ -2972,6 +2972,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/device-logs/conversations/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["api_device_logs_conversations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/events": {
         parameters: {
             query?: never;
@@ -8068,6 +8084,30 @@ export interface components {
             readonly deleted_at: string | null;
             origin_guid: string;
         };
+        ConversationBatch: {
+            /** Format: uuid */
+            id: string;
+            /**
+             * Format: date-time
+             * @description The engine's clock.
+             */
+            received_at: string;
+            /** @description The header line `manage.py device_logs` prints. */
+            header: string;
+            /** @description The rendered timeline. Empty when unreadable. */
+            lines: string[];
+            /** @description The phone's process run; blank elsewhere. */
+            run_id: string;
+            readable: boolean;
+            /** @description Why it is unreadable, in words. */
+            problem: string | null;
+        };
+        ConversationDevice: {
+            device_label: string;
+            /** @description Conversation batches held for this device. */
+            total: number;
+            batches: components["schemas"]["ConversationBatch"][];
+        };
         ConversationUpload: {
             /**
              * Format: uuid
@@ -8076,6 +8116,9 @@ export interface components {
             conversation_id: string;
             /** @description A JSON array of events: `{kind, at_ms, text?, typed?, reason?, id?, name?, metric?, ms?}`, kind one of user, assistant, interrupted, turn_complete, tool_cancelled, mic_open, mic_closed, session_end, latency. A form field, so that `navigator.sendBeacon` can send it with `csrfmiddlewaretoken` beside it while the page closes. Send only events not yet stored; a repeat is stored once. */
             events: string;
+        };
+        Conversations: {
+            devices: components["schemas"]["ConversationDevice"][];
         };
         ConvertError: {
             /**
@@ -19936,6 +19979,40 @@ export interface operations {
             };
             /** @description Stored, but unreadable. */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_device_logs_conversations: {
+        parameters: {
+            query?: {
+                /** @description Keep only this device label. */
+                device?: string;
+                /** @description Batches per device (default 10, max 30). */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Newest first, per device. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Conversations"];
+                };
+            };
+            /** @description A filter was malformed. */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };

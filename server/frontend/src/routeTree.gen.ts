@@ -36,6 +36,7 @@ import { Route as AuthedSettingsIndexRouteImport } from './routes/_authed.settin
 import { Route as AuthedSettingsAccountRouteImport } from './routes/_authed.settings.account'
 import { Route as AuthedSettingsAppearanceRouteImport } from './routes/_authed.settings.appearance'
 import { Route as AuthedSettingsBankRouteImport } from './routes/_authed.settings.bank'
+import { Route as AuthedSettingsConversationsRouteImport } from './routes/_authed.settings.conversations'
 import { Route as AuthedSettingsDevicesRouteImport } from './routes/_authed.settings.devices'
 import { Route as AuthedSettingsHouseholdRouteImport } from './routes/_authed.settings.household'
 import { Route as AuthedSettingsNotificationsRouteImport } from './routes/_authed.settings.notifications'
@@ -177,6 +178,12 @@ const AuthedSettingsBankRoute = AuthedSettingsBankRouteImport.update({
   path: '/bank',
   getParentRoute: () => AuthedSettingsRoute,
 } as any)
+const AuthedSettingsConversationsRoute =
+  AuthedSettingsConversationsRouteImport.update({
+    id: '/conversations',
+    path: '/conversations',
+    getParentRoute: () => AuthedSettingsRoute,
+  } as any)
 const AuthedSettingsDevicesRoute = AuthedSettingsDevicesRouteImport.update({
   id: '/devices',
   path: '/devices',
@@ -227,6 +234,7 @@ export interface FileRoutesByFullPath {
   '/settings/account': typeof AuthedSettingsAccountRoute
   '/settings/appearance': typeof AuthedSettingsAppearanceRoute
   '/settings/bank': typeof AuthedSettingsBankRoute
+  '/settings/conversations': typeof AuthedSettingsConversationsRoute
   '/settings/devices': typeof AuthedSettingsDevicesRoute
   '/settings/household': typeof AuthedSettingsHouseholdRoute
   '/settings/notifications': typeof AuthedSettingsNotificationsRoute
@@ -259,6 +267,7 @@ export interface FileRoutesByTo {
   '/settings/account': typeof AuthedSettingsAccountRoute
   '/settings/appearance': typeof AuthedSettingsAppearanceRoute
   '/settings/bank': typeof AuthedSettingsBankRoute
+  '/settings/conversations': typeof AuthedSettingsConversationsRoute
   '/settings/devices': typeof AuthedSettingsDevicesRoute
   '/settings/household': typeof AuthedSettingsHouseholdRoute
   '/settings/notifications': typeof AuthedSettingsNotificationsRoute
@@ -294,6 +303,7 @@ export interface FileRoutesById {
   '/_authed/settings/account': typeof AuthedSettingsAccountRoute
   '/_authed/settings/appearance': typeof AuthedSettingsAppearanceRoute
   '/_authed/settings/bank': typeof AuthedSettingsBankRoute
+  '/_authed/settings/conversations': typeof AuthedSettingsConversationsRoute
   '/_authed/settings/devices': typeof AuthedSettingsDevicesRoute
   '/_authed/settings/household': typeof AuthedSettingsHouseholdRoute
   '/_authed/settings/notifications': typeof AuthedSettingsNotificationsRoute
@@ -329,6 +339,7 @@ export interface FileRouteTypes {
     | '/settings/account'
     | '/settings/appearance'
     | '/settings/bank'
+    | '/settings/conversations'
     | '/settings/devices'
     | '/settings/household'
     | '/settings/notifications'
@@ -361,6 +372,7 @@ export interface FileRouteTypes {
     | '/settings/account'
     | '/settings/appearance'
     | '/settings/bank'
+    | '/settings/conversations'
     | '/settings/devices'
     | '/settings/household'
     | '/settings/notifications'
@@ -395,6 +407,7 @@ export interface FileRouteTypes {
     | '/_authed/settings/account'
     | '/_authed/settings/appearance'
     | '/_authed/settings/bank'
+    | '/_authed/settings/conversations'
     | '/_authed/settings/devices'
     | '/_authed/settings/household'
     | '/_authed/settings/notifications'
@@ -605,6 +618,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthedSettingsBankRouteImport
       parentRoute: typeof AuthedSettingsRoute
     }
+    '/_authed/settings/conversations': {
+      id: '/_authed/settings/conversations'
+      path: '/conversations'
+      fullPath: '/settings/conversations'
+      preLoaderRoute: typeof AuthedSettingsConversationsRouteImport
+      parentRoute: typeof AuthedSettingsRoute
+    }
     '/_authed/settings/devices': {
       id: '/_authed/settings/devices'
       path: '/devices'
@@ -647,6 +667,7 @@ interface AuthedSettingsRouteChildren {
   AuthedSettingsAccountRoute: typeof AuthedSettingsAccountRoute
   AuthedSettingsAppearanceRoute: typeof AuthedSettingsAppearanceRoute
   AuthedSettingsBankRoute: typeof AuthedSettingsBankRoute
+  AuthedSettingsConversationsRoute: typeof AuthedSettingsConversationsRoute
   AuthedSettingsDevicesRoute: typeof AuthedSettingsDevicesRoute
   AuthedSettingsHouseholdRoute: typeof AuthedSettingsHouseholdRoute
   AuthedSettingsNotificationsRoute: typeof AuthedSettingsNotificationsRoute
@@ -657,6 +678,7 @@ const AuthedSettingsRouteChildren: AuthedSettingsRouteChildren = {
   AuthedSettingsAccountRoute: AuthedSettingsAccountRoute,
   AuthedSettingsAppearanceRoute: AuthedSettingsAppearanceRoute,
   AuthedSettingsBankRoute: AuthedSettingsBankRoute,
+  AuthedSettingsConversationsRoute: AuthedSettingsConversationsRoute,
   AuthedSettingsDevicesRoute: AuthedSettingsDevicesRoute,
   AuthedSettingsHouseholdRoute: AuthedSettingsHouseholdRoute,
   AuthedSettingsNotificationsRoute: AuthedSettingsNotificationsRoute,

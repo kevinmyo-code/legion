@@ -7094,6 +7094,38 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: Stored, but unreadable.
+  /api/device-logs/conversations/:
+    get:
+      operationId: api_device_logs_conversations
+      parameters:
+      - in: query
+        name: device
+        schema:
+          type: string
+        description: Keep only this device label.
+      - in: query
+        name: limit
+        schema:
+          type: integer
+        description: Batches per device (default 10, max 30).
+      tags:
+      - device-logs
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Conversations'
+          description: Newest first, per device.
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: A filter was malformed.
   /api/events:
     get:
       operationId: api_events_list
@@ -18838,6 +18870,57 @@ components:
       - text
       - updated_at
       - vehicle_id
+    ConversationBatch:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        received_at:
+          type: string
+          format: date-time
+          description: The engine's clock.
+        header:
+          type: string
+          description: The header line `manage.py device_logs` prints.
+        lines:
+          type: array
+          items:
+            type: string
+          description: The rendered timeline. Empty when unreadable.
+        run_id:
+          type: string
+          description: The phone's process run; blank elsewhere.
+        readable:
+          type: boolean
+        problem:
+          type: string
+          nullable: true
+          description: Why it is unreadable, in words.
+      required:
+      - header
+      - id
+      - lines
+      - problem
+      - readable
+      - received_at
+      - run_id
+    ConversationDevice:
+      type: object
+      properties:
+        device_label:
+          type: string
+        total:
+          type: integer
+          description: Conversation batches held for this device.
+        batches:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConversationBatch'
+      required:
+      - batches
+      - device_label
+      - total
     ConversationUpload:
       type: object
       properties:
@@ -18856,6 +18939,15 @@ components:
       required:
       - conversation_id
       - events
+    Conversations:
+      type: object
+      properties:
+        devices:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConversationDevice'
+      required:
+      - devices
     ConvertError:
       type: object
       properties:

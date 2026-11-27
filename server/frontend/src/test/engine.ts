@@ -14,6 +14,7 @@ import {
 } from './engine-demo'
 import { defaultGames, handleGames, type GamesState } from './engine-games'
 import { defaultProcedures, handleProcedures, type ProceduresState } from './engine-procedures'
+import { handleConversations, defaultConversations, type ConversationsState } from './engine-conversations'
 import { handleSettings, defaultSettings, type SettingsState } from './engine-settings'
 import { handleTables, type Row } from './engine-tables'
 
@@ -80,6 +81,8 @@ export interface EngineOptions {
   members?: Member[]
   /** Join, signup and settings state (`engine-settings.ts`); defaults when absent. */
   settings?: Partial<SettingsState>
+  /** `GET /api/device-logs/conversations/` (`engine-conversations.ts`); none when absent. */
+  conversations?: Partial<ConversationsState>
   /** The web assistant's state (`engine-assistant.ts`); a Dorothy and no failures when absent. */
   assistant?: Partial<AssistantState>
   /** Tetris races (`engine-games.ts`); nobody to race and no matches when absent. */
@@ -124,6 +127,8 @@ export interface Engine {
   members: Member[]
   /** What the join, signup and settings routes answer from (`engine-settings.ts`). */
   settings: SettingsState
+  /** What the conversations route answers from (`engine-conversations.ts`). */
+  conversations: ConversationsState
   /** The web assistant's answers (`engine-assistant.ts`): companion, mint, tools. */
   assistant: AssistantState
   /** Tetris races (`engine-games.ts`). */
@@ -388,6 +393,7 @@ export function createEngine(options: EngineOptions = {}): Engine {
     spend: options.spend ?? emptySpend(),
     members: options.members ?? [],
     settings: { ...defaultSettings(), ...options.settings },
+    conversations: { ...defaultConversations(), ...options.conversations },
     assistant: { ...defaultAssistant(), ...options.assistant },
     games: { ...defaultGames(), ...options.games },
     books: { ...defaultBooks(), ...options.books },
@@ -758,6 +764,9 @@ export function createEngine(options: EngineOptions = {}): Engine {
 
       const assistantReply = handleAssistant(engine, method, pathname, body)
       if (assistantReply) return assistantReply
+
+      const conversationsReply = handleConversations(engine, method, pathname, search)
+      if (conversationsReply) return conversationsReply
 
       const settingsReply = handleSettings(engine, ME.user_id, ME.email, method, pathname, body)
       if (settingsReply) return settingsReply
