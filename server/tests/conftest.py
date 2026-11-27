@@ -316,6 +316,11 @@ def django_db_setup(django_db_setup, django_db_blocker):
 
             skipped = add_place_address(cursor)
             assert skipped is None, skipped
+            # `ingest/migrations/0029` (the place label cap), the same way.
+            from api.place_columns import add_place_label_check
+
+            skipped = add_place_label_check(cursor)
+            assert skipped is None, skipped
             # `ingest/migrations/0018` (event suggestions), the same way.
             from api.event_columns import add_event_suggestions
 

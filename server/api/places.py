@@ -43,11 +43,12 @@ from legacy.models.places import Place
 LATITUDE_BOUNDS = (-90, 90)
 LONGITUDE_BOUNDS = (-180, 180)
 
-# The one rule on this table that Postgres does NOT hold, and the reason it
-# is here (django-engine ticket 14). It came from
+# The label cap (django-engine ticket 14). It came from
 # `location/PlaceController.normalizeLabel`, which capped a label at 30
-# characters and nowhere else did: `places.label` has no length CHECK, so a
-# 200-character label was accepted by this API until 2026-09-07.
+# characters and nowhere else did, so a 200-character label was accepted by
+# this API until 2026-09-07. Postgres holds it too now: `places_label_length`
+# (`api/place_columns.py`, `ingest/migrations/0029`). This check comes first
+# so the refusal is a sentence, not a constraint name.
 #
 # **What the cap is FOR, since a bare number looks arbitrary.** A place label
 # is minted by voice - "call this the fancy walmart" - and a misheard
@@ -74,8 +75,8 @@ def validate_place_label(value: str) -> str:
         raise blank_error("label")
     if len(value) > LABEL_MAX_LENGTH:
         # Measured on the value AS IT WOULD BE STORED, not on a trimmed
-        # copy: nothing here strips, so the stored string is what a
-        # future CHECK would be applied to, and a check that measures
+        # copy: nothing here strips, so the stored string is what
+        # `places_label_length` is applied to, and a check that measures
         # something other than what it stores is not the same check.
         raise serializers.ValidationError(
             f"Nothing was saved. That place name is {len(value)} characters long and a "
