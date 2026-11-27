@@ -3,12 +3,12 @@ map: hardening
 ticket: "05"
 title: "Three ledger gate defects found while grounding backend-erp ticket 03"
 type: task
-status: open
-status-detail: ""
+status: resolved
+status-detail: "2026-11-26: defects 2 and 3 obsolete, their code deleted in ad2d68f55; successors traced and tested on the server"
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # Three ledger gate defects found while grounding backend-erp ticket 03
@@ -87,12 +87,50 @@ nothing for its siblings.
 and close this as obsolete once that lands. **If the retirement slips, the gap is real** - do not
 close it on the strength of a plan.
 
+## Resolution (2026-11-26)
+
+Closed with evidence, no code change. Nothing listed here survives on `dev` (read at 047bc175d).
+Tags: `traced` = read in the code this session, `tested` = a named test, green in the CI run cited.
+
+- **Defect 1: done, and its 2026-08-25 evidence is now historical.** The five Kotlin rule 7 tests
+  it counted (`IngestPipelineEngineCommitTest`, `IngestPipelineProvisionalSupersedeTest`) were
+  deleted with the phone pipeline in ad2d68f55. Rule 7's live coverage today is on the server,
+  through the one commit path (`ingest.views.commit_statement`):
+  `test_ingest_api.py::test_a_gated_statement_supersedes_provisional_rows_in_its_window` (it also
+  pins the ordering case: the verified SALARY line matching the provisional row survives, count 3),
+  `test_bofa_activity_ingest.py::test_a_gated_statement_deletes_the_provisional_rows_in_its_window`,
+  `::test_a_provisional_line_a_verified_statement_already_lists_is_never_written`,
+  `test_ingest_api.py::test_a_provisional_payload_is_refused_in_words_and_writes_nothing`,
+  `test_ledger_category_overrides.py::test_a_superseded_provisional_row_takes_its_override_with_it`.
+  (`tested`)
+- **Defect 2: obsolete. Its code is gone.** ad2d68f55 cut `IngestPipeline` to a `sha256` helper;
+  `commit`, the out-of-transaction schema read and the narrow catch no longer exist, so the test
+  the verification asks for cannot be written. The rule worth keeping holds in the successor,
+  `server/ingest/statements.py::process` (`traced`): `commit_statement` runs in one
+  `transaction.atomic()`, so any exception rolls back every row, the file row included; an
+  exception it does not name escapes `process` before `run.watermark` is assigned, `run_job`
+  records the run `failed` with a null watermark, and `previous_watermark` skips null ones, so the
+  file is listed again next run rather than stranded. No test pins the unnamed-exception path.
+- **Defect 3: obsolete twice over.** `BofaStatementParser.kt` was deleted in ad2d68f55, and Bank of
+  America was then retired from the server's Drive watcher in 026aa1f16 (`BOFA_RETIRED`, ADR 0057).
+  The structural answer to "rule 6 has to be re-applied per extractor" now exists: every gated
+  statement goes through `ingest/gate.py::check_statement`, whose zero-line refusal runs before any
+  anchor (`gate.py:214`). Pinned by the two zero-line ledger cases in
+  `app/src/test/resources/gate-corpus.json` (run by `test_gate_corpus.py` against the pure gate
+  and over HTTP) and `test_ingest_api.py::test_an_empty_extraction_quarantines_even_when_every_figure_is_zero`.
+  The one path that runs no gate refuses an empty file itself:
+  `test_bofa_activity_ingest.py::test_an_empty_provisional_file_is_quarantined`. (`tested`)
+
+CI on 9c9ab27e8 (no change to `server/ingest`, `server/tests` or `app/src` between it and
+047bc175d): server.yml run 45926634643, 6377 tests, 0 failures, 0 errors, 86 skipped; android.yml
+run 45926634714, 9037 tests, 0 failures, 0 errors, 58 skipped. Totals from JUnit XML.
+
 ## Verification
 
 - [x] Defect 1 (done 2026-08-25): the four cases either call `IngestPipeline.commit` or are gone, and rule 7's live
-      coverage is stated in the ticket that closes this.
-- [ ] Defect 2: a test proves the escape before any fix is written; after the fix, a corrupted
-      field def leaves the file at `IngestState.NEW`.
-- [ ] Defect 3: either a guard plus a zero-movement fixture that quarantines, or a written note
-      that the parser is retired and by which commit.
-- [ ] `testDebugUnitTest` green.
+      coverage is stated in the ticket that closes this. Restated above for today's tree.
+- [x] Defect 2: impossible as written. The code it names was deleted in ad2d68f55; the successor
+      path is traced above.
+- [x] Defect 3: the parser is retired, deleted in ad2d68f55; BofA leaves the server watcher in
+      026aa1f16. Rule 6 is pinned at the shared gate.
+- [x] `testDebugUnitTest` green: android.yml run 45926634714 on 9c9ab27e8.
