@@ -32,7 +32,8 @@ class ProblemReportTest {
         assertEquals("Alienware", draft.machine)
         assertEquals(ClaudeTaskDraft.ORIGIN_NAMED, draft.origin)
         assertEquals(null, draft.deliver)
-        assertTrue(draft.request.startsWith("Problem report (a fix request, free text; the engine kind is ask). Reported by voice at $NOW"))
+        val header = "Problem report (a fix request, free text; the engine kind is ask)."
+        assertTrue(draft.request.startsWith("$header Reported by voice at $NOW"))
         assertTrue(draft.request.endsWith("Kevin's words: it said Tuesday, it is Wednesday"))
     }
 
