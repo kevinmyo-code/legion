@@ -18,7 +18,9 @@ import com.kevin.legion.backend.engine.EngineFailure
 import com.kevin.legion.backend.engine.EngineHttp
 import com.kevin.legion.backend.engine.EngineHttpException
 import com.kevin.legion.games.SafRomTree
+import com.kevin.legion.games.TreeChild
 import java.net.URI
+import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -99,6 +101,7 @@ private object NoEngineLibrary : LibraryBackend {
 class SafLibraryFolder(context: Context, private val folders: BooksFolderStore = BooksFolderStore(context)) :
     LibraryFolder {
     private val app = context.applicationContext
+    private val writer = PartFileWriter(SafDocOps(app, folders))
 
     override fun canWrite(): Boolean {
         val tree = folders.treeUri() ?: return false
@@ -107,28 +110,77 @@ class SafLibraryFolder(context: Context, private val folders: BooksFolderStore =
         }
     }
 
-    override fun has(fileName: String): Boolean {
-        val tree = folders.treeUri() ?: return false
-        val root = SafRomTree.rootDocumentId(tree)
-        return SafRomTree(app.contentResolver, tree).children(root).any { it.name == fileName }
+    override fun status(fileName: String, size: Long, sha256: String) = writer.status(fileName, size, sha256)
+
+    override fun write(fileName: String, bytes: ByteArray) = writer.write(fileName, bytes)
+
+    override fun sweepPartials() = writer.sweep()
+}
+
+/** [DocOps] over the root of the granted tree. Every call fails soft: false or null, never a throw. */
+private class SafDocOps(context: Context, private val folders: BooksFolderStore) : DocOps {
+    private val resolver = context.applicationContext.contentResolver
+
+    private fun tree(): Uri? = folders.treeUri()
+
+    private fun children(): List<TreeChild> {
+        val tree = tree() ?: return emptyList()
+        return runCatching { SafRomTree(resolver, tree).children(SafRomTree.rootDocumentId(tree)) }
+            .getOrDefault(emptyList())
     }
 
-    override fun write(fileName: String, bytes: ByteArray): Boolean {
-        val tree = folders.treeUri() ?: return false
-        val parent: Uri = SafRomTree.documentUri(tree, SafRomTree.rootDocumentId(tree))
-        val created = runCatching {
-            DocumentsContract.createDocument(app.contentResolver, parent, EPUB_MIME, fileName)
-        }.getOrNull() ?: return false
-        val wrote = runCatching {
-            app.contentResolver.openOutputStream(created, "w")?.use { it.write(bytes) } != null
-        }.getOrDefault(false)
-        // A half-written book is worse than none: take the empty shell back out.
-        if (!wrote) runCatching { DocumentsContract.deleteDocument(app.contentResolver, created) }
-        return wrote
+    private fun uriOf(name: String): Uri? {
+        val tree = tree() ?: return null
+        return children().firstOrNull { it.name == name }?.let { SafRomTree.documentUri(tree, it.documentId) }
+    }
+
+    override fun names(): List<String> = children().map { it.name }
+
+    override fun create(name: String): Boolean {
+        val tree = tree() ?: return false
+        val parent = SafRomTree.documentUri(tree, SafRomTree.rootDocumentId(tree))
+        // Not the EPUB type: a provider may append an extension for a known type, and ".part" must stay as named.
+        return runCatching { DocumentsContract.createDocument(resolver, parent, RAW_MIME, name) }
+            .getOrNull() != null
+    }
+
+    override fun write(name: String, bytes: ByteArray): Boolean {
+        val uri = uriOf(name) ?: return false
+        return runCatching { resolver.openOutputStream(uri, "wt")?.use { it.write(bytes) } != null }
+            .getOrDefault(false)
+    }
+
+    override fun digest(name: String): DocDigest? {
+        val uri = uriOf(name) ?: return null
+        return runCatching { resolver.openInputStream(uri)?.use(::digestOf) }.getOrNull()
+    }
+
+    private fun digestOf(input: java.io.InputStream): DocDigest {
+        val sha = MessageDigest.getInstance("SHA-256")
+        val buffer = ByteArray(BUFFER)
+        var size = 0L
+        var n = input.read(buffer)
+        while (n >= 0) {
+            sha.update(buffer, 0, n)
+            size += n
+            n = input.read(buffer)
+        }
+        return DocDigest(size, sha.digest().joinToString("") { "%02x".format(it) })
+    }
+
+    override fun rename(from: String, to: String): Boolean {
+        val uri = uriOf(from) ?: return false
+        return runCatching { DocumentsContract.renameDocument(resolver, uri, to) }.getOrNull() != null
+    }
+
+    override fun delete(name: String): Boolean {
+        val uri = uriOf(name) ?: return false
+        return runCatching { DocumentsContract.deleteDocument(resolver, uri) }.getOrDefault(false)
     }
 
     private companion object {
-        const val EPUB_MIME = "application/epub+zip"
+        const val RAW_MIME = "application/octet-stream"
+        const val BUFFER = 64 * 1024
     }
 }
 
@@ -181,7 +233,9 @@ class BookLibraryWorker(context: Context, params: WorkerParameters) : CoroutineW
 
 /**
  * Downloads wait for an unmetered network (Wi-Fi): a book is megabytes. Enqueued when the Books sheet
- * opens, and once a day in the background, both under one name so they never run twice at once.
+ * opens (one-time) and once a day in the background (periodic). They are two work names, so they CAN be
+ * scheduled together; [LibrarySyncRunner] holds a process-wide lock, so they never run at the same time
+ * and the second finds the first one's books already fetched.
  */
 object BookLibraryScheduler {
     const val WORK_NAME = "books-library-download"
