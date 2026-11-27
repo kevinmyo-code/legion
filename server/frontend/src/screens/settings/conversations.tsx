@@ -41,9 +41,18 @@ function stamp(iso: string): string {
  * empty one are different things to say (CLAUDE.md section 1), so a failed
  * read never renders as "no conversations".
  */
-/** 401 and 403 are the engine answering "no", which is not the engine being down. */
-function refused(error: unknown): boolean {
-  return error instanceof ConversationsError && (error.status === 401 || error.status === 403)
+/** What went wrong, in words. Only a thrown non-answer (no response at all) or a gateway error
+ * is "could not reach the engine"; the engine answering "no" or "error" is not that. */
+function failure(error: unknown): string {
+  const tail = 'so this is not the real list of conversations. Nothing was changed.'
+  if (error instanceof ConversationsError) {
+    if (error.detail.includes('demo visit')) return 'This page is not available in the demo.'
+    if (error.status === 401 || error.status === 403) {
+      return `The engine refused this request (you may need to sign in again), ${tail}`
+    }
+    if (error.status === 500) return `The engine had an error, ${tail}`
+  }
+  return `Could not reach the engine, ${tail}`
 }
 
 export function ConversationsScreen() {
@@ -60,9 +69,7 @@ export function ConversationsScreen() {
     >
       {conversations.isError && (
         <ErrorSentence>
-          {refused(conversations.error)
-            ? 'The engine refused this request (you may need to sign in again), so this is not the real list of conversations. Nothing was changed.'
-            : 'Could not reach the engine, so this is not the real list of conversations. Nothing was changed.'}
+          {failure(conversations.error)}
         </ErrorSentence>
       )}
       {conversations.isPending && <Skeleton className="h-32 rounded-card" />}

@@ -12,6 +12,8 @@ export interface ConversationsState {
   devices: ConversationDevice[]
   /** The route alone answers this status (503: down, 403: refused); the rest of the app works. */
   failing: number | false
+  /** The `detail` the failing answer carries. */
+  failingDetail?: string
 }
 
 export function defaultConversations(): ConversationsState {
@@ -40,7 +42,10 @@ export function handleConversations(
 ): Reply | undefined {
   if (method !== 'GET' || pathname !== '/api/device-logs/conversations/') return undefined
   if (host.conversations.failing) {
-    return { status: host.conversations.failing, body: { detail: 'The engine cannot answer right now.' } }
+    return {
+      status: host.conversations.failing,
+      body: { detail: host.conversations.failingDetail ?? 'The engine cannot answer right now.' },
+    }
   }
   const limit = Math.max(1, Math.min(Number(search.get('limit') ?? 10), 30))
   return {

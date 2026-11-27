@@ -12,9 +12,10 @@ Kept:
 - the person's own lines (`user`, his transcribed or typed words);
 - tool NAMES, whether each succeeded and how long it took, rebuilt from a short list of fields so
   `args=`, `response=` and any other free text are gone; a name that is not a plain identifier
-  drops the line;
+  drops the line (one with no name at all too);
 - session starts and ends (the close reason only when it is a plain identifier, since the apps
-  write exception and server sentences there), turn ends, and the timing and barge-in lines.
+  write exception and server sentences there), turn ends, and the timing and barge-in lines
+  (rebuilt from identifier and number pairs only).
 
 Dropped: every assistant line, every tool argument and reply, and any event not listed here (a
 nudge, a procedure run, a cancel line: their free text is not known to be clean).
@@ -43,8 +44,19 @@ KEPT_FIELDS = {
 # A field that is a name or a number, never prose: a value that is not one is dropped (and a tool
 # line without a usable name is dropped whole). `text` is the person's own words, the one exception.
 _IDENTIFIER = re.compile(r"[A-Za-z0-9_.:+-]{1,64}")
+# `async_set` is a comma list of tool names, `pack` is `<version>/<source>`.
+_ASYNC_SET = re.compile(r"[A-Za-z0-9_.:+-]{1,64}(,[A-Za-z0-9_.:+-]{1,64}){0,63}")
+_PACK = re.compile(r"[A-Za-z0-9_.:+-]{1,64}(/[A-Za-z0-9_.:+-]{1,64})?")
+_VALIDATORS = {"async_set": _ASYNC_SET, "pack": _PACK}
 _REQUIRED = {"tool_call": "name", "tool_result": "name"}
-KEPT_TAGS = frozenset({"LIVE_LATENCY", voice_audit.BARGE})
+# The numeric lines (timings, barge-in), rebuilt like the rest: an optional leading word from this
+# list, then `key=value` pairs whose values are identifiers or numbers. Anything else is dropped.
+LATENCY_TAG = "LIVE_LATENCY"
+_HEADS = {
+    LATENCY_TAG: frozenset({"subagent_fallback"}),
+    voice_audit.BARGE: frozenset({"fire", "verdict", "reply_end"}),
+}
+_PAIR = re.compile(r"(\w+)=(\S+)")
 # The writer's exact line format, ASCII only, from the first character of a real line. The parser's
 # own pattern lets any Unicode space (a no-break space, U+2028) stand in for a separator.
 _LINE = re.compile(
@@ -57,19 +69,34 @@ _SEPARATORS = re.compile("[\r\x0b\x0c\x1c\x1d\x1e\x85\u2028\u2029]")
 
 
 def _rebuilt(event: str, fields: dict) -> str | None:
-    """The kept fields of one audit line, or None when the line has no usable name."""
+    """The kept fields of one audit line, or None when the line is dropped: a tool line with no
+    usable name, or a session start whose async list is present but holds nothing readable."""
     parts = [event]
+    required = _REQUIRED.get(event)
     for key in KEPT_FIELDS[event]:
         value = fields.get(key)
-        if not isinstance(value, str):
-            continue
-        if key == "text":
+        if isinstance(value, str) and key == "text":
             parts.append(f"text={json.dumps(value, ensure_ascii=False)}")
-        elif _IDENTIFIER.fullmatch(value):
+        elif isinstance(value, str) and _VALIDATORS.get(key, _IDENTIFIER).fullmatch(value):
             parts.append(f"{key}={value}")
-        elif _REQUIRED.get(event) == key:
+        elif key == required:
             return None
+        elif key == "async_set" and isinstance(value, str):
+            # The header would print a missing list as "none", which is a claim; say it is withheld.
+            parts.append("async_set=withheld")
     return " ".join(parts)
+
+
+def _numbers(tag: str, msg: str) -> str | None:
+    """A timing or barge-in line rebuilt from its leading word and identifier or number pairs."""
+    words = msg.split()
+    head = words[0] if words and "=" not in words[0] else None
+    if head is not None and head not in _HEADS[tag]:
+        return None
+    pairs = [f"{k}={v}" for k, v in _PAIR.findall(msg) if _IDENTIFIER.fullmatch(v)]
+    if not pairs or (head is None and tag == voice_audit.BARGE and not msg.startswith("armed=")):
+        return None
+    return " ".join(([head] if head else []) + pairs)
 
 
 def own_lines(text: str) -> str:
@@ -95,7 +122,11 @@ def own_lines(text: str) -> str:
             msg = _rebuilt(event, fields)
             if msg is None:
                 continue
-        elif tag not in KEPT_TAGS:
+        elif tag in _HEADS:
+            msg = _numbers(tag, msg)
+            if msg is None:
+                continue
+        else:
             continue
         out.append(f"{date} {time} 0 0 I {tag}: {_SEPARATORS.sub(' ', msg)}")
     return "\n".join(out)

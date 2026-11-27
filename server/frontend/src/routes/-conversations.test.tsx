@@ -109,6 +109,26 @@ describe('the conversations page', () => {
     expect(screen.queryByText(/Could not reach the engine/)).not.toBeInTheDocument()
   })
 
+  test('an engine error is worded as an error, and a demo visit is told the page is not available', async () => {
+    const broken = engineWith([PHONE])
+    broken.conversations.failing = 500
+    renderApp('/settings/conversations', broken, 'workbench')
+    expect(
+      await screen.findByText(
+        'The engine had an error, so this is not the real list of conversations. Nothing was changed.',
+      ),
+    ).toBeInTheDocument()
+  })
+
+  test('a recruiter demo visit is told the page is not available in the demo', async () => {
+    const demo = engineWith([PHONE])
+    demo.conversations.failing = 403
+    demo.conversations.failingDetail =
+      "Nothing was read or written. This is a recruiter's demo visit, and device logs come from a member's phone."
+    renderApp('/settings/conversations', demo, 'workbench')
+    expect(await screen.findByText('This page is not available in the demo.')).toBeInTheDocument()
+  })
+
   test('the engine being down is its own sentence, never the empty one', async () => {
     const engine = engineWith([PHONE])
     engine.conversations.failing = 503

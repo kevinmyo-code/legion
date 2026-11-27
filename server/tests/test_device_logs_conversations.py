@@ -431,3 +431,65 @@ def test_a_device_the_cap_left_without_batches_still_reports_its_total(token_a, 
     by_label = {d["device_label"]: d for d in token_a.get(URL).data["devices"]}
     assert len(by_label["Phone"]["batches"]) == 2 and by_label["Phone"]["total"] == 3
     assert by_label["web"]["batches"] == [] and by_label["web"]["total"] == 1
+
+
+def test_the_session_header_keeps_a_list_of_async_tools_and_never_claims_none(token_a):
+    _upload(
+        token_a,
+        _lines(
+            (
+                "20:00.000",
+                2,
+                "session_start model=gemini-3.8-live async_set=ask_body,ask_fleet pack=12/remote",
+            ),
+            ("20:30.000", 2, 'session_start model=m async_set="a b,ask free text"'),
+        ),
+    )
+    joined = _joined(token_a)
+    assert "== session 1  model=gemini-3.8-live  async=ask_body,ask_fleet  pack=12/remote" in joined
+    # a list with nothing readable is "withheld", not the false "none"
+    assert "== session 2  model=m  async=withheld" in joined
+
+
+def test_a_tool_line_with_no_name_is_dropped(token_a):
+    _upload(
+        token_a,
+        _lines(
+            ("20:00.000", 2, "session_start model=invented"),
+            ("20:01.000", 2, "tool_call id=t1 async=false args={}"),
+            ("20:02.000", 2, "tool_result id=t1 success=true ms=5"),
+        ),
+    )
+    joined = _joined(token_a)
+    assert "None" not in joined and "TOOL" not in joined
+
+
+def test_timing_and_barge_lines_are_numbers_and_names_only(token_a):
+    rows = [
+        "10-28 16:20:00.000 0 2 I LIVE_AUDIT: session_start model=invented",
+        "10-28 16:20:01.000 0 2 I LIVE_LATENCY: cold_start_ms=900",
+        "10-28 16:20:02.000 0 2 I LIVE_LATENCY: subagent_fallback tool=ask_x from=a to=b "
+        "reason=timeout and a stray sentence about Dana",
+        "10-28 16:20:03.000 0 2 I LIVE_LATENCY: some free text about the mail from Dana",
+        "10-28 16:20:04.000 0 2 I LIVE_BARGE_IN: hello free text from somewhere",
+        "10-28 16:20:05.000 0 2 I LIVE_BARGE_IN: armed=true",
+        "10-28 16:20:06.000 0 2 I LIVE_BARGE_IN: fire level=3 threshold=2 prob=0.9 sustain_ms=500",
+    ]
+    _upload(token_a, "\n".join(rows))
+    joined = _joined(token_a)
+    assert "free text" not in joined and "Dana" not in joined and "stray" not in joined
+    assert "cold start 900ms" in joined and "barge armed" in joined
+    assert "BARGE-IN fire level=3" in joined and "fallback ask_x a -> b" in joined
+
+
+def test_a_lone_surrogate_fails_only_its_batch(token_a):
+    """A stored `\\ud800` escape decodes to a lone surrogate that the JSON response cannot encode;
+    it must name that batch, not 500 the page."""
+    bad = _upload(token_a, _lines(("20:00.000", 1, 'user final=true text="hi \\ud800 there"')))
+    good = _upload(token_a)
+    response = token_a.get(URL)
+    assert response.status_code == 200
+    by_id = {str(b["id"]): b for b in response.data["devices"][0]["batches"]}
+    assert by_id[good]["readable"] is True
+    assert by_id[bad]["readable"] is False
+    assert by_id[bad]["problem"] == "could not be read: UnicodeEncodeError"

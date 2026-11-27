@@ -87,6 +87,9 @@ def _batch(row) -> dict:
         # not start another (a forged `USER:` line), so every one becomes a space.
         lines = [_BREAKS.sub(" ", line) for line in render(own_lines(batch_text(row)))]
         lines = lines or [NOTHING_OF_YOURS]
+        # The response is UTF-8 JSON: a lone surrogate from a stored escape would fail the whole
+        # page there, so it fails this batch here.
+        "".join(lines).encode("utf-8")
         header = batch_header(row, len(lines))
         problem = None
     except ValueError as exc:  # already in words (bad gzip, too large)

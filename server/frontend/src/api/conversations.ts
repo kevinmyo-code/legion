@@ -18,10 +18,12 @@ export type ConversationBatch = components['schemas']['ConversationBatch']
 /** A non-2xx answer, with its status so the screen can tell a refusal from an outage. */
 export class ConversationsError extends Error {
   readonly status: number
+  readonly detail: string
 
-  constructor(status: number) {
+  constructor(status: number, detail: string) {
     super(`GET /api/device-logs/conversations/ answered ${status}`)
     this.status = status
+    this.detail = detail
   }
 }
 
@@ -32,11 +34,11 @@ export function useConversations(limit: number) {
   return useQuery({
     queryKey: ['device-logs', 'conversations', limit],
     queryFn: async () => {
-      const { data, response } = await api.GET('/api/device-logs/conversations/', {
+      const { data, error, response } = await api.GET('/api/device-logs/conversations/', {
         params: { query: { limit } },
       })
       if (!response.ok || !data) {
-        throw new ConversationsError(response.status)
+        throw new ConversationsError(response.status, (error as { detail?: string } | undefined)?.detail ?? '')
       }
       return data.devices
     },
