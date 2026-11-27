@@ -109,6 +109,7 @@ fun AssistantSettingsScreen(
     var keepConversationLog by remember { mutableStateOf(VoiceTurnSettings.keepConversationLog(context)) }
     var conversationSending by remember { mutableStateOf(false) }
     var conversationResult by remember { mutableStateOf(ConversationLog.lastResult) }
+    val turnSaveStatus by ConversationLog.turnSaveStatus.collectAsState()
     var editedPlaybookCount by remember { mutableStateOf(0) }
     var testTurns by remember { mutableStateOf(TestTurnSettings.allowed(context)) }
 
@@ -337,6 +338,7 @@ fun AssistantSettingsScreen(
                     logcatMirror = auditLog,
                     sending = conversationSending,
                     lastResult = conversationResult,
+                    turnSaveStatus = turnSaveStatus,
                     onKeepAndSend = { on ->
                         VoiceTurnSettings.setKeepConversationLog(context, on)
                         ConversationLog.applySettings(context)

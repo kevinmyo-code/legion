@@ -399,6 +399,9 @@ class ConversationTurn(models.Model):
     tool_calls = models.JSONField(default=list, blank=True)
     # True when read-through content was dropped from this turn (CLAUDE.md section 7).
     withheld = models.BooleanField(default=False)
+    # True when the engine cut a too-long reply or dropped tool calls past the cap, so a reader
+    # knows the row is not the whole turn.
+    trimmed = models.BooleanField(default=False)
     # The device's clock, untrusted. `received_at` is the database's and orders retention.
     spoken_at = models.DateTimeField(null=True, blank=True)
     received_at = models.DateTimeField(db_default=Now())

@@ -8,8 +8,12 @@ import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import org.json.JSONObject
 
-/** One tool a turn ran. [result] is one clipped line, null when the tool read third-party content. */
-data class SavedToolCall(val name: String, val ok: Boolean, val result: String?)
+/**
+ * One tool a turn ran. [result] is one clipped line, null when the tool read third-party content.
+ * [action] is the tool a folded wrapper (`look_up`, `day`) resolved to, so the engine can check a
+ * mail or sitrep call by its own list and not only by the phone's flag.
+ */
+data class SavedToolCall(val name: String, val ok: Boolean, val result: String?, val action: String? = null)
 
 /**
  * One finished conversation turn, as the engine's `conversation_turns` row holds it (memory chain
@@ -38,6 +42,7 @@ data class SavedTurn(
             JSONArray(
                 toolCalls.map {
                     JSONObject().put("name", it.name).put("ok", it.ok).put("result", it.result ?: JSONObject.NULL)
+                        .apply { it.action?.let { action -> put("action", action) } }
                 },
             ),
         )
@@ -73,7 +78,10 @@ class EngineTurnTransport(private val http: EngineHttp) : TurnTransport {
  * because the reply was lost is stored once.
  *
  * A turn the engine refuses (a 4xx other than sign-in) is dropped and counted: it would be refused
- * every time, and keeping it would block the turns behind it.
+ * every time, and keeping it would block the turns behind it. An engine that does not have the route
+ * yet (404, or an old "unknown" answer) keeps the queue instead: the turns wait for the update, and
+ * the cap trims the oldest if it never comes. A 409 (another member holds that chat id and turn
+ * number) drops only that turn.
  */
 class TurnOutbox(
     private val file: File,
@@ -93,20 +101,26 @@ class TurnOutbox(
         }
 
         data class Sent(val turns: Int, val refused: Int) : Outcome {
-            override val sentence = (if (turns == 1) "Saved 1 chat turn" else "Saved $turns chat turns") +
-                (if (refused > 0) ", $refused refused by the engine and dropped." else ".")
+            override val sentence = "Saved ${turnsWord(turns)}." +
+                (if (refused > 0) " ${turnsWord(refused)} refused by the engine and not saved." else "")
         }
 
         /** The engine could not take [left] turns now; they are kept and tried again. */
         data class Kept(val sent: Int, val left: Int, val reason: String) : Outcome {
             override val sentence =
-                (if (sent > 0) "Saved $sent chat turns, then stopped: " else "Chat turns not saved: ") +
-                    "$reason $left kept on this phone; they will be tried again."
+                (if (sent > 0) "Saved ${turnsWord(sent)}, then stopped. " else "") +
+                    "${turnsWord(left).replaceFirstChar { it.uppercase() }} not saved yet: $reason " +
+                    "They are kept on this phone and will be tried again."
         }
     }
 
     private val lock = Any()
     private val drainLock = Mutex()
+
+    /** Throws away everything queued (the log was switched off: nothing may be sent later). */
+    fun clear() {
+        synchronized(lock) { if (file.exists()) write(emptyList()) }
+    }
 
     /** Appends [turn]; trims the oldest past [max]. Safe from any thread. */
     fun enqueue(turn: SavedTurn) {
@@ -127,26 +141,27 @@ class TurnOutbox(
     private suspend fun drainLocked(): Outcome {
         var sent = 0
         var refused = 0
-        var stop: Outcome? = null
-        while (stop == null) {
+        while (true) {
             val next = synchronized(lock) { read().firstOrNull() }
-            stop = when {
-                next == null -> if (sent + refused == 0) Outcome.NothingToSend else Outcome.Sent(sent, refused)
-                !transport.isUsable() -> Outcome.NoEngine
-                else -> {
-                    val result = transport.post(next)
-                    val kind = RetryRules.classify(result)
-                    if (kind == null || kind in DROPPED) {
-                        removeFirst(next)
-                        if (kind == null) sent++ else refused++
-                        null
-                    } else {
-                        Outcome.Kept(sent, pending(), RetryRules.sentence(kind, result))
-                    }
+            if (next == null) {
+                return if (sent + refused == 0) Outcome.NothingToSend else Outcome.Sent(sent, refused)
+            }
+            if (!transport.isUsable()) return Outcome.NoEngine
+            val result = transport.post(next)
+            val kind = RetryRules.classify(result)
+            when {
+                kind == null -> {
+                    removeFirst(next)
+                    sent++
                 }
+                isMissingRoute(result, kind) -> return Outcome.Kept(sent, pending(), OLD_ENGINE_REASON)
+                kind in DROPPED -> {
+                    removeFirst(next)
+                    refused++
+                }
+                else -> return Outcome.Kept(sent, pending(), RetryRules.sentence(kind, result))
             }
         }
-        return checkNotNull(stop)
     }
 
     private fun removeFirst(line: String) = synchronized(lock) {
@@ -171,6 +186,15 @@ class TurnOutbox(
         const val MAX_QUEUED = 500
 
         // The engine said no to this turn itself; it would say it again, and keeping it would block the rest.
-        private val DROPPED = setOf(FailureKind.REFUSED, FailureKind.TOO_LARGE, FailureKind.OLD_ENGINE)
+        private val DROPPED = setOf(FailureKind.REFUSED, FailureKind.TOO_LARGE)
+
+        private const val NOT_FOUND = 404
+        private const val OLD_ENGINE_REASON = "the engine does not take saved turns yet and needs updating."
+
+        /** An engine without the route answers 404 (or the old "unknown" 400): its turns are kept, not dropped. */
+        private fun isMissingRoute(result: PostResult, kind: FailureKind) =
+            kind == FailureKind.OLD_ENGINE || (result is PostResult.Http && result.status == NOT_FOUND)
+
+        fun turnsWord(n: Int) = if (n == 1) "1 chat turn" else "$n chat turns"
     }
 }

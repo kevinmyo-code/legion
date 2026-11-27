@@ -38,6 +38,12 @@ import blast_radius as br  # noqa: E402
         ("server/tests/test_ledger_categorize.py", "RED"),
         ("server/tests/test_spend_api.py", "RED"),
         ("server/tests/test_tenant_isolation.py", "RED"),
+        # ticket 450: the per-turn conversation save and its read-through guards
+        ("server/member_memory/turns.py", "RED"),
+        ("server/tests/test_conversation_turns.py", "RED"),
+        ("app/src/test/java/com/kevin/legion/service/LiveAuditTurnTest.kt", "RED"),
+        ("app/src/test/java/com/kevin/legion/service/conversationlog/TurnOutboxTest.kt", "RED"),
+        ("app/src/test/java/com/kevin/legion/service/conversationlog/TurnSaverTest.kt", "RED"),
         ("server/tests/test_visibility.py", "RED"),
         ("app/src/test/java/com/kevin/legion/service/ReadThroughWriteGuardTest.kt", "RED"),
         ("app/src/test/java/com/kevin/legion/service/cascade/RewakeCarryTest.kt", "RED"),

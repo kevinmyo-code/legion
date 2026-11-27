@@ -87,6 +87,7 @@ RED_RULES: list[tuple[str, tuple[str, ...]]] = [
     )),
     ("read-through and crisis guards", (
         "server/assistant/read_through.py",
+        "server/member_memory/turns.py",  # the per-turn save's own read-through gate (ticket 450)
         "server/agents/legion/relay.py",
         "server/agents/voice/crisis.py",
         "*/readthroughwriteguard.kt", "*/crisisdetector.kt", "*/emailsendgate.kt",
@@ -155,6 +156,10 @@ RED_TEST_NAMES = (
     # its only safety argument is ADR 0090's read-through write taint: weakening its tests weakens
     # that guard (raised by the blind review of feat/rewake-carry, 2026-11-24).
     "*rewakecarry*",
+    # The per-turn conversation save (ticket 450): its tests ARE the read-through, tenancy and
+    # recruiter guards of that path, and LiveAudit is where the phone redacts before it saves (raised
+    # by the blind review of up/turn-save-450, 2026-11-26).
+    "*conversation_turns*", "*liveaudit*", "*turnoutbox*", "*turnsaver*",
 )
 
 YELLOW_RULES: list[tuple[str, tuple[str, ...]]] = [

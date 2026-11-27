@@ -164,4 +164,73 @@ class TurnOutboxTest {
         box.drain()
         assertEquals("line one\nline two", fake.sent.single().getString("user_text"))
     }
+
+    @Test fun `an engine without the route keeps the queue and says it needs updating`() = runBlocking {
+        val fake = Fake().apply { script = { PostResult.Http(404, "Not Found") } }
+        val box = box(fake)
+        (0..1).forEach { box.enqueue(turn(it)) }
+        val outcome = box.drain()
+        assertEquals(2, box.pending())
+        assertTrue(outcome is TurnOutbox.Outcome.Kept)
+        assertTrue(outcome.sentence, outcome.sentence.contains("needs updating"))
+    }
+
+    @Test fun `the kept turns go once the engine has the route`() = runBlocking {
+        val fake = Fake().apply { script = { PostResult.Http(404, "Not Found") } }
+        val box = box(fake)
+        (0..2).forEach { box.enqueue(turn(it)) }
+        box.drain()
+        fake.script = { PostResult.Ok(201) }
+        box.drain()
+        assertEquals(listOf(0, 1, 2), seqs(fake))
+    }
+
+    @Test fun `a conflict on one turn drops only that turn and the rest still go`() = runBlocking {
+        val fake = Fake().apply {
+            script = { if (it.getInt("seq") == 0) PostResult.Http(409, "Nothing was saved.") else PostResult.Ok(201) }
+        }
+        val box = box(fake)
+        (0..2).forEach { box.enqueue(turn(it)) }
+        val outcome = box.drain()
+        assertEquals(listOf(1, 2), seqs(fake))
+        assertEquals(0, box.pending())
+        assertEquals(TurnOutbox.Outcome.Sent(2, 1), outcome)
+    }
+
+    @Test fun `a folded call's action goes on the wire and a plain call has none`() = runBlocking {
+        val fake = Fake()
+        val box = box(fake)
+        box.enqueue(
+            turn(0).copy(
+                toolCalls = listOf(
+                    SavedToolCall("look_up", ok = true, result = null, action = "ask_mail"),
+                    SavedToolCall("start_timer", ok = true, result = "ok"),
+                ),
+            ),
+        )
+        box.drain()
+        val calls = fake.sent.single().getJSONArray("tool_calls")
+        assertEquals("ask_mail", calls.getJSONObject(0).getString("action"))
+        assertFalse(calls.getJSONObject(1).has("action"))
+    }
+
+    @Test fun `clear throws the queue away`() = runBlocking {
+        val fake = Fake()
+        val box = box(fake)
+        (0..2).forEach { box.enqueue(turn(it)) }
+        box.clear()
+        assertEquals(0, box.pending())
+        assertTrue(box.drain() is TurnOutbox.Outcome.NothingToSend)
+    }
+
+    @Test fun `offline reads as a count and a reason in plain words`() = runBlocking {
+        val fake = Fake().apply { script = { PostResult.Unreachable("no route") } }
+        val box = box(fake)
+        (0..1).forEach { box.enqueue(turn(it)) }
+        assertEquals(
+            "2 chat turns not saved yet: the engine could not be reached (no route). " +
+                "They are kept on this phone and will be tried again.",
+            box.drain().sentence,
+        )
+    }
 }

@@ -25,16 +25,15 @@ internal class TypedChatAudit(
     private val ids = AtomicLong()
     private val started = ConcurrentHashMap<String, Long>()
 
-    // Typed chat has no session to mark a conversation's edges, so a gap does (memory chain ticket
-    // 450): a message sent this long after the last one begins a new chat for the saved turns.
-    @Volatile private var lastUserAt: Long? = null
+    /**
+     * "New conversation": the next typed message is turn 0 of a new chat (memory chain ticket 450).
+     * That is the one moment typed history is cleared, so a chat id lasts exactly as long as the
+     * model's typed context does, and the engine's per-chat read-through taint covers all of it.
+     */
+    fun newConversation() = audit.startChat()
 
     fun user(text: String) {
         audit.enabled = enabled()
-        val at = now()
-        val last = lastUserAt
-        if (last == null || at - last > NEW_CHAT_GAP_MS) audit.startChat()
-        lastUserAt = at
         audit.user(text, final = true, typed = true)
     }
 
@@ -64,9 +63,5 @@ internal class TypedChatAudit(
     fun turn(record: TypedTurnRecord) {
         if (record.replyText.isNotBlank()) audit.assistant(record.replyText, readThrough = record.readThrough)
         audit.turnComplete()
-    }
-
-    private companion object {
-        const val NEW_CHAT_GAP_MS = 30 * 60_000L
     }
 }

@@ -15,7 +15,7 @@ from django.core.management.base import BaseCommand
 from ingest.jobs import run_for_households
 from ingest.models import Outcome, Source
 from ingest.statements import gemini_key
-from member_memory import consolidate
+from member_memory import consolidate, turns
 
 
 class Command(BaseCommand):
@@ -33,6 +33,9 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, limit, **options):
+        # Retention for the per-turn record (ticket 450) runs first and server-wide, so it holds
+        # with no key, no household and no member still chatting.
+        self.stdout.write(f"conversation turns past retention removed: {turns.prune_all()}")
         key = gemini_key() or ""
         limit = max(1, limit)
 

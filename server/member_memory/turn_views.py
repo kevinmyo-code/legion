@@ -27,6 +27,13 @@ TAGS = ["member-memories"]
 class ToolCallSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=turns.NAME_MAX_CHARS)
     ok = serializers.BooleanField(default=True)
+    action = serializers.CharField(
+        required=False,
+        allow_null=True,
+        allow_blank=True,
+        max_length=turns.NAME_MAX_CHARS,
+        help_text="The tool a folded wrapper (`look_up`, `day`) resolved to; checked as a name.",
+    )
     result = serializers.CharField(
         required=False,
         allow_null=True,
@@ -40,12 +47,14 @@ class TurnWriteSerializer(serializers.Serializer):
     seq = serializers.IntegerField(min_value=0, help_text="The turn's place in the chat, from 0.")
     surface = serializers.ChoiceField(choices=SURFACES, default=SURFACE_VOICE)
     user_text = serializers.CharField(
-        required=False, allow_null=True, allow_blank=True, max_length=turns.TEXT_MAX_CHARS
+        required=False, allow_null=True, allow_blank=True, max_length=turns.TEXT_ACCEPT_CHARS
     )
     assistant_text = serializers.CharField(
-        required=False, allow_null=True, allow_blank=True, max_length=turns.TEXT_MAX_CHARS
+        required=False, allow_null=True, allow_blank=True, max_length=turns.TEXT_ACCEPT_CHARS
     )
-    tool_calls = ToolCallSerializer(many=True, required=False, max_length=turns.MAX_TOOL_CALLS)
+    tool_calls = ToolCallSerializer(
+        many=True, required=False, max_length=turns.MAX_TOOL_CALLS_ACCEPTED
+    )
     read_through = serializers.BooleanField(
         required=False,
         default=False,
@@ -59,6 +68,9 @@ class TurnSavedSerializer(serializers.Serializer):
     withheld = serializers.BooleanField(
         help_text="True when read-through content was dropped from the stored turn."
     )
+    trimmed = serializers.BooleanField(
+        help_text="True when a too-long reply was cut or tool calls past the cap were dropped."
+    )
 
 
 class TurnSerializer(serializers.Serializer):
@@ -70,6 +82,7 @@ class TurnSerializer(serializers.Serializer):
     assistant_text = serializers.CharField(allow_null=True)
     tool_calls = ToolCallSerializer(many=True)
     withheld = serializers.BooleanField()
+    trimmed = serializers.BooleanField()
     spoken_at = serializers.DateTimeField(allow_null=True)
     received_at = serializers.DateTimeField()
 
@@ -99,6 +112,7 @@ def _as_dict(row: ConversationTurn) -> dict:
         "assistant_text": row.assistant_text,
         "tool_calls": row.tool_calls,
         "withheld": row.withheld,
+        "trimmed": row.trimmed,
         "spoken_at": row.spoken_at,
         "received_at": row.received_at,
     }
@@ -161,11 +175,14 @@ class TurnListCreateView(APIView):
             201: TurnSavedSerializer,
             400: DetailSerializer,
             403: DetailSerializer,
+            409: DetailSerializer,
         },
         description=(
             "Saves one finished turn for the caller. Idempotent on `(chat_id, seq)`: a repeat is "
-            "a 200 with the stored row, unchanged. Read-through content (mail, the web) is "
-            "withheld by the engine whatever the sender says."
+            "a 200 with the stored row, unchanged; the same pair from another member is a 409. "
+            "Read-through content (mail, the web) is withheld by the engine from what it is told "
+            "(the flag, a redaction mark, a tool name or the `action` a folded call resolved to). "
+            "Text past 4000 characters and tool calls past 20 are trimmed and the row marked."
         ),
     )
     def post(self, request):
@@ -181,8 +198,17 @@ class TurnListCreateView(APIView):
             return Response(
                 {"detail": f"Nothing was saved. {errors}"}, status=status.HTTP_400_BAD_REQUEST
             )
-        row, created = turns.save(request, serializer.validated_data)
+        try:
+            row, created = turns.save(request, serializer.validated_data)
+        except turns.TurnConflict:
+            return Response(
+                {
+                    "detail": "Nothing was saved. That chat id and turn number "
+                    "already belong to someone else."
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
         return Response(
-            {"id": row.id, "withheld": row.withheld},
+            {"id": row.id, "withheld": row.withheld, "trimmed": row.trimmed},
             status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
         )

@@ -264,6 +264,15 @@ class LiveSessionController(context: Context) {
     // deliberately ended chat doesn't silently bleed into whatever the driver starts next.
     private var sessionResumeHandle: String? = null
 
+    // The conversation the held resume handle belongs to (memory chain ticket 450). A socket that
+    // resumes from [sessionResumeHandle] restores the model's context, mail it read included, so its
+    // saved turns must keep the chat id the engine's read-through taint is keyed on. Kept exactly
+    // while a handle is, so every place that drops the handle also ends the chat.
+    private var chatThread: ChatThread? = null
+
+    private fun chatThreadForStart(): ChatThread =
+        chatThreadAfterStart(chatThread, resuming = sessionResumeHandle != null).also { chatThread = it }
+
     // One automatic cold retry per tap (2026-10-02, "no connection, tap to retry, then it says
     // listening"). [retriedColdConnectThisTap] is reset by [onTap] and set the moment the Closed
     // branch re-drives the connect, so a second failure in the same tap falls through to the
@@ -586,6 +595,7 @@ class LiveSessionController(context: Context) {
     fun newConversation() {
         AssistantChatStore.clear()
         TypedTurnRecorder.newConversation()
+        typedAudit.newConversation()
         // He asked to start fresh, so the last conversation is not carried into the next one
         // ([RewakeCarry]). Unconditional, like the two clears above: the close below reaches no
         // session when none is open, which is exactly when the holder has something in it.
@@ -1234,6 +1244,7 @@ class LiveSessionController(context: Context) {
                 vad = true, voiceName = CompanionProfile.voice(appContext),
                 keepWarm = true, connectionMode = connectionMode,
                 resumeHandle = sessionResumeHandle,
+                chatThread = chatThreadForStart(),
             )
             // The scripted line: at once (AT_TAP, overlapping the connect) or once the socket is up
             // (ON_CONNECT, never promising a socket that then fails). See [CUE_TIMING].
@@ -1365,6 +1376,7 @@ class LiveSessionController(context: Context) {
                 vad = true, voiceName = CompanionProfile.voice(appContext),
                 keepWarm = true, connectionMode = connectionMode,
                 resumeHandle = sessionResumeHandle,
+                chatThread = chatThreadForStart(),
                 // Ticket 05 (`.scratch/wake-word/issues/05-mic-ownership.md`): this window is
                 // the RING_LISTENING claimant, not an ordinary LIVE_TURN - it can be preempted
                 // by a real conversation the user starts, and it should never itself refuse to
@@ -1420,6 +1432,7 @@ class LiveSessionController(context: Context) {
                 vad = false, voiceName = CompanionProfile.voice(appContext),
                 keepWarm = false, connectionMode = connectionMode,
                 resumeHandle = sessionResumeHandle,
+                chatThread = chatThreadForStart(),
             )
         }
     }
@@ -2341,6 +2354,10 @@ class LiveSessionController(context: Context) {
             reason !in NORMAL_CLOSE_REASONS &&
             reason != "key rejected" && reason != "quota" &&
             !reason.contains("microphone", ignoreCase = true)
+
+        /** The chat a starting socket belongs to: the held one when it resumes, else a fresh one (ticket 450). */
+        internal fun chatThreadAfterStart(kept: ChatThread?, resuming: Boolean): ChatThread =
+            if (resuming && kept != null) kept else ChatThread()
 
         /**
          * What becomes of the resumption handle when a socket closes. Three closes drop it:

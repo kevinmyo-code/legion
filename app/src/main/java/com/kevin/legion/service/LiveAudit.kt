@@ -49,8 +49,8 @@ internal class LiveAudit(
     // The turn in progress, handed to [onTurn] at turn_complete or session end (memory chain
     // ticket 450). Built from the same redacted inputs as the lines above, never from the logged
     // (truncated) text, so a whole reply is kept; read-through content is dropped here as it is there.
-    private var chatId: String? = null
-    private var turnSeq = 0
+    // The chat id and the turn counter live in [thread], which a resumed socket shares.
+    private var thread: ChatThread? = null
     private val turnUser = ArrayList<String>()
     private val turnAssistant = StringBuilder()
     private val turnTools = ArrayList<SavedToolCall>()
@@ -61,6 +61,10 @@ internal class LiveAudit(
     // a folded name (`look_up` with `domain: ask_mail`, `day` with `get_sitrep`): the result line
     // carries only the called name (2026-11-17, ADR 0090 gap 1, CLAUDE.md §7).
     private val readThroughIds = HashSet<String>()
+
+    // The tool a folded call resolved to, by call id, so the saved turn can carry it (the engine
+    // checks it against its own read-through list).
+    private val resolvedActions = HashMap<String, String>()
     private var readThroughToolThisTurn = false
     private var redactionLoggedThisTurn = false
     private val readThroughLoggedThisTurn = HashSet<String>()
@@ -69,13 +73,19 @@ internal class LiveAudit(
      * [pack] is the Alfred pack the session's prompt was built from, `<version>/<remote|cache|bundled>`
      * (alfred-ota ticket 02), so every conversation record says which wording it ran. Null leaves
      * the token off, as before the pack existed.
+     *
+     * [chat] is the conversation this socket belongs to. A socket resumed from the last one's handle
+     * passes the same [ChatThread], so its turns keep the chat id (and count on) and the engine's
+     * read-through taint, which is per chat, still covers the model context the resume restores
+     * (ticket 450). Null starts a fresh chat.
      */
     @Synchronized
-    fun sessionStart(model: String, asyncSet: Set<String>, pack: String? = null) {
+    fun sessionStart(model: String, asyncSet: Set<String>, pack: String? = null, chat: ChatThread? = null) {
         toolNames.clear()
         readThroughIds.clear()
+        resolvedActions.clear()
         resetTurn()
-        startChat()
+        startChat(chat)
         val async = asyncSet.sorted().joinToString(",").ifEmpty { "none" }
         val packToken = pack?.let { " pack=${token(it)}" }.orEmpty()
         emit("session_start model=${token(model)} async_set=$async$packToken")
@@ -89,11 +99,16 @@ internal class LiveAudit(
         onSession(false)
     }
 
-    /** [final] is the transcription's own `finished` flag, or true for a whole-turn line. */
+    /**
+     * [final] is the transcription's own `finished` flag, or true for a whole-turn line. [whole] marks
+     * that whole-turn line: it is the heard turn in full, so it replaces the chunks already taken for
+     * the saved turn rather than joining them (the same words would be saved twice).
+     */
     @Synchronized
-    fun user(text: String, final: Boolean, typed: Boolean = false) {
+    fun user(text: String, final: Boolean, typed: Boolean = false, whole: Boolean = false) {
         if (enabled && final) {
             val words = collapse(scrub(text))
+            if (whole && words.isNotEmpty()) turnUser.clear()
             if (words.isNotEmpty()) turnUser += words
             if (typed) turnTyped = true
         }
@@ -117,7 +132,9 @@ internal class LiveAudit(
     fun toolCall(id: String, name: String, async: Boolean, argsJson: String, via: String? = null) {
         toolNames[id] = name
         val args = runCatching { JSONObject(argsJson) }.getOrNull() ?: JSONObject()
-        if (isReadThroughTool(name) || isReadThroughTool(LiveSurface.resolve(name, args).name)) {
+        val resolved = LiveSurface.resolve(name, args).name
+        if (resolved != name) resolvedActions[id] = resolved
+        if (isReadThroughTool(name) || isReadThroughTool(resolved)) {
             readThroughToolThisTurn = true
             turnReadThrough = true
             readThroughIds.add(id)
@@ -164,12 +181,14 @@ internal class LiveAudit(
     fun toolResult(result: ToolResult) {
         toolNames.remove(result.id)
         val folded = readThroughIds.remove(result.id)
+        val action = resolvedActions.remove(result.id)
         val withheld = folded || isReadThroughTool(result.name)
         if (enabled) {
             turnTools += SavedToolCall(
                 result.name,
                 result.success,
                 if (withheld) null else collapse(scrub(result.responseJson)).take(TURN_RESULT_CHARS),
+                action,
             )
             if (withheld) turnReadThrough = true
         }
@@ -209,31 +228,30 @@ internal class LiveAudit(
     }
 
     /**
-     * Begins a new chat: the next turn is turn 0 of a fresh chat id. A Live session does this at
-     * its start; typed chat calls it when the last typed message is old enough to be another
-     * conversation ([TypedChatAudit]).
+     * Begins a chat: the next turn is turn 0 of a fresh chat id, or the next turn of [chat] when a
+     * resumed socket brings the thread it belongs to. A Live session does this at its start; typed
+     * chat calls it on "New conversation" ([TypedChatAudit]), the one moment its history is cleared.
      */
     @Synchronized
-    fun startChat() {
+    fun startChat(chat: ChatThread? = null) {
         turnUser.clear()
         turnAssistant.setLength(0)
         turnTools.clear()
         turnReadThrough = false
         turnTyped = false
-        chatId = newChatId()
-        turnSeq = 0
+        thread = chat ?: ChatThread(newChatId())
     }
 
     /** Hands the turn in progress to [onTurn] when it holds anything, then clears it. Caller holds the lock. */
     private fun flushTurn() {
         val hasContent = turnUser.isNotEmpty() || turnAssistant.isNotEmpty() || turnTools.isNotEmpty()
         if (enabled && hasContent) {
-            val chat = chatId ?: newChatId().also { chatId = it }
+            val chat = thread ?: ChatThread(newChatId()).also { thread = it }
             val reply = if (turnReadThrough) null else collapse(turnAssistant.toString()).ifEmpty { null }
             onTurn(
                 SavedTurn(
-                    chatId = chat,
-                    seq = turnSeq++,
+                    chatId = chat.id,
+                    seq = chat.nextSeq++,
                     surface = if (turnTyped) "typed" else "voice",
                     userText = turnUser.joinToString(" ").ifEmpty { null },
                     assistantText = reply,
@@ -304,6 +322,12 @@ internal class LiveAudit(
     )
 
     companion object {
+        /**
+         * The audit of a test conversation (a `tools/phone_voice_test.py` or eval run): its lines go to
+         * [sink] only. It never saves a turn, so a scripted line cannot become "what we talked about".
+         */
+        fun forTestConversation(sink: (String) -> Unit) = LiveAudit(sink = sink, onSession = {}, onTurn = {})
+
         const val TAG = "LIVE_AUDIT"
         const val MAX_TEXT = 400
         const val REDACTED = "[redacted: third-party content]"
@@ -364,4 +388,13 @@ internal class LiveAudit(
         /** A `key=value` value: no whitespace, never empty (the parser reads `\S+`). */
         fun token(value: String): String = value.trim().replace(WHITESPACE, "_").ifEmpty { "none" }
     }
+}
+
+/**
+ * One conversation's chat id and the number its next saved turn takes. The phone owns one per
+ * conversation, not per socket: a socket resumed from a handle shares it, so a resumed chat keeps its
+ * id and the engine's per-chat read-through taint keeps covering it (memory chain ticket 450).
+ */
+class ChatThread(val id: String = UUID.randomUUID().toString()) {
+    @Volatile var nextSeq = 0
 }

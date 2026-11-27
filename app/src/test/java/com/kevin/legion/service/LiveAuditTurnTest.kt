@@ -207,18 +207,85 @@ class LiveAuditTurnTest {
     }
 
     @Test
-    fun `typed messages a long gap apart are two chats`() {
+    fun `a typed chat keeps its chat id across a long gap until a new conversation`() {
         var at = 0L
         val typed = TypedChatAudit(enabled = { true }, audit = audit, now = { at })
-        typed.user("first")
-        typed.turn(TypedTurnRecord(turnSeq = 1L, userText = "x", replyText = "ok", readThrough = false))
+        fun send(text: String) {
+            typed.user(text)
+            typed.turn(TypedTurnRecord(turnSeq = 1L, userText = text, replyText = "ok", readThrough = false))
+        }
+        send("first")
         at += 5 * 60_000L
-        typed.user("second")
-        typed.turn(TypedTurnRecord(turnSeq = 1L, userText = "x", replyText = "ok", readThrough = false))
-        at += 31 * 60_000L
-        typed.user("third")
-        typed.turn(TypedTurnRecord(turnSeq = 1L, userText = "x", replyText = "ok", readThrough = false))
-        assertEquals(turns[0].chatId, turns[1].chatId)
-        assertNotEquals(turns[1].chatId, turns[2].chatId)
+        send("second")
+        at += 3 * 60 * 60_000L
+        send("third")
+        typed.newConversation()
+        send("fourth")
+        assertEquals(1, turns.take(3).map { it.chatId }.toSet().size)
+        assertEquals(listOf(0, 1, 2), turns.take(3).map { it.seq })
+        assertNotEquals(turns[2].chatId, turns[3].chatId)
+        assertEquals(0, turns[3].seq)
+    }
+
+    @Test
+    fun `a resumed socket keeps the chat id and counts on`() {
+        val thread = ChatThread("chat-resumed")
+        audit.sessionStart("model", emptySet(), chat = thread)
+        say("any mail from the school", "Checking.")
+        audit.sessionEnd("network drop")
+        val resumed = LiveAudit(sink = {}, onSession = {}, onTurn = { turns += it }, now = { clock++ })
+            .apply { enabled = true }
+        resumed.sessionStart("model", emptySet(), chat = thread)
+        resumed.user("what else did it say", final = true)
+        resumed.turnComplete()
+        assertEquals(listOf("chat-resumed", "chat-resumed"), turns.map { it.chatId })
+        assertEquals(listOf(0, 1), turns.map { it.seq })
+    }
+
+    @Test
+    fun `a socket with no resume handle starts a fresh chat`() {
+        val kept = ChatThread("old")
+        val fresh = LiveSessionController.chatThreadAfterStart(kept, resuming = false)
+        assertNotEquals("old", fresh.id)
+        assertEquals(0, fresh.nextSeq)
+        assertEquals(kept, LiveSessionController.chatThreadAfterStart(kept, resuming = true))
+        assertNotEquals("old", LiveSessionController.chatThreadAfterStart(null, resuming = true).id)
+    }
+
+    @Test
+    fun `a folded call carries the tool it resolved to and a plain call carries none`() {
+        val folded = LiveAudit(sink = {}, isReadThroughTool = { it == "ask_mail" }, onSession = {}, onTurn = { turns += it })
+            .apply { enabled = true }
+        folded.sessionStart("model", emptySet())
+        folded.user("anything from the school", final = true)
+        folded.toolCall("f1", "look_up", async = false, argsJson = """{"domain":"ask_mail","question":"newest"}""")
+        folded.toolResult(toolResult("f1", "look_up", """{"success":true,"text":"Trip on Friday"}"""))
+        folded.toolCall("p1", "start_timer", async = false, argsJson = "{}")
+        folded.toolResult(toolResult("p1", "start_timer", """{"success":true}"""))
+        folded.turnComplete()
+        val (lookUp, timer) = turns.single().toolCalls
+        assertEquals("ask_mail", lookUp.action)
+        assertNull(lookUp.result)
+        assertNull(timer.action)
+    }
+
+    @Test
+    fun `the whole heard line replaces the transcript chunks instead of repeating them`() {
+        audit.sessionStart("model", emptySet())
+        audit.user("what is on", final = true)
+        audit.user("what is on my list", final = true)
+        audit.user("what is on my list", final = true, whole = true)
+        audit.assistant("Milk.", readThrough = false)
+        audit.turnComplete()
+        assertEquals("what is on my list", turns.single().userText)
+    }
+
+    @Test
+    fun `without a whole line the final chunks are his words`() {
+        audit.sessionStart("model", emptySet())
+        audit.user("what is on", final = true)
+        audit.user("my list", final = true)
+        audit.turnComplete()
+        assertEquals("what is on my list", turns.single().userText)
     }
 }

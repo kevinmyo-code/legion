@@ -5166,7 +5166,7 @@ export interface paths {
         /** @description The caller's own recent conversation turns, newest first (oldest first within one `chat_id`). Another member's turns are never returned. Withheld turns carry only the person's words. */
         get: operations["api_member_memories_turns_list"];
         put?: never;
-        /** @description Saves one finished turn for the caller. Idempotent on `(chat_id, seq)`: a repeat is a 200 with the stored row, unchanged. Read-through content (mail, the web) is withheld by the engine whatever the sender says. */
+        /** @description Saves one finished turn for the caller. Idempotent on `(chat_id, seq)`: a repeat is a 200 with the stored row, unchanged; the same pair from another member is a 409. Read-through content (mail, the web) is withheld by the engine from what it is told (the flag, a redaction mark, a tool name or the `action` a folded call resolved to). Text past 4000 characters and tool calls past 20 are trimmed and the row marked. */
         post: operations["api_member_memories_turns_create"];
         delete?: never;
         options?: never;
@@ -12241,6 +12241,8 @@ export interface components {
             name: string;
             /** @default true */
             ok: boolean;
+            /** @description The tool a folded wrapper (`look_up`, `day`) resolved to; checked as a name. */
+            action?: string | null;
             /** @description One clipped line, never a payload. The engine drops it for read-through tools. */
             result?: string | null;
         };
@@ -12372,6 +12374,7 @@ export interface components {
             assistant_text: string | null;
             tool_calls: components["schemas"]["ToolCall"][];
             withheld: boolean;
+            trimmed: boolean;
             /** Format: date-time */
             spoken_at: string | null;
             /** Format: date-time */
@@ -12478,6 +12481,8 @@ export interface components {
             id: string;
             /** @description True when read-through content was dropped from the stored turn. */
             withheld: boolean;
+            /** @description True when a too-long reply was cut or tool calls past the cap were dropped. */
+            trimmed: boolean;
         };
         TurnWrite: {
             /**
@@ -24343,6 +24348,14 @@ export interface operations {
                 };
             };
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

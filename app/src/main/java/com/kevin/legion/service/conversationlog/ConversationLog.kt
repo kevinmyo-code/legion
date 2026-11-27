@@ -3,6 +3,7 @@ package com.kevin.legion.service.conversationlog
 import android.content.Context
 import android.os.Build
 import android.util.Log
+import androidx.annotation.VisibleForTesting
 import com.kevin.legion.BuildConfig
 import com.kevin.legion.backend.engine.EngineConfig
 import com.kevin.legion.backend.engine.EngineFailure
@@ -23,6 +24,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
@@ -120,6 +123,7 @@ object ConversationLog {
     const val UPLOAD_INTERVAL_MS = 3 * 60_000L
     private const val STARTUP_DELAY_MS = 30_000L
     private const val SAY_TAG = "CONVERSATION_LOG"
+    private val NO_STATUS = MutableStateFlow<String?>(null)
 
     @Volatile var keepAndSend = false
         private set
@@ -131,14 +135,17 @@ object ConversationLog {
     @Volatile var lastResult: String? = null
         private set
 
-    /** The last chat-turn save in words, for the Settings row. Null until a turn was queued this process. */
-    @Volatile var lastTurnResult: String? = null
-        private set
+    /**
+     * How the per-turn save is going, in words, for the Settings row ([TurnSaver.status]): turns kept
+     * for later because the engine is out of reach, turns that could not be saved. Null until a turn
+     * was queued this run, and a flow so the screen follows it.
+     */
+    val turnSaveStatus: StateFlow<String?> get() = turnSaver?.status ?: NO_STATUS
 
     @Volatile private var recorder: ConversationRecorder? = null
     @Volatile private var uploader: ConversationUploader? = null
     @Volatile private var spool: ConversationSpool? = null
-    @Volatile private var turnOutbox: TurnOutbox? = null
+    @Volatile private var turnSaver: TurnSaver? = null
 
     private val writer = Executors.newSingleThreadExecutor { r ->
         Thread(r, "conversationlog").apply { isDaemon = true }
@@ -167,9 +174,15 @@ object ConversationLog {
             // Joins these records to the same run's raw logcat batches (2026-11-09).
             runId = PhoneLog.runId,
         )
-        turnOutbox = TurnOutbox(
-            File(app.filesDir, "turnsave/pending.jsonl"),
-            EngineTurnTransport(EngineHttp(EngineConfig(app))),
+        turnSaver = TurnSaver(
+            box = TurnOutbox(
+                File(app.filesDir, "turnsave/pending.jsonl"),
+                EngineTurnTransport(EngineHttp(EngineConfig(app))),
+            ),
+            writer = writer,
+            scope = scope,
+            keep = { keepAndSend },
+            log = { message, error -> if (error == null) Log.i(SAY_TAG, message) else Log.w(SAY_TAG, message, error) },
         )
         recorder = ConversationRecorder(s, writer, enabled = { keepAndSend })
     }
@@ -178,7 +191,11 @@ object ConversationLog {
     fun applySettings(context: Context) {
         keepAndSend = VoiceTurnSettings.keepConversationLog(context)
         logcatMirror = VoiceTurnSettings.auditLog(context)
-        if (!keepAndSend) stopTicker()
+        if (!keepAndSend) {
+            stopTicker()
+            // Switched off: whatever is still queued is not to be sent when it is switched back on.
+            turnSaver?.let { saver -> writer.execute { saver.discardQueued() } }
+        }
     }
 
     /**
@@ -198,24 +215,21 @@ object ConversationLog {
     /**
      * One finished turn, saved to the engine as it happens (memory chain ticket 450). Follows the
      * same switch as the log ([keepAndSend]). The write to disk and the send run off the caller's
-     * thread; with the engine unreachable the turn waits in [TurnOutbox] and [lastTurnResult] says so.
+     * thread; with the engine unreachable the turn waits in the [TurnOutbox] and [turnSaveStatus] says so.
      */
     fun saveTurn(turn: SavedTurn) {
-        val box = turnOutbox ?: return
-        if (!keepAndSend) return
-        writer.execute {
-            runCatching { box.enqueue(turn) }
-            scope.launch { drainTurns() }
-        }
+        turnSaver?.save(turn)
     }
 
-    private suspend fun drainTurns() {
-        val box = turnOutbox ?: return
-        val outcome = runCatching { box.drain() }.getOrNull() ?: return
-        if (outcome !is TurnOutbox.Outcome.NothingToSend) {
-            lastTurnResult = outcome.sentence
-            Log.i(SAY_TAG, outcome.sentence)
-        }
+    private fun drainTurns() {
+        val saver = turnSaver ?: return
+        scope.launch { saver.drain() }
+    }
+
+    /** Swaps the turn saver (a JVM test has no application to [init] with); null puts it back to silent. */
+    @VisibleForTesting
+    internal fun installTurnSaverForTest(saver: TurnSaver?) {
+        turnSaver = saver
     }
 
     /** `LiveAudit`'s session_start (true) and session_end (false). */
@@ -225,7 +239,7 @@ object ConversationLog {
         } else {
             stopTicker()
             if (keepAndSend && uploader != null) scope.launch { uploadNow(manual = false) }
-            if (keepAndSend) scope.launch { drainTurns() }
+            if (keepAndSend) drainTurns()
             PhoneLog.onLiveSession(started = false)
         }
     }
@@ -245,7 +259,7 @@ object ConversationLog {
         if (keepAndSend) {
             scope.launch {
                 delay(STARTUP_DELAY_MS)
-                drainTurns()
+                turnSaver?.drain()
             }
         }
         if (spool?.hasContent() != true) return
@@ -293,7 +307,7 @@ object ConversationLog {
         ticker = scope.launch {
             while (isActive) {
                 delay(UPLOAD_INTERVAL_MS)
-                drainTurns()
+                turnSaver?.drain()
                 uploadNow(manual = false)
             }
         }

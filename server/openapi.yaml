@@ -12224,8 +12224,11 @@ paths:
     post:
       operationId: api_member_memories_turns_create
       description: 'Saves one finished turn for the caller. Idempotent on `(chat_id,
-        seq)`: a repeat is a 200 with the stored row, unchanged. Read-through content
-        (mail, the web) is withheld by the engine whatever the sender says.'
+        seq)`: a repeat is a 200 with the stored row, unchanged; the same pair from
+        another member is a 409. Read-through content (mail, the web) is withheld
+        by the engine from what it is told (the flag, a redaction mark, a tool name
+        or the `action` a folded call resolved to). Text past 4000 characters and
+        tool calls past 20 are trimmed and the row marked.'
       tags:
       - member-memories
       requestBody:
@@ -12263,6 +12266,12 @@ paths:
                 $ref: '#/components/schemas/Detail'
           description: ''
         '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '409':
           content:
             application/json:
               schema:
@@ -27717,6 +27726,12 @@ components:
         ok:
           type: boolean
           default: true
+        action:
+          type: string
+          nullable: true
+          description: The tool a folded wrapper (`look_up`, `day`) resolved to; checked
+            as a name.
+          maxLength: 80
         result:
           type: string
           nullable: true
@@ -27988,6 +28003,8 @@ components:
             $ref: '#/components/schemas/ToolCall'
         withheld:
           type: boolean
+        trimmed:
+          type: boolean
         spoken_at:
           type: string
           format: date-time
@@ -28004,6 +28021,7 @@ components:
       - spoken_at
       - surface
       - tool_calls
+      - trimmed
       - user_text
       - withheld
     TurnList:
@@ -28160,8 +28178,13 @@ components:
           type: boolean
           description: True when read-through content was dropped from the stored
             turn.
+        trimmed:
+          type: boolean
+          description: True when a too-long reply was cut or tool calls past the cap
+            were dropped.
       required:
       - id
+      - trimmed
       - withheld
     TurnWrite:
       type: object
@@ -28181,11 +28204,11 @@ components:
         user_text:
           type: string
           nullable: true
-          maxLength: 4000
+          maxLength: 100000
         assistant_text:
           type: string
           nullable: true
-          maxLength: 4000
+          maxLength: 100000
         tool_calls:
           type: array
           items:

@@ -720,6 +720,9 @@ class GeminiLiveSession(
         // caller that passes RING_LISTENING, for the few-second window opened while a call
         // rings. See [micClaimant]'s own doc.
         micClaimant: MicArbiter.Claimant = MicArbiter.Claimant.LIVE_TURN,
+        // Ticket 450: the conversation this socket belongs to; a resume passes the thread of the
+        // socket it resumes, so the saved turns keep one chat id. Null is a fresh chat.
+        chatThread: ChatThread? = null,
     ) {
         if (!running.compareAndSet(false, true)) return
         latency.start(System.currentTimeMillis())
@@ -748,6 +751,7 @@ class GeminiLiveSession(
             MODEL.removePrefix("models/"),
             nonBlockingTools,
             com.kevin.legion.ai.AriaBrain.get(appContext).basePackToken,
+            chatThread,
         )
         turnConfig = TurnConfig.SERVER_VAD
         turnTaker = null
@@ -1977,7 +1981,7 @@ class GeminiLiveSession(
             )
             // LIVE_AUDIT: the whole spoken turn once more as one final line (chunks above may be
             // partial), then the turn's end, before the read-through flag below is cleared.
-            if (!wasTyped && heard.isNotEmpty()) audit.user(heard, final = true)
+            if (!wasTyped && heard.isNotEmpty()) audit.user(heard, final = true, whole = true)
             // Ticket 07: classified before the per-turn tool flag is cleared below; acted on after
             // the turn's own bookkeeping ([onHoldingOutcome]).
             val holdingOutcome = holdingWatch.onTurnComplete(

@@ -172,8 +172,8 @@ def test_a_tool_result_is_clipped_to_a_line(auth_client, chat):
     assert len(call["result"]) <= turns.RESULT_MAX_CHARS
 
 
-def test_an_oversized_turn_is_refused_in_words(auth_client, chat):
-    response = _send(auth_client, _turn(chat, 0, user_text="y" * (turns.TEXT_MAX_CHARS + 1)))
+def test_an_absurd_turn_is_still_refused_in_words(auth_client, chat):
+    response = _send(auth_client, _turn(chat, 0, user_text="y" * (turns.TEXT_ACCEPT_CHARS + 1)))
     assert response.status_code == 400
     assert "Nothing was saved" in response.data["detail"]
     assert not ConversationTurn.objects.exists()
@@ -182,15 +182,6 @@ def test_an_oversized_turn_is_refused_in_words(auth_client, chat):
 def test_a_malformed_turn_is_refused_in_words(auth_client):
     response = _send(auth_client, {"chat_id": "not-a-uuid", "seq": 0})
     assert response.status_code == 400
-
-
-def test_turns_past_the_retention_window_go_on_the_next_save(auth_client, chat):
-    _send(auth_client, _turn(chat, 0))
-    ConversationTurn.objects.update(
-        received_at=timezone.now() - timedelta(days=turns.RETENTION_DAYS + 1)
-    )
-    _send(auth_client, _turn(chat, 1))
-    assert list(ConversationTurn.objects.values_list("seq", flat=True)) == [1]
 
 
 # --- privacy and tenancy ---------------------------------------------------------------------
@@ -223,13 +214,132 @@ def test_no_response_carries_a_household_id(auth_client, chat):
     assert "household" not in str(auth_client.get(URL).data)
 
 
-def test_a_recruiter_is_refused(auth_client, chat, monkeypatch):
-    from member_memory import service
+def test_a_recruiter_is_refused_by_the_real_guard(db, chat):
+    from rest_framework.test import APIClient
 
-    monkeypatch.setattr(service, "refusal", lambda request: "Nothing was saved. Demo visit.")
-    response = _send(auth_client, _turn(chat, 0))
-    assert response.status_code == 403
+    from household.models import DeviceToken, Household, HouseholdMember, User
+
+    visit = Household.objects.create(name="Demo visit turns", is_demo_visit=True)
+    visitor = User.objects.create_user(email=f"visitor-{uuid.uuid4().hex[:10]}@demo.invalid")
+    visitor.set_unusable_password()
+    visitor.save()
+    HouseholdMember.objects.create(user=visitor, household=visit, role=HouseholdMember.RECRUITER)
+    _token, raw = DeviceToken.issue(
+        visitor,
+        "Demo visit",
+        DeviceToken.SCOPE_READ,
+        expires_at=timezone.now() + timedelta(hours=2),
+    )
+    client = APIClient()
+    client.credentials(HTTP_AUTHORIZATION=f"Token {raw}")
+    assert _send(client, _turn(chat, 0)).status_code == 403
+    assert client.get(URL).status_code == 403
     assert not ConversationTurn.objects.exists()
+
+
+def test_the_turn_view_is_denied_to_recruiters_by_name():
+    from household.recruiter_routes import RECRUITER_DENIED
+
+    assert "member_memory.turn_views.TurnListCreateView" in RECRUITER_DENIED
+
+
+# --- a 4xx must not lose a turn ----------------------------------------------------------------
+
+
+def test_an_overlong_reply_is_trimmed_and_marked_not_refused(auth_client, chat):
+    long_reply = "word " * 5_000
+    response = _send(auth_client, _turn(chat, 0, assistant_text=long_reply))
+    assert response.status_code == 201
+    row = ConversationTurn.objects.get(chat_id=chat)
+    assert len(row.assistant_text) <= turns.TEXT_MAX_CHARS
+    assert row.trimmed is True
+    assert row.user_text == "what is on my list"
+
+
+def test_too_many_tool_calls_keep_the_first_ones_and_mark_it(auth_client, chat):
+    calls = [{"name": f"tool_{i}", "ok": True} for i in range(turns.MAX_TOOL_CALLS + 5)]
+    assert _send(auth_client, _turn(chat, 0, tool_calls=calls)).status_code == 201
+    row = ConversationTurn.objects.get(chat_id=chat)
+    assert [c["name"] for c in row.tool_calls] == [f"tool_{i}" for i in range(turns.MAX_TOOL_CALLS)]
+    assert row.trimmed is True
+
+
+def test_a_read_through_call_past_the_cap_still_withholds_the_turn(auth_client, chat):
+    calls = [{"name": f"tool_{i}", "ok": True} for i in range(turns.MAX_TOOL_CALLS)]
+    calls.append({"name": "search_mail", "ok": True})
+    _send(auth_client, _turn(chat, 0, tool_calls=calls))
+    assert ConversationTurn.objects.get(chat_id=chat).withheld is True
+    _send(auth_client, _turn(chat, 1, assistant_text="They also wrote about Saturday."))
+    assert ConversationTurn.objects.get(chat_id=chat, seq=1).assistant_text is None
+
+
+def test_a_normal_turn_is_not_marked_trimmed(auth_client, chat):
+    _send(auth_client, _turn(chat, 0))
+    assert ConversationTurn.objects.get(chat_id=chat).trimmed is False
+
+
+# --- the engine's own read-through check -------------------------------------------------------
+
+
+@pytest.mark.parametrize("action", ["ask_mail", "get_sitrep", "search_mail"])
+def test_a_folded_mail_call_is_withheld_by_the_engine_itself(auth_client, chat, action):
+    # The phone sends the wire name (`look_up`, `day`) and the tool it resolved to; no phone flag.
+    calls = [{"name": "look_up", "ok": True, "action": action, "result": "From the school"}]
+    _send(auth_client, _turn(chat, 0, tool_calls=calls, read_through=False))
+    row = ConversationTurn.objects.get(chat_id=chat)
+    assert row.withheld is True
+    assert row.assistant_text is None
+    assert row.tool_calls[0]["result"] is None
+
+
+def test_a_folded_call_that_reads_nothing_third_party_is_kept(auth_client, chat):
+    calls = [{"name": "look_up", "ok": True, "action": "list_events", "result": "Two events"}]
+    _send(auth_client, _turn(chat, 0, tool_calls=calls))
+    assert ConversationTurn.objects.get(chat_id=chat).withheld is False
+
+
+# --- retention for every member -----------------------------------------------------------------
+
+
+def test_prune_all_clears_members_who_never_save_again(auth_client, household_a, chat):
+    _send(auth_client, _turn(chat, 0))
+    mia = _client_for(_member(household_a, "mia-old@example.com"))
+    _send(mia, _turn(uuid.uuid4(), 0))
+    ConversationTurn.objects.update(
+        received_at=timezone.now() - timedelta(days=turns.RETENTION_DAYS + 1)
+    )
+    assert turns.prune_all() == 2
+    assert not ConversationTurn.objects.exists()
+
+
+def test_the_memory_job_prunes_old_turns_even_with_no_key(auth_client, chat, monkeypatch):
+    from django.core.management import call_command
+
+    _send(auth_client, _turn(chat, 0))
+    ConversationTurn.objects.update(
+        received_at=timezone.now() - timedelta(days=turns.RETENTION_DAYS + 1)
+    )
+    monkeypatch.setattr(
+        "member_memory.management.commands.consolidate_memories.gemini_key", lambda: ""
+    )
+    call_command("consolidate_memories")
+    assert not ConversationTurn.objects.exists()
+
+
+# --- the same (chat_id, seq) from two members ---------------------------------------------------
+
+
+def test_the_same_chat_and_seq_from_another_member_is_a_409_not_a_500(
+    auth_client, household_a, chat
+):
+    assert _send(auth_client, _turn(chat, 0)).status_code == 201
+    mia = _client_for(_member(household_a, "mia-clash@example.com"))
+    response = _send(mia, _turn(chat, 0, user_text="their words"))
+    assert response.status_code == 409
+    assert "Nothing was saved" in response.data["detail"]
+    assert ConversationTurn.objects.filter(chat_id=chat).count() == 1
+    kept = list(ConversationTurn.objects.values_list("user_text", flat=True))
+    assert "their words" not in str(kept)
 
 
 def test_forgetting_a_member_takes_their_turns(auth_client, household_user, chat):

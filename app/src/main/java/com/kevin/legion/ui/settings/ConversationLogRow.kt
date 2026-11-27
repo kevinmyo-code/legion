@@ -29,6 +29,7 @@ internal fun ConversationLogRow(
     logcatMirror: Boolean,
     sending: Boolean,
     lastResult: String?,
+    turnSaveStatus: String? = null,
     onKeepAndSend: (Boolean) -> Unit,
     onLogcatMirror: (Boolean) -> Unit,
     onSendNow: () -> Unit,
@@ -46,6 +47,12 @@ internal fun ConversationLogRow(
             SwitchLine(ConversationLogCopy.KEEP, ConversationLogCopy.KEEP_DETAIL, keepAndSend, onKeepAndSend)
             Spacer(Modifier.height(4.dp))
             SwitchLine(ConversationLogCopy.MIRROR, ConversationLogCopy.MIRROR_DETAIL, logcatMirror, onLogcatMirror)
+            // How the per-turn save to the engine is going (ticket 450): turns kept while the engine is
+            // out of reach, turns that could not be saved. In words, never only in a log.
+            if (!turnSaveStatus.isNullOrBlank()) {
+                Spacer(Modifier.height(8.dp))
+                Text(turnSaveStatus, style = LegionType.stamp, color = MaterialTheme.colorScheme.onSurface)
+            }
             Spacer(Modifier.height(8.dp))
             Row(
                 Modifier.fillMaxWidth(),

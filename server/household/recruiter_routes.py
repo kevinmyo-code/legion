@@ -227,6 +227,8 @@ RECRUITER_DENIED: dict[str, str] = {
     "member_memory.views.MemoryDetailView": _MEMORY,
     "member_memory.views.MemoryRecallView": _MEMORY,
     "member_memory.views.MemoryImportView": _MEMORY,
+    # memory-chain ticket 450: each conversation turn is a member's private record.
+    "member_memory.turn_views.TurnListCreateView": _MEMORY,
     # memory-review tickets 06, 08 and 15: the daily review of a member's memory.
     "member_memory.review_views.ReviewContextView": _MEMORY,
     "member_memory.review_views.ReviewChangesView": _MEMORY,
