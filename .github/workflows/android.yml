@@ -114,6 +114,35 @@ jobs:
           # Only trunk writes the shared cache; a branch's one-off dependency set must not evict it.
           cache-read-only: ${{ github.ref != 'refs/heads/dev' && github.ref != 'refs/heads/main' }}
 
+      # Robolectric downloads its android-all jar from Maven Central at TEST time, one fetch per
+      # test class that misses the local repo. On 2026-11-26 Central answered 429 (shared runner
+      # IPs) and whole runs failed with hundreds of "classMethod FAILED ... MavenArtifactFetcher"
+      # errors on code that passed on rerun (#226). Put the jars in ~/.m2 BEFORE the tests start:
+      # restored from the Actions cache, else fetched here with backoff. Robolectric then finds
+      # them locally and makes no request. These are the jars the suite loads: the default SDK
+      # (targetSdk 34) and the one `@Config(sdk = [30])` test; a new SDK that is not listed still
+      # falls back to the old test-time fetch, so extend this list when one is added.
+      - name: Cache Robolectric android-all jars
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+        with:
+          path: ~/.m2/repository/org/robolectric/android-all-instrumented
+          key: robolectric-android-all-${{ hashFiles('gradle/libs.versions.toml') }}
+
+      - name: Pre-fetch Robolectric android-all jars
+        run: |
+          set -euo pipefail
+          base=https://repo1.maven.org/maven2/org/robolectric/android-all-instrumented
+          for v in 14-robolectric-10818077-i7 11-robolectric-6757853-i7; do
+            dir="$HOME/.m2/repository/org/robolectric/android-all-instrumented/$v"
+            mkdir -p "$dir"
+            for ext in jar jar.sha512 pom pom.sha512; do
+              f="android-all-instrumented-$v.$ext"
+              [ -s "$dir/$f" ] && continue
+              curl --fail --silent --show-error --location --retry 8 --retry-all-errors                 --retry-delay 20 --output "$dir/$f.part" "$base/$v/$f"
+              mv "$dir/$f.part" "$dir/$f"
+            done
+          done
+
       # `--continue` so a failing test class does not stop the others from writing XML.
       - name: compile + unit tests
         run: ./gradlew compileDebugKotlin testDebugUnitTest -Pnokey --continue --no-daemon
