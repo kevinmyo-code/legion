@@ -123,7 +123,7 @@ jobs:
       # ... MavenArtifactFetcher" errors on code that passed on rerun (#226). Now the jars are
       # restored from cache or fetched here with backoff and sha512-checked, and the tests run
       # with robolectric.offline=true (job env JAVA_TOOL_OPTIONS), so a missing jar FAILS with
-      # "missing the dependency" instead of reaching the network. The jar list is
+      # "Path is not a file: ..." (naming the jar) instead of reaching the network. The jar list is
       # .github/robolectric-android-all.txt; the script fails when it is stale for the Robolectric
       # version. Only trunk saves the cache (as for Gradle, below).
       - name: Restore Robolectric android-all jars
