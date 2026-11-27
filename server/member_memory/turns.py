@@ -92,6 +92,7 @@ def _fields(data: dict) -> dict:
         "user_text": user_text,
         "tool_calls": _calls(raw_calls),
         "trimmed": cut or len(raw_calls) > MAX_TOOL_CALLS,
+        "interrupted": bool(data.get("interrupted")),
     }
 
 

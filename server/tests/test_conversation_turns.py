@@ -301,3 +301,15 @@ def test_forgetting_a_member_takes_their_turns(auth_client, household_user, chat
     _send(auth_client, _turn(chat, 0))
     household_user.delete()
     assert not ConversationTurn.objects.exists()
+
+
+def test_an_interrupted_turn_is_stored_and_marked(auth_client, chat):
+    assert _send(auth_client, _turn(chat, 0, interrupted=True)).status_code == 201
+    assert _send(auth_client, _turn(chat, 1)).status_code == 201
+    rows = auth_client.get(URL, {"chat_id": str(chat)}).data["results"]
+    assert [r["interrupted"] for r in rows] == [True, False]
+
+
+def test_a_repeat_with_a_different_interrupted_flag_is_a_conflict(auth_client, chat):
+    _send(auth_client, _turn(chat, 0))
+    assert _send(auth_client, _turn(chat, 0, interrupted=True)).status_code == 409

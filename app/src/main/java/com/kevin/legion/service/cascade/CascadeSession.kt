@@ -1936,6 +1936,7 @@ internal class CascadeSession(
                 )
             if (brain?.takeCrisis() == true) {
                 reply.interrupt()
+                audit.discardWords() // the engine heard a crisis the phone did not: nothing is saved (ticket 450)
                 shutdown("crisis")
                 host.crisis()
                 return

@@ -27989,6 +27989,8 @@ components:
             $ref: '#/components/schemas/ToolCall'
         trimmed:
           type: boolean
+        interrupted:
+          type: boolean
         spoken_at:
           type: string
           format: date-time
@@ -27999,6 +28001,7 @@ components:
       required:
       - chat_id
       - id
+      - interrupted
       - received_at
       - seq
       - spoken_at
@@ -28187,6 +28190,10 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ToolCall'
+        interrupted:
+          type: boolean
+          default: false
+          description: The turn was cut off before it finished.
         spoken_at:
           type: string
           format: date-time

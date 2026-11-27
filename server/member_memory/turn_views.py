@@ -41,6 +41,9 @@ class TurnWriteSerializer(serializers.Serializer):
     tool_calls = ToolCallSerializer(
         many=True, required=False, max_length=turns.MAX_TOOL_CALLS_ACCEPTED
     )
+    interrupted = serializers.BooleanField(
+        required=False, default=False, help_text="The turn was cut off before it finished."
+    )
     spoken_at = serializers.DateTimeField(required=False, allow_null=True)
 
 
@@ -59,6 +62,7 @@ class TurnSerializer(serializers.Serializer):
     user_text = serializers.CharField(allow_null=True)
     tool_calls = ToolCallSerializer(many=True)
     trimmed = serializers.BooleanField()
+    interrupted = serializers.BooleanField()
     spoken_at = serializers.DateTimeField(allow_null=True)
     received_at = serializers.DateTimeField()
 
@@ -87,6 +91,7 @@ def _as_dict(row: ConversationTurn) -> dict:
         "user_text": row.user_text,
         "tool_calls": row.tool_calls,
         "trimmed": row.trimmed,
+        "interrupted": row.interrupted,
         "spoken_at": row.spoken_at,
         "received_at": row.received_at,
     }

@@ -401,6 +401,9 @@ class ConversationTurn(models.Model):
     # True when the engine cut his words or dropped tool calls past the cap, so a reader knows the
     # row is not the whole turn.
     trimmed = models.BooleanField(default=False)
+    # True when the turn was sent to the model and never finished (talked over, tapped, stopped):
+    # his words and the tool names are what stood when it was cut off.
+    interrupted = models.BooleanField(default=False)
     # The device's clock, untrusted. `received_at` is the database's and orders retention.
     spoken_at = models.DateTimeField(null=True, blank=True)
     received_at = models.DateTimeField(db_default=Now())

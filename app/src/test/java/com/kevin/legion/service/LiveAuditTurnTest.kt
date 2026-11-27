@@ -324,17 +324,65 @@ class LiveAuditTurnTest {
     }
 
     @Test
-    fun `a heard turn replaces what a cancelled one left, tool names included`() {
+    fun `a turn sent but never completed is saved, interrupted, when the next one starts`() {
+        // Barge-in, a tap over the reply, a write tool that stopped it and a lost voice all end the same
+        // way for the audit: the turn went to the model and no turn_complete came.
+        for (kind in listOf("barge_in", "tap", "stopped_after_write", "voice_lost")) {
+            turns.clear()
+            val audit = LiveAudit(sink = {}, onSession = {}, onTurn = { turns += it }, identity = { "a@e" })
+                .apply { enabled = true }
+            audit.sessionStart("model", emptySet())
+            audit.replaceWords("add milk ($kind)")
+            audit.toolCall("t1", "add_item", async = false, argsJson = "{}")
+            audit.toolResult(toolResult("t1", "add_item", """{"success":true}"""))
+            audit.replaceWords("thanks")
+            audit.turnComplete()
+            assertEquals(kind, listOf("add milk ($kind)", "thanks"), turns.map { it.userText })
+            assertEquals(kind, listOf(true, false), turns.map { it.interrupted })
+            assertEquals(kind, listOf(SavedToolCall("add_item", ok = true)), turns[0].toolCalls)
+            assertEquals(kind, listOf(0, 1), turns.map { it.seq })
+        }
+    }
+
+    @Test
+    fun `a turn still held when the session ends is saved, interrupted`() {
         audit.sessionStart("model", emptySet())
         audit.replaceWords("what is the weather")
-        audit.toolCall("t1", "get_weather", async = false, argsJson = "{}")
-        audit.toolResult(toolResult("t1", "get_weather", """{"success":true}"""))
-        // that turn never completed (an engine miss); he asks something else
+        audit.sessionEnd("stopped")
+        assertEquals(listOf(true), turns.map { it.interrupted })
+        assertEquals("what is the weather", turns.single().userText)
+    }
+
+    @Test
+    fun `a turn that completes is not marked interrupted`() {
+        audit.sessionStart("model", emptySet())
+        say("what is the weather", "Mild.")
+        assertFalse(turns.single().interrupted)
+    }
+
+    @Test
+    fun `words that were never sent are still dropped, a merge and a crisis`() {
+        audit.sessionStart("model", emptySet())
         audit.replaceWords("add milk")
+        audit.dropTurn() // merged: the words went to carry
+        audit.replaceWords("add milk and eggs")
         audit.turnComplete()
-        val t = turns.single()
-        assertEquals("add milk", t.userText)
-        assertTrue(t.toolCalls.isEmpty())
+        assertEquals(listOf("add milk and eggs"), turns.map { it.userText })
+        turns.clear()
+        audit.replaceWords("I cannot do this anymore")
+        audit.discardWords()
+        audit.replaceWords("what is the weather")
+        audit.sessionEnd("crisis")
+        assertTrue(turns.isEmpty())
+    }
+
+    @Test
+    fun `an engine crisis after a held turn saves nothing`() {
+        audit.sessionStart("model", emptySet())
+        audit.replaceWords("I want to end it all")
+        audit.discardWords() // the engine-crisis branch, before shutdown
+        audit.sessionEnd("crisis")
+        assertTrue(turns.isEmpty())
     }
 
     @Test

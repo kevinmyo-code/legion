@@ -71,6 +71,7 @@ class Migration(migrations.Migration):
                 ("user_text", models.TextField(blank=True, null=True)),
                 ("tool_calls", models.JSONField(blank=True, default=list)),
                 ("trimmed", models.BooleanField(default=False)),
+                ("interrupted", models.BooleanField(default=False)),
                 ("spoken_at", models.DateTimeField(blank=True, null=True)),
                 (
                     "received_at",

@@ -208,7 +208,7 @@ class TurnOutboxTest {
         box.drain()
         val body = fake.sent.single()
         assertEquals(
-            setOf("chat_id", "seq", "surface", "user_text", "tool_calls", "spoken_at"),
+            setOf("chat_id", "seq", "surface", "user_text", "tool_calls", "interrupted", "spoken_at"),
             body.keys().asSequence().toSet(),
         )
         val call = body.getJSONArray("tool_calls").getJSONObject(0)

@@ -12369,6 +12369,7 @@ export interface components {
             user_text: string | null;
             tool_calls: components["schemas"]["ToolCall"][];
             trimmed: boolean;
+            interrupted: boolean;
             /** Format: date-time */
             spoken_at: string | null;
             /** Format: date-time */
@@ -12488,6 +12489,11 @@ export interface components {
             surface: components["schemas"]["SurfaceEnum"];
             user_text?: string | null;
             tool_calls?: components["schemas"]["ToolCall"][];
+            /**
+             * @description The turn was cut off before it finished.
+             * @default false
+             */
+            interrupted: boolean;
             /** Format: date-time */
             spoken_at?: string | null;
         };

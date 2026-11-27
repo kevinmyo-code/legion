@@ -92,7 +92,7 @@ internal class LiveAudit(
 
     @Synchronized
     fun sessionEnd(reason: String) {
-        flushTurn()
+        flushTurn(interrupted = true) // anything still held never reached its turn_complete
         emit("session_end reason=${quote(reason)}")
         onSession(false)
     }
@@ -117,14 +117,15 @@ internal class LiveAudit(
 
     /**
      * The cascade's version of [keepWords]: [text] is the whole heard turn (words carried from a merged
-     * turn are already in it), so it REPLACES whatever an earlier turn that never finished left held,
-     * words and tool names both. Nothing is said twice and a cancelled turn is not folded into the next.
+     * turn are already in it). A turn that was sent and never finished is saved first, marked interrupted,
+     * so nothing is said twice and an interrupted turn is neither lost nor folded into the next.
      */
     @Synchronized
     fun replaceWords(text: String) {
-        turnUser.clear()
-        turnTools.clear()
-        turnTyped = false
+        // A turn still held was sent to the model and never reached turn_complete (he talked over it, tapped
+        // it, a write tool stopped it, the voice was lost): it happened, so it is saved, marked interrupted,
+        // before the new one begins. Words that were never sent were dropped by discardWords/dropTurn already.
+        if (turnUser.isNotEmpty() || turnTools.isNotEmpty()) flushTurn(interrupted = true)
         takeWords(text, typed = false, whole = false)
     }
 
@@ -286,7 +287,7 @@ internal class LiveAudit(
     }
 
     /** Hands the turn in progress to [onTurn] when it holds anything, then clears it. Caller holds the lock. */
-    private fun flushTurn() {
+    private fun flushTurn(interrupted: Boolean = false) {
         val hasContent = turnUser.isNotEmpty() || turnTools.isNotEmpty()
         // A crisis turn leaves no row at all: no words, no tool names, nothing to say it happened.
         if (enabled && hasContent && !crisisHeard) {
@@ -300,6 +301,7 @@ internal class LiveAudit(
                     toolCalls = turnTools.toList(),
                     spokenAtMs = now(),
                     owner = turnOwner,
+                    interrupted = interrupted,
                 ),
             )
         }

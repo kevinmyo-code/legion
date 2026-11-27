@@ -28,6 +28,8 @@ data class SavedTurn(
     val spokenAtMs: Long,
     /** Who was signed in when it was spoken ([TurnTransport.identity]); null when nobody was. Not sent. */
     val owner: String? = null,
+    /** The turn was sent to the model and never finished (talked over, tapped, stopped): saved as it stood. */
+    val interrupted: Boolean = false,
 ) {
     fun toJson(): String = JSONObject()
         .put("chat_id", chatId)
@@ -35,6 +37,7 @@ data class SavedTurn(
         .put("surface", surface)
         .put("user_text", userText ?: JSONObject.NULL)
         .put("tool_calls", JSONArray(toolCalls.map { JSONObject().put("name", it.name).put("ok", it.ok) }))
+        .put("interrupted", interrupted)
         .put("spoken_at", Instant.ofEpochMilli(spokenAtMs).toString())
         .toString()
 }
