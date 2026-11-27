@@ -258,16 +258,16 @@ def test_one_batch_that_blows_up_does_not_500_the_page(token_a, monkeypatch):
     """Any render error, not only a bad gzip, names that batch and leaves the others."""
     from devicelogs import conversations
 
-    bad = _upload(token_a, "bad\n")
+    bad = _upload(token_a)
     good = _upload(token_a)
-    real = conversations.render
+    real = conversations.batch_text
 
-    def boom(text, **kwargs):
-        if "oddbatch" in text:
+    def boom(row):
+        if str(row.id) == bad:
             raise KeyError("invented parser failure with text that must not be echoed")
-        return real(text, **kwargs)
+        return real(row)
 
-    monkeypatch.setattr(conversations, "render", boom)
+    monkeypatch.setattr(conversations, "batch_text", boom)
     response = token_a.get(URL)
     assert response.status_code == 200
     by_id = {str(b["id"]): b for b in response.data["devices"][0]["batches"]}
@@ -276,13 +276,24 @@ def test_one_batch_that_blows_up_does_not_500_the_page(token_a, monkeypatch):
     assert by_id[bad]["problem"] == "could not be read: KeyError"
 
 
-def test_a_head_unit_token_is_refused_and_its_upload_never_listed(token_a):
-    from tests.test_headunit_signin import _log_upload, _mint, unit_client
+def test_a_head_unit_token_is_refused_and_its_row_never_listed(
+    token_a, household_a, household_user
+):
+    """The upload door refuses a head unit's conversation (test_headunit_signin), so a unit's
+    conversation row is made directly: same household and user as the caller, still never shown."""
+    from tests.test_headunit_signin import _mint, unit_client
 
     issued = _mint(token_a)
     assert issued.status_code == 201, issued.data
-    unit = unit_client(issued.data["token"])
-    upload = {**_log_upload(), "reason": "conversation"}
-    assert unit.post(UPLOAD, upload, format="multipart").status_code == 201
-    assert unit.get(URL).status_code in (401, 403, 404)
+    DeviceLog.objects.create(
+        household=household_a,
+        user=household_user,
+        batch_id=uuid.uuid4(),
+        device_label="Invented unit",
+        reason="conversation",
+        uploader_kind="head_unit",
+        raw_bytes=len(FIXTURE),
+        body_gz=gzip.compress(FIXTURE.encode()),
+    )
+    assert unit_client(issued.data["token"]).get(URL).status_code in (401, 403, 404)
     assert token_a.get(URL).data == {"devices": []}
