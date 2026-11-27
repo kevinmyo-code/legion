@@ -167,6 +167,33 @@ class ToolGateTest {
         assertEquals(ToolGate.Set.FULL, decide("thanks", asked = true).set)
     }
 
+    /** What the session does with Alfred's last words: [ToolGate.offerOpen] feeds `decide`'s askedLast. */
+    private fun after(alfred: String?, heard: String) =
+        ToolGate.decide(heard, true, false, ToolGate.offerOpen(alfred), false, null).set
+
+    @Test
+    fun `a greeting that asks keeps the next turn full`() {
+        assertEquals(ToolGate.Set.FULL, after("Dentist at ten tomorrow, want a reminder?", "ok thanks"))
+        assertEquals(ToolGate.Set.FULL, after("Quiet day. Anything you need?", "thanks"))
+    }
+
+    @Test
+    fun `a chat reply that offers with a full stop keeps the next turn full`() {
+        assertEquals(ToolGate.Set.FULL, after("Morning. I can set a reminder for the dentist.", "morning"))
+        assertEquals(ToolGate.Set.FULL, after("Evening. Let me know if you want it logged.", "evening"))
+        listOf("want me to", "should I", "shall I", "would you like", "do you want", "I can", "let me know").forEach {
+            assertTrue(it, ToolGate.offerOpen("Right, $it do that."))
+        }
+    }
+
+    @Test
+    fun `a plain thanks after a statement stays chat`() {
+        assertEquals(ToolGate.Set.CHAT, after("Your next oil change is in March.", "thanks"))
+        assertEquals(ToolGate.Set.CHAT, after("Good morning.", "good morning"))
+        assertEquals(ToolGate.Set.CHAT, after(null, "thanks"))
+        assertEquals(false, ToolGate.offerOpen("I can't see that."))
+    }
+
     @Test
     fun `an opener, a carried turn or a non-user turn is full whatever the words`() {
         assertEquals("not_his_words", ToolGate.decide("hi", true, true, false, false, null).why)
@@ -179,13 +206,17 @@ class ToolGateTest {
     fun `the session decides through the gate, sends what it chose, and arms sticky only on a real turn`() {
         val src = source("service/cascade/CascadeSession.kt")
         assertTrue(src.contains("ToolGate.decide("))
-        assertTrue("it asks whether Alfred's last line asked", src.contains("askedLast = lastTurnAsked"))
+        assertTrue(
+            "both awaiting-answer signals plus an offer in his last reply",
+            src.contains("askedLast = awaitingAnswer() || ToolGate.offerOpen(lastAlfred)"),
+        )
+        assertTrue("the greeting is in history", src.contains("history.lastOrNull { !it.fromUser }?.text ?: lastClipText"))
         assertTrue("opener and carried turns", src.contains("notHisWords = opener != null || carriedBlock.isNotEmpty()"))
         assertTrue("a draft arms nothing", src.contains("if (log && verdict.set == ToolGate.Set.FULL) fullToolsUsed = true"))
         assertTrue("the loop gets the chosen prefix", src.contains("sent ?: checkNotNull(pfx)"))
         val engine = src.substring(src.indexOf("val sent = if (engineStart != null)"))
-        assertTrue("an engine turn arms sticky and logs", engine.substring(0, 300).let {
-            it.contains("fullToolsUsed = true") && it.contains("tool_set=engine")
+        assertTrue("an engine turn arms sticky and logs the draft's own verdict when one was adopted", engine.substring(0, 700).let {
+            it.contains("fullToolsUsed = true") && it.contains("via=draft") && it.contains("engine why=engine_answered")
         })
         assertTrue("a draft is sent with its own verdict, unlogged", src.contains("toolsFor(pfx, heard, fromUser = true, log = false)"))
     }

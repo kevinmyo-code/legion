@@ -875,16 +875,14 @@ internal class CascadeSession(
 
     /**
      * The prefix a turn is sent with: [full], or its chat cut ([ToolGate]) when [heard] is a whole-utterance
-     * pleasantry. Never the cut for an opener, a carried or prompt turn, after Alfred asked or offered
-     * something, or once a turn of this conversation went out FULL. A draft ([log] false) decides the same
-     * way from the same words and sets nothing: only the real turn arms [fullToolsUsed], so a discarded
-     * draft leaves no trace.
+     * pleasantry. Never the cut for an opener, a carried or prompt turn, while Alfred's last line asked or
+     * offered something ([awaitingAnswer], or [ToolGate.offerOpen] on his last reply or the greeting), or
+     * once a turn of this conversation went out FULL. A draft ([log] false) decides the same way from the
+     * same words and sets nothing: only the real turn arms [fullToolsUsed], so a discarded draft leaves
+     * no trace.
      */
     private fun toolsFor(full: CascadePrefix, heard: String, fromUser: Boolean, log: Boolean): CascadePrefix {
-        val verdict = ToolGate.decide(
-            heard, fromUser, notHisWords = opener != null || carriedBlock.isNotEmpty(),
-            askedLast = lastTurnAsked, sticky = fullToolsUsed, companion = CompanionProfile.name(ctx),
-        )
+        val verdict = toolVerdict(heard, fromUser)
         if (log && verdict.set == ToolGate.Set.FULL) fullToolsUsed = true
         val sent = ToolGate.prefixFor(full, verdict)
         if (log) {
@@ -892,6 +890,17 @@ internal class CascadeSession(
             LiveLatency.log(LiveLatency.TAG, "tool_set=${verdict.set.name.lowercase()} why=${verdict.why} n=$n")
         }
         return sent
+    }
+
+    /** The gate's verdict for [heard]: no side effects, so the engine branch can read a draft's too. */
+    private fun toolVerdict(heard: String, fromUser: Boolean): ToolGate.Verdict {
+        // Alfred's last words: the last reply (the greeting is one) in history, else the last spoken clip.
+        val lastAlfred = history.lastOrNull { !it.fromUser }?.text ?: lastClipText
+        return ToolGate.decide(
+            heard, fromUser, notHisWords = opener != null || carriedBlock.isNotEmpty(),
+            askedLast = awaitingAnswer() || ToolGate.offerOpen(lastAlfred),
+            sticky = fullToolsUsed, companion = CompanionProfile.name(ctx),
+        )
     }
 
     /** His turns' preamble: the shared one plus the agenda ([CascadePrompt.withAgenda]). */
@@ -1940,10 +1949,18 @@ internal class CascadeSession(
         }
         val voice = backend!!
         // The tool set this turn goes out with, logged for a drafted turn too (the draft chose the same
-        // way, from the same words). A turn the engine answers may have used any tool: later turns stay full.
+        // way, from the same words). A draft is adopted ahead of the engine route, so when both exist the
+        // draft's own verdict is what went out and what is logged. A turn the engine answers may have used
+        // any tool: later turns stay full.
         val sent = if (engineStart != null) {
+            val v = toolVerdict(heard, record.fromUser)
             fullToolsUsed = true
-            LiveLatency.log(LiveLatency.TAG, "tool_set=engine why=engine_answered")
+            val what = if (drafted != null) {
+                "${v.set.name.lowercase()} why=${v.why} via=draft"
+            } else {
+                "engine why=engine_answered"
+            }
+            LiveLatency.log(LiveLatency.TAG, "tool_set=$what")
             null
         } else {
             toolsFor(checkNotNull(pfx), heard, record.fromUser, log = true)

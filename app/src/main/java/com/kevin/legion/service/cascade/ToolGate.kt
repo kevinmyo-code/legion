@@ -67,10 +67,28 @@ internal object ToolGate {
         }
     }
 
+    // Offers worded as a statement ("I can set a reminder.") carry no question mark.
+    private val OFFER = Regex(
+        "(?<![\\p{L}\\p{N}'])(?:want me to|should i|shall i|would you like|do you want|i can|let me know)" +
+            "(?![\\p{L}\\p{N}'])",
+    )
+
+    /**
+     * Whether Alfred's [line] (his last reply, the greeting included) asked or offered something his next
+     * words may answer: any question mark in it, or a phrase from [OFFER]. Biased to true: a wrong yes
+     * costs one full-set turn, a wrong no is the failure this gate exists to avoid.
+     */
+    fun offerOpen(line: String?): Boolean {
+        if (line.isNullOrBlank()) return false
+        val t = line.lowercase().replace('’', '\'')
+        return '?' in t || OFFER.containsMatchIn(t)
+    }
+
     /**
      * The verdict for a turn. FULL without looking at the words when it is not his own speech, an opener
      * or a carried turn is in play ([notHisWords]), or [askedLast]: Alfred's last line asked or offered
-     * something, so even "ok thanks" may be the answer to it.
+     * something (the session's awaiting-an-answer rule, or [offerOpen]), so even "ok thanks" may be the
+     * answer to it.
      */
     fun decide(
         heard: String,
