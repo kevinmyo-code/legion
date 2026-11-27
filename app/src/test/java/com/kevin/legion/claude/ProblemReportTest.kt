@@ -78,7 +78,7 @@ class ProblemReportTest {
     @Test
     fun `the button may go without a note, voice may not`() {
         backend.machines(machine("Alienware"))
-        assertTrue(report(note = "", source = "button", reply = 0) is ClaudeSendResult.Sent)
+        assertTrue(report(note = "", source = "button", reply = null) is ClaudeSendResult.Sent)
         assertTrue(backend.created.single().request.endsWith(ProblemReport.BUTTON_NO_NOTE))
     }
 

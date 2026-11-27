@@ -24,13 +24,15 @@ object ProblemReport {
     /** The button's note is optional; this stands in so the worker still has words to read. */
     const val BUTTON_NO_NOTE = "No note. Kevin marked that reply as wrong."
 
+    private const val HASH_BYTES = 4
+
     /** A reply on the panel: [atMillis] when the line was added, [hash] of its text (never the text). */
     data class ReplyRef(val atMillis: Long, val hash: String)
 
     /** First 8 hex digits of the text's SHA-256: enough to tell replies apart, useless to read back. */
     fun hashOf(text: String): String =
         MessageDigest.getInstance("SHA-256").digest(text.toByteArray(Charsets.UTF_8))
-            .take(4).joinToString("") { "%02x".format(it) }
+            .take(HASH_BYTES).joinToString("") { "%02x".format(it) }
 
     /**
      * The task text. The first line is a free-text header the worker reads (the engine task kind is
