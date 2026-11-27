@@ -27,6 +27,9 @@ repeat with the same content is a 200 with the stored row. The same pair with DI
 from another member, is a conflict (`TurnConflict`, a 409): the stored turn is never overwritten
 and the sender is not told it was saved.
 
+A turn is held in memory on the phone from his first words to its end, a few seconds. An app killed
+in that window loses that one turn (accepted, ticket 450); every finished turn is queued on disk.
+
 Nothing here logs a turn's text.
 """
 

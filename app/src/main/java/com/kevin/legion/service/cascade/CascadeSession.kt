@@ -1302,7 +1302,8 @@ internal class CascadeSession(
                 val p = pending ?: return
                 p.merged = true
                 carry = (carry + " " + p.heard).trim()
-                audit.dropTurn() // its words are in carry now and come back with the next heard line (ticket 450)
+                // His words stay held for saving (ticket 450): the next heard line carries them and takes them
+                // over, or a stop, a refusal or the session end saves them as an interrupted turn.
                 turnJob?.cancel()
                 speaker?.interrupt()
                 val reason = if (tools > 0) "speech_during_lookup" else "speech_resumed"
@@ -1787,6 +1788,7 @@ internal class CascadeSession(
                 val stop = stopWords && SttGuard.stopVoiced(stt.text, stt.voicedMs)
                 if (stopWords && !stop) {
                     discardDraftOf(u, "not_answered")
+                    audit.flushHeld() // a merged turn's words live only in the audit now (ticket 450)
                     carry = ""
                 }
                 val v = verdictOf(stt)
@@ -1848,6 +1850,7 @@ internal class CascadeSession(
         }
         if (!followLanguage(heard)) {
             discardDraftOf(u, "not_answered")
+            audit.flushHeld() // the refused line is not saved, but the merged turn before it was sent
             return
         }
         audit.replaceWords(heard)
@@ -2355,6 +2358,7 @@ internal class CascadeSession(
         turnEndsConversation = true
         cutAck()
         discardDraftOf(u, "not_answered")
+        audit.flushHeld() // a merged turn's words live only in the audit now (ticket 450)
         carry = ""
         recordTurn(words, owed.due()?.line.orEmpty())
         endByVoice()

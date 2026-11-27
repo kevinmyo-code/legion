@@ -316,7 +316,7 @@ class LiveAuditTurnTest {
         audit.sessionStart("model", emptySet())
         audit.user("add milk", final = true, save = false)
         audit.replaceWords("add milk")
-        audit.dropTurn() // the cascade merges: the words go to carry
+        // the cascade merges and calls nothing: the next heard line carries the words
         audit.user("add milk and eggs", final = true, save = false)
         audit.replaceWords("add milk and eggs")
         audit.turnComplete()
@@ -361,19 +361,104 @@ class LiveAuditTurnTest {
     }
 
     @Test
-    fun `words that were never sent are still dropped, a merge and a crisis`() {
+    fun `a crisis line is dropped and takes nothing after it`() {
         audit.sessionStart("model", emptySet())
-        audit.replaceWords("add milk")
-        audit.dropTurn() // merged: the words went to carry
-        audit.replaceWords("add milk and eggs")
-        audit.turnComplete()
-        assertEquals(listOf("add milk and eggs"), turns.map { it.userText })
-        turns.clear()
         audit.replaceWords("I cannot do this anymore")
         audit.discardWords()
         audit.replaceWords("what is the weather")
         audit.sessionEnd("crisis")
         assertTrue(turns.isEmpty())
+    }
+
+    private fun mergedAfterARead() {
+        audit.sessionStart("model", emptySet())
+        audit.replaceWords("what is on my calendar tomorrow")
+        audit.toolCall("t1", "read_calendar", async = false, argsJson = "{}")
+        audit.toolResult(toolResult("t1", "read_calendar", """{"success":true}"""))
+        // he goes on: the cascade merges and calls nothing on the audit
+    }
+
+    private fun assertOneInterruptedRow() {
+        assertEquals(listOf("what is on my calendar tomorrow"), turns.map { it.userText })
+        assertEquals(listOf(true), turns.map { it.interrupted })
+        assertEquals(listOf(SavedToolCall("read_calendar", ok = true)), turns.single().toolCalls)
+    }
+
+    @Test
+    fun `a merge after a read then the next line carries the words saves them once`() {
+        mergedAfterARead()
+        audit.replaceWords("what is on my calendar tomorrow and the day after")
+        audit.turnComplete()
+        assertEquals(listOf("what is on my calendar tomorrow and the day after"), turns.map { it.userText })
+        assertEquals(listOf(false), turns.map { it.interrupted })
+    }
+
+    @Test
+    fun `a merge after a read then a stop phrase saves his first words once, interrupted`() {
+        mergedAfterARead()
+        audit.flushHeld() // endByStop
+        audit.sessionEnd("stopped")
+        assertOneInterruptedRow()
+    }
+
+    @Test
+    fun `a merge after a read then stop words with no voice saves them once, interrupted`() {
+        mergedAfterARead()
+        audit.flushHeld() // the stop-over-no-voice branch
+        audit.replaceWords("never mind stop")
+        audit.turnComplete()
+        assertEquals("what is on my calendar tomorrow", turns.first().userText)
+        assertEquals(1, turns.count { it.userText == "what is on my calendar tomorrow" })
+        assertTrue(turns.first().interrupted)
+    }
+
+    @Test
+    fun `a merge after a read then a language refusal saves his first words once, interrupted`() {
+        mergedAfterARead()
+        audit.flushHeld() // followLanguage refused the merged line
+        audit.sessionEnd("closed")
+        assertOneInterruptedRow()
+    }
+
+    @Test
+    fun `a merge after a read then the session ends saves his first words once, interrupted`() {
+        mergedAfterARead()
+        audit.sessionEnd("tap")
+        assertOneInterruptedRow()
+    }
+
+    @Test
+    fun `a merge after a read then a line that does not carry the words saves both`() {
+        mergedAfterARead()
+        audit.replaceWords("add milk")
+        audit.turnComplete()
+        assertEquals(listOf("what is on my calendar tomorrow", "add milk"), turns.map { it.userText })
+        assertEquals(listOf(true, false), turns.map { it.interrupted })
+    }
+
+    @Test
+    fun `a merge then a crisis saves nothing`() {
+        mergedAfterARead()
+        audit.discardWords()
+        audit.sessionEnd("crisis")
+        assertTrue(turns.isEmpty())
+    }
+
+    @Test
+    fun `a tool name that is not a plain name never costs his words`() {
+        audit.sessionStart("model", emptySet())
+        audit.replaceWords("add milk")
+        val bad = "x".repeat(200)
+        audit.toolCall("t1", bad, async = false, argsJson = "{}")
+        audit.toolResult(toolResult("t1", bad, """{"success":true}"""))
+        audit.toolCall("t2", "Add Item!", async = false, argsJson = "{}")
+        audit.toolResult(toolResult("t2", "Add Item!", """{"success":true}"""))
+        audit.toolCall("t3", "add_item", async = false, argsJson = "{}")
+        audit.toolResult(toolResult("t3", "add_item", """{"success":true}"""))
+        audit.turnComplete()
+        val t = turns.single()
+        assertEquals("add milk", t.userText)
+        assertEquals(listOf(SavedToolCall("add_item", ok = true)), t.toolCalls)
     }
 
     @Test

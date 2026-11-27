@@ -32,6 +32,9 @@ import org.json.JSONObject
  * never the on-screen probe buffer). Off ([enabled] false) means no line at all. [onSession] hears
  * every session start and end whatever [enabled] says, so the engine spool can seal and upload.
  * Thread-safe: the socket thread and the tool dispatcher both call in.
+ *
+ * The turn being held for saving lives only in memory, from his first words to turn_complete (seconds):
+ * an app killed in that window loses that one turn. Accepted (ticket 450); everything already queued is on disk.
  */
 @Suppress("TooManyFunctions") // one function per LIVE_AUDIT event, the format's whole surface
 internal class LiveAudit(
@@ -116,25 +119,35 @@ internal class LiveAudit(
     fun keepWords(text: String, typed: Boolean = false) = takeWords(text, typed, whole = false)
 
     /**
-     * The cascade's version of [keepWords]: [text] is the whole heard turn (words carried from a merged
-     * turn are already in it). A turn that was sent and never finished is saved first, marked interrupted,
-     * so nothing is said twice and an interrupted turn is neither lost nor folded into the next.
+     * The cascade's version of [keepWords]: [text] is the whole heard turn. A turn still held was sent to
+     * the model and never reached turn_complete (he talked over it, tapped it, a write tool stopped it,
+     * the voice was lost, or he went on and it MERGED): it happened, so it is saved, marked interrupted,
+     * before the new one begins. The one exception is a merge: its words are carried into [text], so when
+     * [text] contains them they are replaced, not saved twice. A merge never calls anything: the words
+     * stay held until the next heard line takes them over, a stop or a refusal flushes them
+     * ([flushHeld]), or the session ends. Words that were never sent are gone ([discardWords]).
      */
     @Synchronized
     fun replaceWords(text: String) {
-        // A turn still held was sent to the model and never reached turn_complete (he talked over it, tapped
-        // it, a write tool stopped it, the voice was lost): it happened, so it is saved, marked interrupted,
-        // before the new one begins. Words that were never sent were dropped by discardWords/dropTurn already.
-        if (turnUser.isNotEmpty() || turnTools.isNotEmpty()) flushTurn(interrupted = true)
+        val held = turnUser.joinToString(" ")
+        val carried = held.isNotEmpty() && collapse(scrub(text)).contains(held)
+        if (carried) {
+            turnUser.clear()
+            turnTools.clear()
+            turnTyped = false
+        } else if (turnUser.isNotEmpty() || turnTools.isNotEmpty()) {
+            flushTurn(interrupted = true)
+        }
         takeWords(text, typed = false, whole = false)
     }
 
-    /** Drops the held words and tool names of a turn that was cancelled (merged into the next one). */
+    /**
+     * Saves what is held as an interrupted turn now: the conversation is ending or the next line was
+     * refused, and the held turn (possibly a merged one whose words only live here) must not be lost.
+     */
     @Synchronized
-    fun dropTurn() {
-        turnUser.clear()
-        turnTools.clear()
-        turnTyped = false
+    fun flushHeld() {
+        if (turnUser.isNotEmpty() || turnTools.isNotEmpty()) flushTurn(interrupted = true)
     }
 
     /**
@@ -224,7 +237,8 @@ internal class LiveAudit(
         // The name and whether it worked; never the result (it may be mail or the web).
         if (enabled) {
             if (turnOwner == null) turnOwner = identity()
-            turnTools += SavedToolCall(result.name, result.success)
+            // A tool name is the model's free text: one that is not a plain tool name must never cost his words.
+            if (TOOL_NAME.matches(result.name)) turnTools += SavedToolCall(result.name, result.success)
         }
         val body = if (withheld) quote(REDACTED) else json(result.responseJson)
         emit(
@@ -387,6 +401,7 @@ internal class LiveAudit(
         )
         private val QUERY_SECRET = Regex("(?i)([?&](?:key|token|access_token)=)[^&\\s\"]+")
         private val WHITESPACE = Regex("\\s+")
+        private val TOOL_NAME = Regex("[a-z0-9_]{1,64}")
 
         private fun collapse(text: String): String = text.trim().replace(WHITESPACE, " ")
 
