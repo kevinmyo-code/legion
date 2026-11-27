@@ -1,5 +1,6 @@
 package com.kevin.legion.ui.sync
 
+import com.kevin.legion.data.local.PreMigrationBackup
 import com.kevin.legion.sync.DatabaseSnapshot
 
 /**
@@ -82,6 +83,26 @@ object DriveBackupResolver {
     fun lastBackupSummary(generations: List<DatabaseSnapshot.Generation>, formatTime: (Long) -> String): String {
         val newest = generations.maxByOrNull { it.timestampMs } ?: return "No backups yet."
         return "Last backup: ${formatTime(newest.timestampMs)} - ${pluralRows(newest.rowCount)}."
+    }
+
+    /** The line naming the local copy taken before an app update changed the database (hardening
+     * ticket 03). Says "none yet" and "failed" in words, so an absent copy never reads as one. */
+    fun preMigrationBackupLine(status: PreMigrationBackup.Status, formatTime: (Long) -> String): String {
+        val intro = "Before-update copy (on this phone only):"
+        fun describe(b: PreMigrationBackup.Backup): String {
+            val from = b.fromVersion?.let { "database version $it" } ?: "a database whose version could not be read"
+            return "taken ${formatTime(b.takenAtMs)}, before the update from $from to ${b.toVersion}"
+        }
+        return when (status) {
+            PreMigrationBackup.Status.None ->
+                "$intro none yet. Legion copies the database here before an update changes it."
+            is PreMigrationBackup.Status.Taken ->
+                "$intro ${describe(status.latest)}. The newest ${PreMigrationBackup.KEEP} are kept. " +
+                    "Restoring one is a manual step, not a button."
+            is PreMigrationBackup.Status.Failed ->
+                "$intro the last attempt, ${formatTime(status.atMs)}, failed: ${status.reason}. " +
+                    (status.latest?.let { "The newest one kept was ${describe(it)}." } ?: "No earlier copy is kept.")
+        }
     }
 
     /** The worded confirm-dialog body naming exactly what a restore overwrites (CLAUDE.md

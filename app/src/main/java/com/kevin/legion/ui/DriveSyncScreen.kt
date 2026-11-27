@@ -31,6 +31,7 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import com.kevin.legion.MidnightEvents
 import com.kevin.legion.ai.CompanionProfile
 import com.kevin.legion.data.local.CarDatabase
+import com.kevin.legion.data.local.PreMigrationBackup
 import com.kevin.legion.sync.DatabaseSnapshot
 import com.kevin.legion.sync.DriveAuth
 import com.kevin.legion.sync.SyncCapability
@@ -146,6 +147,7 @@ fun DriveSyncScreen(onBack: () -> Unit) {
     // able to say "no backup yet" or name a real failure, never render absence as freshness.
     var scheduledLastSuccessAt by remember { mutableStateOf<Long?>(null) }
     var scheduledLastFailureReason by remember { mutableStateOf<String?>(null) }
+    var preMigrationStatus by remember { mutableStateOf<PreMigrationBackup.Status>(PreMigrationBackup.Status.None) }
 
     fun refreshLocalRecoveries() {
         scope.launch { localRecoveries = DatabaseSnapshot.listLocalRecoveries(context) }
@@ -163,6 +165,7 @@ fun DriveSyncScreen(onBack: () -> Unit) {
         refreshLocalRecoveries()
         scheduledLastSuccessAt = com.kevin.legion.sync.ScheduledBackup.lastSuccessAt(context)
         scheduledLastFailureReason = com.kevin.legion.sync.ScheduledBackup.lastFailureReason(context)
+        preMigrationStatus = PreMigrationBackup.status(PreMigrationBackup.rootDir(context))
     }
 
     fun formatBackupTime(epochMs: Long): String = "${shortDate(epochMs)} ${clockTime(epochMs)}"
@@ -497,6 +500,15 @@ fun DriveSyncScreen(onBack: () -> Unit) {
                         )
                     }
                 }
+
+                // Independent of Drive, like the panel above: this copy never leaves the phone.
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    DriveBackupResolver.preMigrationBackupLine(preMigrationStatus, ::formatBackupTime),
+                    style = LegionType.stamp,
+                    color = if (preMigrationStatus is PreMigrationBackup.Status.Failed) sem.estimated else sem.faint,
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                )
 
                 Spacer(Modifier.height(24.dp))
             }

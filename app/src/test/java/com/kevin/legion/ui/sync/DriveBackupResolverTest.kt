@@ -1,5 +1,6 @@
 package com.kevin.legion.ui.sync
 
+import com.kevin.legion.data.local.PreMigrationBackup
 import com.kevin.legion.sync.DatabaseSnapshot
 import java.io.File
 import org.junit.Assert.assertEquals
@@ -132,5 +133,30 @@ class DriveBackupResolverTest {
         assertTrue(message.contains(reason))
         assertTrue(message.contains("deliberately"))
         assertTrue(message.contains("overwrite"))
+    }
+
+    private fun premig(ts: Long, from: Int?, to: Int) = PreMigrationBackup.Backup(ts, from, to, File("x"))
+
+    @Test
+    fun `no before-update copy says none yet`() {
+        val line = DriveBackupResolver.preMigrationBackupLine(PreMigrationBackup.Status.None, fixedFormat)
+        assertTrue(line, line.contains("none yet"))
+    }
+
+    @Test
+    fun `a before-update copy names its time and both versions`() {
+        val line = DriveBackupResolver.preMigrationBackupLine(PreMigrationBackup.Status.Taken(premig(100, 79, 80)), fixedFormat)
+        assertTrue(line, line.contains("T100") && line.contains("version 79 to 80"))
+        assertTrue(line, line.contains("manual"))
+    }
+
+    @Test
+    fun `a failed before-update copy says it failed and names the newest good one`() {
+        val failed = PreMigrationBackup.Status.Failed(200, "No space left on device", premig(100, null, 80))
+        val line = DriveBackupResolver.preMigrationBackupLine(failed, fixedFormat)
+        assertTrue(line, line.contains("T200, failed: No space left on device"))
+        assertTrue(line, line.contains("T100") && line.contains("could not be read"))
+        val none = DriveBackupResolver.preMigrationBackupLine(PreMigrationBackup.Status.Failed(200, "x", null), fixedFormat)
+        assertTrue(none, none.contains("No earlier copy"))
     }
 }
