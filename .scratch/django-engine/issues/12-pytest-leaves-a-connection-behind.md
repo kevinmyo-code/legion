@@ -8,7 +8,7 @@ status-detail: "2026-11-26: not a code leak. The idle session is the Supabase po
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 
