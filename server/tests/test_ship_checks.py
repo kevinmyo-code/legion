@@ -624,3 +624,66 @@ def test_a_migration_pinned_to_the_deletion_sentinel_is_refused(tmp_path, monkey
     assert sc.migration_pin_problems(fix, {path: sc.DELETED_PIN}) == [
         f"{path} at FIX is not the pinned blob 00000000"
     ]
+
+
+def _rerooted(tmp_path):
+    """live -> bridge on the old history; dev restarts at an orphan root carrying the bridge's tree,
+    and fix sits on that root. Returns (run, live, bridge, root, fix)."""
+    commit = _repo(tmp_path)
+
+    def run(*args: str) -> str:
+        return subprocess.run(
+            ["git", *args], cwd=tmp_path, check=True, capture_output=True, text=True
+        ).stdout
+
+    (tmp_path / "server" / "app.py").write_text("v = 1\n")
+    (tmp_path / "deploy").mkdir()
+    (tmp_path / "deploy" / "run.sh").write_text("echo run\n")
+    live = commit("live")
+    (tmp_path / "server" / "app.py").write_text("v = 2\n")
+    bridge = commit("bridge")
+    run("checkout", "-q", "--orphan", "dev")
+    root = commit("root, same tree as the bridge")
+    (tmp_path / "server" / "app.py").write_text("v = 3\n")
+    fix = commit("fix")
+    return run, live, bridge, root, fix
+
+
+def test_a_rerooted_dev_ships_only_through_a_bridge_that_holds(tmp_path, monkeypatch):
+    """Dev was re-rooted on 2026-11-25, so the live code is no ancestor of any dev commit. The
+    bridge restores what the ancestor check proved: the live code is under the bridge, and the
+    bridge's image trees are a root of FIX's history."""
+    run, live, bridge, root, fix = _rerooted(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    assert subprocess.run(
+        ["git", "merge-base", "--is-ancestor", live, fix], cwd=tmp_path
+    ).returncode == 1
+    assert sc.bridge_problems(live, fix, bridge) == []
+    # The live code itself is no bridge to a root it is not equal to.
+    assert "match no root" in sc.bridge_problems(live, fix, live)[0]
+    # A bridge the live code is not under proves nothing.
+    assert "not an ancestor of the bridge" in sc.bridge_problems(bridge, fix, root)[0]
+    assert sc.bridge_problems(live, fix, "nope") == ["not a full sha: nope"]
+
+
+def test_a_bridge_whose_image_tree_differs_from_the_root_is_refused(tmp_path, monkeypatch):
+    run, live, bridge, root, fix = _rerooted(tmp_path)
+    run("checkout", "-q", bridge)
+    (tmp_path / "deploy" / "run.sh").write_text("echo changed\n")
+    run("commit", "-qam", "bridge drifts in deploy/")
+    drifted = run("rev-parse", "HEAD").strip()
+    monkeypatch.chdir(tmp_path)
+    assert "match no root" in sc.bridge_problems(live, fix, drifted)[0]
+
+
+def test_scope_without_a_bridge_still_stops_on_a_rerooted_dev(tmp_path, monkeypatch, capsys):
+    run, live, bridge, root, fix = _rerooted(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    pins = tmp_path.parent / f"{tmp_path.name}-pins.txt"
+    pins.write_text(f"server/app.py {sc.blob_at(fix, 'server/app.py')}\n")
+    args = ["scope", "--fix", fix, "--live-code", live, "--image-files", str(pins)]
+    assert sc.main(args) == 1
+    assert "is not an ancestor of" in capsys.readouterr().out
+    assert sc.main([*args, "--live-bridge", bridge]) == 0
+    assert sc.main(["bridge", "--live-code", live, "--fix", fix, "--live-bridge", bridge]) == 0
+    assert sc.main(["bridge", "--live-code", live, "--fix", fix, "--live-bridge", root]) == 1

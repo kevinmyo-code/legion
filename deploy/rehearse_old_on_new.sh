@@ -51,7 +51,13 @@ sql() { psql "$PGURL/$1" -v ON_ERROR_STOP=1 -tAc "$2"; }
 
 echo "== rehearse_old_on_new LIVE_CODE ${LIVE_CODE:0:8} FIX ${FIX:0:8} $(date -u +%FT%TZ)"
 for s in "$LIVE_CODE" "$FIX"; do git -C "$REPO" cat-file -e "$s^{commit}" 2>/dev/null || setup_fail 1 "$s is not in this checkout"; done
-git -C "$REPO" merge-base --is-ancestor "$LIVE_CODE" "$FIX" || setup_fail 1 "LIVE_CODE is not an ancestor of FIX"
+# LIVE_BRIDGE (optional): an old-history commit linking LIVE_CODE to a re-rooted FIX, checked by
+# deploy/ship_checks.py bridge exactly as the scope check does.
+if ! git -C "$REPO" merge-base --is-ancestor "$LIVE_CODE" "$FIX"; then
+  [ -n "${LIVE_BRIDGE:-}" ] || setup_fail 1 "LIVE_CODE is not an ancestor of FIX"
+  ( cd "$REPO" && python3 deploy/ship_checks.py bridge --live-code "$LIVE_CODE" --fix "$FIX" --live-bridge "$LIVE_BRIDGE" ) \
+    || setup_fail 1 "LIVE_CODE is not an ancestor of FIX and the bridge ${LIVE_BRIDGE:0:8} does not hold"
+fi
 MIGS=$(git -C "$REPO" diff --no-renames --name-status "$LIVE_CODE" "$FIX" -- '*/migrations/*')
 echo "schema files LIVE_CODE..FIX: ${MIGS:-none}"
 MIG=$(echo "$MIGS" | awk '$1=="A" && $2 ~ /^server\/[^\/]+\/migrations\/[0-9][^\/]*\.py$/ {print $2}')
