@@ -30,6 +30,17 @@ SUMMARY=$OUT/summary.txt
 note() { echo "$*"; echo "$*" >> "$SUMMARY"; }
 fail() { note "RESULT: FAIL ($*)"; exit 1; }
 spent() { cat "$1/spent.txt" 2>/dev/null || echo "?"; }
+# Why a pytest run did not pass, from repo text only (never the model's words, review G1): pytest's
+# tally, the first failing source line (`>` lines are the test's own code), the error's class name,
+# and a skip's location. Exception messages (`E` lines past the class) and printed output stay here.
+why() {
+  local t src err skip
+  t=$(grep -oE '[0-9]+ (passed|failed|skipped|errors?)' "$1" | tr '\n' ' ' | sed 's/ $//')
+  src=$(grep -m1 -E '^>[[:space:]]+' "$1" | sed -E 's/^>[[:space:]]+//' | cut -c1-160)
+  err=$(grep -m1 -oE '^E[[:space:]]+[A-Za-z_][A-Za-z0-9_.]*(Error|Exception|Exit|Iteration|Skipped|Failed)\b' "$1" | awk '{print $2}')
+  skip=$(grep -m1 -oE '^SKIPPED \[[0-9]+\] [A-Za-z0-9_./-]+:[0-9]+' "$1" | cut -d' ' -f3)
+  echo "tally [${t:-none}] at [${src:-none}] error [${err:-none}] skip [${skip:-none}]"
+}
 
 [[ "$EXTRA_CAP" =~ ^0\.[0-9]{1,3}$ ]] || fail "extra cap must look like 0.12"
 awk -v c="$EXTRA_CAP" 'BEGIN { exit !(c + 0 <= 0.30) }' || fail "extra cap above 0.30 USD"
@@ -74,6 +85,7 @@ rc=$?
 if [ "$rc" = 0 ] && grep -qE '(^| )1 passed' "$RAW/chip.txt" && ! grep -qE '[0-9]+ skipped' "$RAW/chip.txt"; then
   note "chip turn: PASS"
 else
+  note "chip turn: $(why "$RAW/chip.txt")"
   fail "chip turn did not pass (exit $rc, or skipped)"
 fi
 
