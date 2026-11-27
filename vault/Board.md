@@ -49,7 +49,6 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/daily-loops/map\|daily-loops]] | [[01-remove-receipt-path\|01]] | build | Remove the receipt-photo path |
 | [[.scratch/daily-loops/map\|daily-loops]] | [[06-location-reminders\|06]] | build | Location reminders |
 | [[.scratch/dev-aspect/map\|dev-aspect]] | [[06-the-azure-devops-sync\|06]] | build | The Azure DevOps read-through client |
-| [[.scratch/django-engine/map\|django-engine]] | [[12-pytest-leaves-a-connection-behind\|12]] | build | Every pytest run leaves a connection on test_postgres and breaks the next one |
 | [[.scratch/django-engine/map\|django-engine]] | [[14-rules-that-live-only-on-the-phone\|14]] | build | Three rules live only on the phone, and a second app would not have them |
 | [[.scratch/django-engine/map\|django-engine]] | [[17-conversation-audit-uploads-are-dead\|17]] | build | Conversation-audit uploads have been failing since the tenancy migration |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[02-measure-the-bus\|02]] | task | Measure the real round trip on Kevin's car |
@@ -62,7 +61,6 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/generated-ui/map\|generated-ui]] | [[04-adr-0035-amendment\|04]] | decision | Amend ADR 0035: where a hands path is allowed to live |
 | [[.scratch/generated-ui/map\|generated-ui]] | [[06-what-the-pc-surface-constrains\|06]] | grilling | What the PC surface constrains, and what it does not |
 | [[.scratch/hardening/map\|hardening]] | [[03-pre-migration-backup\|03]] | task | Automatic backup before any schema migration |
-| [[.scratch/hardening/map\|hardening]] | [[05-ledger-gate-defects\|05]] | task | Three ledger gate defects found while grounding backend-erp ticket 03 |
 | [[.scratch/hardening/map\|hardening]] | [[06-kotlin-bump-and-compose-pin\|06]] | task | Build debt from backend-erp Phase 1: supabase-kt held back, Compose force-pinned |
 | [[.scratch/hardening/map\|hardening]] | [[13-the-suite-is-green-by-luck\|13]] | build | 13-the-suite-is-green-by-luck |
 | [[.scratch/hardening/map\|hardening]] | [[14-turn-golden-flaky-on-runner-hardware\|14]] | build | 14-turn-golden-flaky-on-runner-hardware |
@@ -511,7 +509,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/cyberdeck-ui/map\|cyberdeck-ui]] | 21 | 0 | [[.scratch/cyberdeck-ui/cyberdeck-ui.canvas\|open]] |
 | [[.scratch/daily-loops/map\|daily-loops]] | 6 | 6 | [[.scratch/daily-loops/daily-loops.canvas\|open]] |
 | [[.scratch/dev-aspect/map\|dev-aspect]] | 8 | 2 | [[.scratch/dev-aspect/dev-aspect.canvas\|open]] |
-| [[.scratch/django-engine/map\|django-engine]] | 16 | 11 | [[.scratch/django-engine/django-engine.canvas\|open]] |
+| [[.scratch/django-engine/map\|django-engine]] | 16 | 10 | [[.scratch/django-engine/django-engine.canvas\|open]] |
 | [[.scratch/drive-test-2026-08-18/map\|drive-test-2026-08-18]] | 5 | 0 | [[.scratch/drive-test-2026-08-18/drive-test-2026-08-18.canvas\|open]] |
 | [[.scratch/drive-ui/map\|drive-ui]] | 10 | 3 | [[.scratch/drive-ui/drive-ui.canvas\|open]] |
 | [[.scratch/dumb-phone/map\|dumb-phone]] | 6 | 6 | [[.scratch/dumb-phone/dumb-phone.canvas\|open]] |
@@ -525,7 +523,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/goal-plans/map\|goal-plans]] | 9 | 8 | [[.scratch/goal-plans/goal-plans.canvas\|open]] |
 | [[.scratch/google-account-integration/map\|google-account-integration]] | 23 | 0 | [[.scratch/google-account-integration/google-account-integration.canvas\|open]] |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | 33 | 11 | [[.scratch/hands-and-senses/hands-and-senses.canvas\|open]] |
-| [[.scratch/hardening/map\|hardening]] | 9 | 5 | [[.scratch/hardening/hardening.canvas\|open]] |
+| [[.scratch/hardening/map\|hardening]] | 9 | 4 | [[.scratch/hardening/hardening.canvas\|open]] |
 | [[.scratch/headunit-car-link/map\|headunit-car-link]] | 2 | 2 | [[.scratch/headunit-car-link/headunit-car-link.canvas\|open]] |
 | [[.scratch/home-launcher/map\|home-launcher]] | 7 | 6 | [[.scratch/home-launcher/home-launcher.canvas\|open]] |
 | [[.scratch/household-finance/map\|household-finance]] | 14 | 14 | [[.scratch/household-finance/household-finance.canvas\|open]] |
