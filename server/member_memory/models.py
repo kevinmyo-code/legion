@@ -391,8 +391,8 @@ class ConversationTurn(models.Model):
     chat_id = models.UUIDField()
     seq = models.IntegerField()
     surface = models.TextField(default=SURFACE_VOICE)
-    # His own words, first-party (CLAUDE.md section 7). Null when there were none or they looked like
-    # an identity number. The assistant's reply and any tool result are NEVER stored: either can
+    # His own words, first-party (CLAUDE.md section 7). Null when there were none or they
+    # looked like an identity number. The assistant's reply and any tool result are NEVER stored: either can
     # carry text other people wrote, and not storing it is the only guard that cannot leak.
     user_text = models.TextField(null=True, blank=True)
     # [{"name": str, "ok": bool}]: which tools ran and whether they worked. Never a result.
