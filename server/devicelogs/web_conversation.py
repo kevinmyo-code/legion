@@ -44,6 +44,8 @@ import uuid
 from django.db import DatabaseError, transaction
 from django.utils import timezone
 
+from assistant import read_through
+from devicelogs import read_through_lines
 from devicelogs.models import (
     DEVICE_LABEL_WEB,
     MAX_UPLOAD_BYTES,
@@ -165,6 +167,8 @@ def append(row: DeviceLog, stamped: list[tuple[datetime.datetime, str]]) -> int:
     from devicelogs.views import inflate_capped
 
     existing = inflate_capped(bytes(row.body_gz)).decode("utf-8", errors="replace").splitlines()
+    # Before dedup: a retried upload is redacted the same way, so it still matches what is stored.
+    stamped = read_through_lines.redact(existing, stamped)
     seen = set(existing)
     fresh: list[str] = []
     latest = row.window_end
@@ -240,7 +244,12 @@ def record_tool(request, conversation_id, **call) -> None:
             row = owned(request, conversation_id)
             if row is None:
                 return
-            append(row, tool_lines(**call))
+            lines = tool_lines(**call)
+            if read_through.read_third_party(request):
+                # This request read outside text (a procedure step's `brief_latest`), so its reply
+                # may hold it whatever the tool's name.
+                lines = [(at, read_through_lines.redact_tool_result(text)) for at, text in lines]
+            append(row, lines)
     except TooLarge:
         return
     except DatabaseError:
@@ -461,6 +470,9 @@ def last_reply(row: DeviceLog) -> str:
             words = json.loads(match.group("text"))
         except ValueError:
             continue
+        if words == read_through_lines.REDACTED:
+            # Its words were not kept, so there is nothing to hear back: no echo check.
+            return ""
         if isinstance(words, str) and words.strip():
             return words
     return ""
@@ -533,6 +545,10 @@ def history(
         if role == "model" and replay is not None:
             # The marker written before this line stands in for its words.
             words, replay = replay, None
+        if role == "model" and words == read_through_lines.REDACTED:
+            # A reply that read outside text was not kept (section 7): never hand the model the
+            # marker as its own words.
+            continue
         if not isinstance(words, str) or not words.strip():
             continue
         if role == "user":

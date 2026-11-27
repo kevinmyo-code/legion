@@ -72,9 +72,9 @@ from django.db.models import Q
 from django.db.models.functions import Now
 from django.utils import timezone
 
-from assistant.read_through import THIRD_PARTY_TOOLS
 from devicelogs import voice_audit
 from devicelogs.models import REASON_CONVERSATION, DeviceLog
+from devicelogs.read_through_lines import READ_THROUGH_TOOLS
 from devicelogs.render import batch_text
 from ingest import statements
 from ingest.drive import _OPENER, Response, Transport
@@ -97,23 +97,7 @@ from member_memory.models import (
 from member_memory.sensitive import looks_sensitive
 from open_loops.words import can_mark_turns
 
-# The phone's `LiveToolbox.EPISODIC_EXCLUDED_TOOLS` (`service/LiveToolbox.kt:3239-3241`, read
-# 2026-11-05), plus the engine's third-party tools (`assistant.read_through.THIRD_PARTY_TOOLS`:
-# `web_search`, `brief_latest`, `github_status`), which the web record logs by name and writes no
-# `read_through` line for. A copy of the phone's half: the engine image holds no Kotlin.
-READ_THROUGH_TOOLS = frozenset(
-    {
-        "search_mail",
-        "read_mail",
-        "ask_mail",
-        "get_sitrep",
-        "track_package",
-        "flight_status",
-        "browser",
-        "email",
-    }
-    | THIRD_PARTY_TOOLS
-)
+# The one list of tools whose replies are third-party text (`devicelogs.read_through_lines`).
 READ_THROUGH_EVENT = "read_through"
 REDACTION_MARK = "[redacted"
 
