@@ -8,7 +8,7 @@ status-detail: "Resolved 2026-11-26: label cap and CHECK on the server, memory r
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 
