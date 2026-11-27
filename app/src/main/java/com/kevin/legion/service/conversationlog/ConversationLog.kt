@@ -6,6 +6,7 @@ import android.util.Log
 import com.kevin.legion.BuildConfig
 import com.kevin.legion.backend.engine.EngineConfig
 import com.kevin.legion.backend.engine.EngineFailure
+import com.kevin.legion.backend.engine.EngineOk
 import com.kevin.legion.backend.engine.EngineHttp
 import com.kevin.legion.backend.engine.EngineHttpException
 import com.kevin.legion.service.phonelog.PhoneLog
@@ -74,26 +75,27 @@ class EngineConversationTransport(private val http: EngineHttp) : ConversationTr
             fileName = fileName,
             fileBytes = gzipBody,
             fileMimeType = "application/gzip",
-        ).fold(
-            onSuccess = { PostResult.Ok(it.status) },
-            onFailure = { e ->
-                when (val failure = (e as? EngineHttpException)?.failure) {
-                    is EngineFailure.Unauthorized -> PostResult.Http(UNAUTHORIZED, failure.sentence)
-                    is EngineFailure.Unreachable -> PostResult.Unreachable(failure.sentence)
-                    is EngineFailure.Refused -> PostResult.Http(failure.status, failure.body)
-                    is EngineFailure.Malformed -> PostResult.Http(MALFORMED, failure.sentence)
-                    null -> PostResult.Unreachable(e.message ?: "the request failed")
-                }
-            },
-        )
-
-    private companion object {
-        const val UNAUTHORIZED = 401
-
-        // Never produced by a POST today (classify only decodes a status); kept a server-side kind.
-        const val MALFORMED = 599
-    }
+        ).toPostResult()
 }
+
+private const val UNAUTHORIZED = 401
+
+// Never produced by a POST today (classify only decodes a status); kept a server-side kind.
+private const val MALFORMED = 599
+
+/** An engine call's result as the transport-neutral [PostResult] the retry rules read. */
+internal fun Result<EngineOk>.toPostResult(): PostResult = fold(
+    onSuccess = { PostResult.Ok(it.status) },
+    onFailure = { e ->
+        when (val failure = (e as? EngineHttpException)?.failure) {
+            is EngineFailure.Unauthorized -> PostResult.Http(UNAUTHORIZED, failure.sentence)
+            is EngineFailure.Unreachable -> PostResult.Unreachable(failure.sentence)
+            is EngineFailure.Refused -> PostResult.Http(failure.status, failure.body)
+            is EngineFailure.Malformed -> PostResult.Http(MALFORMED, failure.sentence)
+            null -> PostResult.Unreachable(e.message ?: "the request failed")
+        }
+    },
+)
 
 /**
  * The phone's conversation log (conversation-records ticket 03, 2026-10-28, Kevin: "all logs on
@@ -129,9 +131,14 @@ object ConversationLog {
     @Volatile var lastResult: String? = null
         private set
 
+    /** The last chat-turn save in words, for the Settings row. Null until a turn was queued this process. */
+    @Volatile var lastTurnResult: String? = null
+        private set
+
     @Volatile private var recorder: ConversationRecorder? = null
     @Volatile private var uploader: ConversationUploader? = null
     @Volatile private var spool: ConversationSpool? = null
+    @Volatile private var turnOutbox: TurnOutbox? = null
 
     private val writer = Executors.newSingleThreadExecutor { r ->
         Thread(r, "conversationlog").apply { isDaemon = true }
@@ -160,6 +167,7 @@ object ConversationLog {
             // Joins these records to the same run's raw logcat batches (2026-11-09).
             runId = PhoneLog.runId,
         )
+        turnOutbox = TurnOutbox(File(app.filesDir, "turnsave/pending.jsonl"), EngineTurnTransport(EngineHttp(EngineConfig(app))))
         recorder = ConversationRecorder(s, writer, enabled = { keepAndSend })
     }
 
@@ -184,6 +192,29 @@ object ConversationLog {
         recorder?.record(tag, message)
     }
 
+    /**
+     * One finished turn, saved to the engine as it happens (memory chain ticket 450). Follows the
+     * same switch as the log ([keepAndSend]). The write to disk and the send run off the caller's
+     * thread; with the engine unreachable the turn waits in [TurnOutbox] and [lastTurnResult] says so.
+     */
+    fun saveTurn(turn: SavedTurn) {
+        val box = turnOutbox ?: return
+        if (!keepAndSend) return
+        writer.execute {
+            runCatching { box.enqueue(turn) }
+            scope.launch { drainTurns() }
+        }
+    }
+
+    private suspend fun drainTurns() {
+        val box = turnOutbox ?: return
+        val outcome = runCatching { box.drain() }.getOrNull() ?: return
+        if (outcome !is TurnOutbox.Outcome.NothingToSend) {
+            lastTurnResult = outcome.sentence
+            Log.i(SAY_TAG, outcome.sentence)
+        }
+    }
+
     /** `LiveAudit`'s session_start (true) and session_end (false). */
     fun onSession(started: Boolean) {
         if (started) {
@@ -191,6 +222,7 @@ object ConversationLog {
         } else {
             stopTicker()
             if (keepAndSend && uploader != null) scope.launch { uploadNow(manual = false) }
+            if (keepAndSend) scope.launch { drainTurns() }
             PhoneLog.onLiveSession(started = false)
         }
     }
@@ -207,6 +239,12 @@ object ConversationLog {
 
     /** At app start: after a short wait for the network, send anything an earlier run left. */
     fun uploadAtStart() {
+        if (keepAndSend) {
+            scope.launch {
+                delay(STARTUP_DELAY_MS)
+                drainTurns()
+            }
+        }
         if (spool?.hasContent() != true) return
         scope.launch {
             delay(STARTUP_DELAY_MS)
@@ -252,6 +290,7 @@ object ConversationLog {
         ticker = scope.launch {
             while (isActive) {
                 delay(UPLOAD_INTERVAL_MS)
+                drainTurns()
                 uploadNow(manual = false)
             }
         }
