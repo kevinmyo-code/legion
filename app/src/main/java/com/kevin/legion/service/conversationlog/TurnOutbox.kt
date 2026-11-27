@@ -87,6 +87,7 @@ class EngineTurnTransport(
  * member signs back in. A line with no owner (an older queue format) cannot be attributed, so it is
  * dropped and counted ([takeRefused]).
  */
+@Suppress("TooManyFunctions") // a file queue: enqueue, drain and the counts a screen reads
 class TurnOutbox(
     private val file: File,
     private val transport: TurnTransport,
