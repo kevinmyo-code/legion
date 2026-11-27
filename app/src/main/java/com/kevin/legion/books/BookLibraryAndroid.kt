@@ -43,12 +43,19 @@ class DjangoLibraryBackend(private val http: EngineHttp) : LibraryBackend {
         )
 
     override suspend fun download(id: Long): SyncReply<ByteArray> {
-        val link = http.get("/api/books/library/$id/download").getOrElse { return failure(it) }
-        val target = runCatching { URI(JSONObject(link.body).getString("url")) }.getOrNull()
-        // Path and query only: the host the engine put in the link may not be the one this phone reaches it by.
-        val path = target?.let { it.rawPath + (it.rawQuery?.let { query -> "?$query" } ?: "") }
-            ?: return SyncReply.Rejected("The engine's download link could not be read.")
+        val link = http.get("/api/books/library/$id/download")
+        val path = link.getOrNull()?.let { pathOf(it.body) }
+        if (path == null) {
+            return link.exceptionOrNull()?.let(::failure)
+                ?: SyncReply.Rejected("The engine's download link could not be read.")
+        }
         return http.getBytes(path).fold(onSuccess = { SyncReply.Ok(it.bytes) }, onFailure = ::failure)
+    }
+
+    /** Path and query only: the host the engine put in the link may not be the one this phone reaches it by. */
+    private fun pathOf(body: String): String? {
+        val target = runCatching { URI(JSONObject(body).getString("url")) }.getOrNull() ?: return null
+        return target.rawPath + (target.rawQuery?.let { "?$it" } ?: "")
     }
 
     private fun parse(body: String): SyncReply<List<LibraryBook>> {
