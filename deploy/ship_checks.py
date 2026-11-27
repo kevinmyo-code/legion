@@ -8,6 +8,7 @@ functions (tested in server/tests/test_ship_checks.py) plus a small command line
         --fix <sha> --expected-extras "<a,b>"
         [--add-checks "<unset:NAME frozen:path probe:M:/api/x:404>"] [--unfreeze "<file>=<why>; ..."]
     python deploy/ship_checks.py plan --add-checks "<...>"
+    python deploy/ship_checks.py bridge --live-code <sha> --fix <sha> --live-bridge <sha>
 
 Prints what it checked; exits 1 with every problem listed. Stdlib only.
 """
@@ -367,12 +368,49 @@ def schema_status(live_code: str, fix: str) -> list[tuple[str, str]]:
     ]
 
 
+def tree_at(sha: str, path: str) -> str | None:
+    return blob_at(sha, path)  # `rev-parse <sha>:<path>` names a tree as readily as a blob
+
+
+def bridge_problems(live_code: str, fix: str, bridge: str) -> list[str]:
+    """When LIVE_CODE is not an ancestor of FIX because dev's history was re-rooted (2026-11-25: dev
+    restarts at an orphan commit whose tree is an old-history commit's), the ship names that
+    old-history commit as the bridge. It holds only when (1) LIVE_CODE is an ancestor of the bridge,
+    and (2) some root commit of FIX's history has, under every IMAGE_PATHS folder, exactly the
+    bridge's tree. Then FIX carries everything the live code had, as an ancestor would prove; the
+    LIVE_CODE..FIX pins still name every changed file. Empty list = the bridge holds."""
+    for v in (live_code, fix, bridge):
+        if not SHA.match(v):
+            return [f"not a full sha: {v}"]
+    for v in (live_code, bridge):
+        if subprocess.run(["git", "cat-file", "-e", f"{v}^{{commit}}"], capture_output=True).returncode != 0:
+            return [f"{v[:8]} is not in this checkout"]
+    if subprocess.run(["git", "merge-base", "--is-ancestor", live_code, bridge]).returncode != 0:
+        return [f"the live code {live_code[:8]} is not an ancestor of the bridge {bridge[:8]}"]
+    want = [tree_at(bridge, p) for p in IMAGE_PATHS]
+    roots = git("rev-list", "--max-parents=0", fix).split()
+    for root in roots:
+        if [tree_at(root, p) for p in IMAGE_PATHS] == want:
+            print(
+                f"live code {live_code[:8]} reaches {fix[:8]} through the bridge {bridge[:8]}: "
+                f"its {' and '.join(IMAGE_PATHS)} trees equal those of {fix[:8]}'s root {root[:8]}"
+            )
+            return []
+    return [
+        f"the bridge {bridge[:8]}'s {' and '.join(IMAGE_PATHS)} trees match no root of "
+        f"{fix[:8]}'s history ({', '.join(r[:8] for r in roots)})"
+    ]
+
+
 def cmd_scope(a) -> list[str]:
     for v in (a.fix, a.live_code):
         if not SHA.match(v):
             return [f"not a full sha: {v}"]
     if subprocess.run(["git", "merge-base", "--is-ancestor", a.live_code, a.fix]).returncode != 0:
-        return [f"the live code {a.live_code[:8]} is not an ancestor of {a.fix[:8]}"]
+        if not a.live_bridge:
+            return [f"the live code {a.live_code[:8]} is not an ancestor of {a.fix[:8]}"]
+        if problems := bridge_problems(a.live_code, a.fix, a.live_bridge):
+            return problems
     pinned = parse_pins(open(a.image_files, encoding="utf-8").read())
     changed = image_blobs(a.live_code, a.fix)
     problems = image_problems(changed, pinned)
@@ -436,6 +474,15 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument(
         "--migrations", default="", help="file of '<path> <blob>' lines for the added schema files"
     )
+    s.add_argument(
+        "--live-bridge",
+        default="",
+        help="old-history commit linking LIVE_CODE to a re-rooted FIX (see bridge_problems)",
+    )
+    b = sub.add_parser("bridge", help="check the bridge alone (rehearse_old_on_new.sh)")
+    b.add_argument("--live-code", required=True)
+    b.add_argument("--fix", required=True)
+    b.add_argument("--live-bridge", required=True)
     g = sub.add_parser("gate")
     g.add_argument("--summary", required=True)
     g.add_argument("--title", required=True)
@@ -457,7 +504,10 @@ def main(argv: list[str] | None = None) -> int:
             print("switches=" + " ".join(switch_names(" ".join(add["unset"])) + list(ALSO_UNSET)))
             print("probes=" + ";".join(f"{m} {p} {','.join(c)}" for m, p, c in add["probes"]))
             return 0
-        problems = cmd_scope(a) if a.cmd == "scope" else cmd_gate(a)
+        if a.cmd == "bridge":
+            problems = bridge_problems(a.live_code, a.fix, a.live_bridge)
+        else:
+            problems = cmd_scope(a) if a.cmd == "scope" else cmd_gate(a)
     except (ValueError, OSError, subprocess.CalledProcessError) as exc:
         problems = [str(exc)]
     for p in problems:
