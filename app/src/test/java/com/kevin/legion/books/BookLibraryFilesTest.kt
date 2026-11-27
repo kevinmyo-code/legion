@@ -32,8 +32,10 @@ class BookLibraryFilesTest {
             docs[name]?.let { DocDigest(it.size.toLong(), LibrarySha.of(it)) }
 
         override fun rename(from: String, to: String): Boolean {
-            if (failRename) return false
-            docs[to] = docs.remove(from) ?: return false
+            val moved = docs[from]
+            if (failRename || moved == null) return false
+            docs.remove(from)
+            docs[to] = moved
             return true
         }
 
