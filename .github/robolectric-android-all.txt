@@ -6,4 +6,3 @@
 # `@Config(sdk = [..])` under app/src/test).
 version 4.16.1
 14-robolectric-10818077-i7
-11-robolectric-6757853-i7
