@@ -24,6 +24,27 @@ from __future__ import annotations
 import json
 import re
 
+from assistant.read_through import THIRD_PARTY_TOOLS
+
+# The phone's `LiveToolbox.EPISODIC_EXCLUDED_TOOLS` (`service/LiveToolbox.kt`, read 2026-11-05): a
+# copy, since the engine image holds no Kotlin (`tests/test_procedures_definition.py` and
+# `tests/test_member_memory_consolidate.py` fail when it drifts).
+PHONE_READ_THROUGH_TOOLS: frozenset[str] = frozenset(
+    {
+        "search_mail",
+        "read_mail",
+        "ask_mail",
+        "get_sitrep",
+        "track_package",
+        "flight_status",
+        "browser",
+        "email",
+    }
+)
+# Every tool whose result is outside text by its name: the phone's and the engine's third-party
+# tools. The one list the conversation record, memory consolidation and the procedure count read.
+READ_THROUGH_TOOLS: frozenset[str] = PHONE_READ_THROUGH_TOOLS | THIRD_PARTY_TOOLS
+
 RESULT_CHARS = 400
 ARG_CHARS = 200
 MAIL_STUB = "A mail tool ran. Its content is never stored (ADR 0099)."
@@ -47,6 +68,12 @@ _SECRET_KEYS = re.compile(r"(token|secret|password|key|passport|ssn|account_numb
 
 def is_mail_tool(name: str) -> bool:
     return bool(_MAIL.search(name or ""))
+
+
+def reads_outside(name: str) -> bool:
+    """Whether a tool's result is outside text by its name alone (a relayed tool or a procedure
+    step can be outside text by class too: callers pass that as `outside`)."""
+    return name in READ_THROUGH_TOOLS or is_mail_tool(name)
 
 
 def _mask(value: str) -> str:

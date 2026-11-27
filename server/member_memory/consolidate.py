@@ -72,9 +72,9 @@ from django.db.models import Q
 from django.db.models.functions import Now
 from django.utils import timezone
 
+from agents.legion.redact import READ_THROUGH_TOOLS
 from devicelogs import voice_audit
 from devicelogs.models import REASON_CONVERSATION, DeviceLog
-from devicelogs.read_through_lines import READ_THROUGH_TOOLS
 from devicelogs.render import batch_text
 from ingest import statements
 from ingest.drive import _OPENER, Response, Transport
@@ -97,7 +97,7 @@ from member_memory.models import (
 from member_memory.sensitive import looks_sensitive
 from open_loops.words import can_mark_turns
 
-# The one list of tools whose replies are third-party text (`devicelogs.read_through_lines`).
+# The one list of tools whose replies are third-party text (`agents.legion.redact`).
 READ_THROUGH_EVENT = "read_through"
 REDACTION_MARK = "[redacted"
 

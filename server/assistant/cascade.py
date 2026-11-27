@@ -685,9 +685,9 @@ class TurnInput:
     # that was playing: only then is the transcript checked for an echo (round 4 ruling).
     barge_in: bool = False
     last_reply: str = ""
-    # That reply read outside text and was not kept (#475): there is nothing to compare an echo
-    # with, so a barge-in over it keeps no transcript (`record_user`).
-    last_reply_withheld: bool = False
+    # That reply read outside text and was not kept (#475): its keyed fingerprint, compared in its
+    # place (`echo.is_echo_of_print`).
+    last_reply_print: tuple[str, ...] = ()
     # A tapped suggestion chip offered to this visitor (`demo.suggestions.chip_for`): its checked
     # lookup is the turn's first round, never the model's pick.
     chip: object | None = None
@@ -952,6 +952,21 @@ def _failure_words(result, door: WebDoor) -> str | None:
     return lead + ("" if door.wrote() else NOTHING_CHANGED)
 
 
+def _heard_back(words: str, turn_input: TurnInput) -> bool:
+    """The last reply heard back: by its words, or by its fingerprint when it was withheld."""
+    return echo.is_echo(words, turn_input.last_reply) or echo.is_echo_of_print(
+        words, turn_input.last_reply_print
+    )
+
+
+def _reply_not_written_yet(request, turn_input: TurnInput) -> bool:
+    """A barge-in in the turn after one that read outside text whose reply is not on the record
+    yet (it is written when that turn ends): nothing to check an echo against (#475)."""
+    if turn_input.last_reply_print:
+        return False
+    return read_through._read_where(request) is not None
+
+
 def run_turn(
     request,
     turn_input: TurnInput,
@@ -1096,7 +1111,7 @@ def _answer(
             yield ev.done("cancelled", "", False)
             return
         last = turn_input.last_reply
-        if words and turn_input.barge_in and echo.is_echo(words, last):
+        if words and turn_input.barge_in and _heard_back(words, turn_input):
             # The assistant's own last reply heard back through the speaker (2026-11-17: played
             # back at 5% it was transcribed and answered). No model round, nothing kept as their
             # line, not side talk; logged with lengths only.
@@ -1138,8 +1153,8 @@ def _answer(
         if user_recorded:
             return
         user_recorded = True
-        if turn_input.barge_in and turn_input.last_reply_withheld:
-            # Possibly the withheld answer heard back: not saved as his words.
+        if turn_input.barge_in and _reply_not_written_yet(request, turn_input):
+            # Possibly a withheld answer heard back before it reached the record: not saved.
             said = web_conversation.engine_withheld_user_line(heard_at)
         else:
             said = web_conversation.engine_user_line(heard_at, words, typed=not speak)

@@ -1,9 +1,9 @@
-# ruff: noqa: F811 - fixtures imported from the cascade tests
 """Third-party text never reaches a stored web conversation record (CLAUDE.md section 7, #475).
 
 The web record is written by the engine (`devicelogs.web_conversation`), so it redacts at write
-time the way the phone does on the device: a read-through tool's reply, and every assistant line
-from that turn on, become `[redacted: third-party content]`. His own words stay.
+time the way the phone does on the device: a read-through tool's reply, and the assistant's lines
+in that turn and the next (the carry), become `[redacted: third-party content]`. His own words
+stay. The cascade door's cases are in `tests/test_web_read_through_cascade.py`.
 """
 
 from __future__ import annotations
@@ -19,23 +19,13 @@ from django.core.management import call_command
 
 from agents.legion import redact as trace
 from agents.legion.redact import OUTSIDE_ANSWER_NOTE
-from agents.runtime.model import FakeModel, call, say
+from assistant import echo
 from devicelogs import web_conversation as wc
 from devicelogs.models import DeviceLog
-from devicelogs.read_through_lines import READ_THROUGH_TOOLS, REDACTED, redact
+from devicelogs.read_through_lines import ECHO_EVENT, REDACTED, echo_print, redact
 from engine_mcp import web_search
 from member_memory import consolidate
 from tests.test_assistant import _start, browser, google  # noqa: F401 - fixture
-from tests.test_assistant_cascade import (  # noqa: F401 - fixtures
-    PCM,
-    _clean,
-    _events,
-    _of,
-    _post,
-    _record,
-    engine,
-    member,
-)
 
 T0 = datetime(2026, 11, 26, 9, 0, tzinfo=UTC)
 PAGE = "Example Motors says the pump fails at 60,000 miles."
@@ -75,9 +65,11 @@ def test_one_list_of_read_through_tools():
     """Memory consolidation and the record redact by the same set, which holds every engine
     third-party tool."""
     from assistant.read_through import THIRD_PARTY_TOOLS
+    from procedures import definition
 
-    assert consolidate.READ_THROUGH_TOOLS is READ_THROUGH_TOOLS
-    assert THIRD_PARTY_TOOLS <= READ_THROUGH_TOOLS
+    assert consolidate.READ_THROUGH_TOOLS is trace.READ_THROUGH_TOOLS
+    assert definition.READ_THROUGH_TOOLS is trace.PHONE_READ_THROUGH_TOOLS
+    assert THIRD_PARTY_TOOLS <= trace.READ_THROUGH_TOOLS
 
 
 # The engine's three third-party tools, and a mail-shaped name from the phone's half of the list
@@ -98,14 +90,16 @@ def test_a_household_tools_reply_and_answer_stay():
     assert redact([], fresh) == fresh
 
 
-def test_a_later_assistant_line_in_the_same_conversation_is_redacted():
-    """Sticky, as on the phone: the search ran in an earlier write; the next turn's answer may
-    still repeat the page, and its user line stays his."""
+def test_the_next_turn_is_redacted_and_the_one_after_is_stored_as_said():
+    """The read turn and the carried turn (its answer may still repeat the page), then it resets,
+    as the phone's `resetTurn` does. His lines stay his throughout."""
     stored = _texts([_user(0), *_tool(1, "web_search"), _said(3, "It says something.")])
     later = [_user(10, "And the price?"), _said(12, "About forty dollars, the page said.")]
     kept = _texts(redact(stored, later))
     assert kept[0] == later[0][1]
-    assert kept[1].endswith(f"assistant text={MARK}")
+    assert kept[-1].endswith(f"assistant text={MARK}")
+    after = [_user(20, "Thanks"), _said(21, "You're welcome.")]
+    assert redact(stored + kept, after) == after
 
 
 def test_words_before_the_read_turn_stay_and_the_read_turns_own_opening_does_not():
@@ -113,7 +107,8 @@ def test_words_before_the_read_turn_stay_and_the_read_turns_own_opening_does_not
     turn = [_user(5), _said(6, "Let me look."), *_tool(7, "web_search"), _said(9, PAGE)]
     kept = _texts(redact([], earlier + turn))
     assert 'assistant text="Morning."' in kept[1]
-    assert all(text.endswith(f"assistant text={MARK}") for text in (kept[3], kept[7]))
+    said = [text for text in kept[2:] if " assistant text=" in text]
+    assert len(said) == 2 and all(text.endswith(f"assistant text={MARK}") for text in said)
 
 
 def test_a_read_through_or_already_redacted_line_taints_what_follows():
@@ -133,7 +128,7 @@ def test_a_read_through_or_already_redacted_line_taints_what_follows():
         ),
     ):
         kept = _texts(redact([], [_user(0), marker, _said(2, PAGE)]))
-        assert kept[2].endswith(f"assistant text={MARK}")
+        assert kept[-1].endswith(f"assistant text={MARK}")
 
 
 def test_the_replay_line_is_redacted_too():
@@ -154,9 +149,10 @@ def _row(lines) -> DeviceLog:
     return DeviceLog(body_gz=gzip.compress(body))
 
 
-def test_history_replays_the_outside_answer_note_and_keeps_his_turns_apart():
-    """Review F1: a withheld reply is replayed as the agent trace's note (answered, not kept,
-    done), never the marker and never dropped, so his turns stay separate and alternate."""
+def test_history_replays_the_note_only_for_the_withheld_turns():
+    """A withheld reply is replayed as the agent trace's note (answered, not kept, done), never
+    the marker and never dropped, so his turns stay separate; a later household answer is
+    replayed as it was said."""
     lines = redact(
         [],
         [
@@ -165,20 +161,40 @@ def test_history_replays_the_outside_answer_note_and_keeps_his_turns_apart():
             _user(5),
             *_tool(6, "web_search"),
             _said(8, PAGE),
-            _user(10, "What is on my calendar?"),
-            _said(11, "Nothing today."),
+            _user(10, "And?"),
+            _said(11, "That was all it said."),
+            _user(15, "What is on my calendar?"),
+            _said(16, "Nothing today."),
         ],
     )
     row = _row(lines)
     turns, users = wc.history(row, max_turns=10)
-    assert [t["role"] for t in turns] == ["user", "model", "user", "model", "user", "model"]
-    assert [t["parts"][0]["text"] for t in turns][3::2] == [OUTSIDE_ANSWER_NOTE] * 2
+    assert [t["role"] for t in turns] == ["user", "model"] * 4
+    replies = [t["parts"][0]["text"] for t in turns][1::2]
+    assert replies == ["Morning.", OUTSIDE_ANSWER_NOTE, OUTSIDE_ANSWER_NOTE, "Nothing today."]
     assert REDACTED not in json.dumps(turns) and PAGE not in json.dumps(turns)
-    assert users == 3
-    assert wc.withheld_reply(wc.last_reply(row))
+    assert users == 4
+    assert wc.last_reply(row) == ("Nothing today.", ())
+
+
+def test_a_withheld_reply_keeps_only_a_keyed_fingerprint_the_echo_check_reads():
+    """Review F2: the reply's words are not stored, its HMAC 3-gram print is; the answer heard
+    back matches it, his own different words do not."""
+    answer = f"It says: {PAGE} Worth checking before a long drive."
+    lines = redact([], [_user(0), *_tool(1, "web_search"), _said(3, answer)])
+    body = "\n".join(_texts(lines))
+    assert PAGE not in body and "Worth checking" not in body
+    reply, print_ = wc.last_reply(_row(lines))
+    assert reply == "" and len(print_) == len(echo.words(answer)) - 2
+    assert all(len(h) == echo.PRINT_HEX and h not in answer for h in print_)
+    assert echo.is_echo_of_print("says the pump fails at 60,000 miles worth checking", print_)
+    assert not echo.is_echo_of_print("can you add a reminder for the garage friday", print_)
+    printed = next(text for text in _texts(lines) if f" {ECHO_EVENT} " in text)
+    assert echo_print(printed) == print_
 
 
 def test_a_withheld_user_line_counts_as_his_turn_and_holds_no_words():
+    """The race (a barge-in before the read turn's reply reached the record) keeps no words."""
     row = _row([_user(0, "Hi"), _said(1, "Morning."), wc.engine_withheld_user_line(_at(5))])
     turns, users = wc.history(row, max_turns=10)
     assert users == 2
@@ -372,30 +388,3 @@ def test_count_command_finds_an_old_morning_briefing_reply(household_user):
     call_command("count_read_through_web", stdout=out)
     # The call's arguments, its reply and the answer after it; his line is never counted.
     assert "1 scanned, 1 the current rule would redact, 3 lines" in out.getvalue()
-
-
-# ---- the cascade door (ADR 0102) --------------------------------------------------------------
-
-
-@pytest.mark.django_db
-def test_the_cascade_stores_no_web_text_and_a_barge_in_over_it_keeps_no_transcript(
-    member, engine, fake_web
-):
-    """Review F7 and F2: a search through `POST /api/assistant/turn` leaves no page text in the
-    record; a barge-in over that withheld answer (the answer heard back, here) keeps no words."""
-    asked = "What does the web say about the pump?"
-    engine.model = FakeModel([call("web_search", {"query": "pump"}), say(f"It says: {PAGE}")])
-    first = _events(_post(member, text=asked))
-    assert f"It says: {PAGE}" in [s["text"] for s in _of(first, "sentence")]  # said, not kept
-    conversation = _of(first, "turn")[0]["conversation_id"]
-    record = _record(conversation)
-    assert PAGE not in record and "60,000" not in record
-    assert f"text={json.dumps(asked)}" in record
-    assert f"assistant text={MARK}" in record
-
-    engine.model = FakeModel([say("Okay.")])
-    engine.speech.heard = f"It says: {PAGE}"
-    _events(_post(member, audio=PCM, conversation_id=conversation, barge_in="1"))
-    record = _record(conversation)
-    assert "60,000" not in record and "Example Motors" not in record
-    assert wc.WITHHELD_USER in record

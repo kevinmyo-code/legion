@@ -26,24 +26,15 @@ from dataclasses import dataclass
 
 from jsonschema import Draft202012Validator
 
+from agents.legion.redact import PHONE_READ_THROUGH_TOOLS
+
 STEP_KINDS: tuple[str, ...] = ("tool", "compute", "decide", "ask", "check", "say")
 
 # Mirrors `LiveToolbox.EPISODIC_EXCLUDED_TOOLS` on the phone (CLAUDE.md section 7, ruling 06): a
 # step that reads third-party content would be stored in a run trace, so it is refused here,
 # before any trace exists. No engine tool reads mail today (`tests/test_engine_mcp.py`); this
 # keeps a future one out. `tests/test_procedures_definition.py` fails while the two sets differ.
-READ_THROUGH_TOOLS: frozenset[str] = frozenset(
-    {
-        "search_mail",
-        "read_mail",
-        "ask_mail",
-        "get_sitrep",
-        "track_package",
-        "flight_status",
-        "browser",
-        "email",
-    }
-)
+READ_THROUGH_TOOLS: frozenset[str] = PHONE_READ_THROUGH_TOOLS
 # Engine-only tools whose results are third-party content, so a procedure may not call them
 # either (ruling 06: a run trace never stores it). web_search returns text from the web.
 ENGINE_READ_THROUGH_TOOLS: frozenset[str] = frozenset({"web_search"})

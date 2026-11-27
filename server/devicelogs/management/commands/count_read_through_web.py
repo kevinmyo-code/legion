@@ -15,7 +15,7 @@ from pathlib import Path
 
 from django.core.management.base import BaseCommand
 
-from assistant.read_through import THIRD_PARTY_TOOLS
+from agents.legion.redact import reads_outside
 from devicelogs.models import DEVICE_LABEL_WEB, REASON_CONVERSATION, DeviceLog
 from devicelogs.read_through_lines import redact
 from devicelogs.views import inflate_capped
@@ -23,14 +23,15 @@ from devicelogs.views import inflate_capped
 _BUILTIN_DIRS = ("procedures/builtin", "demo/procedures")
 
 
-def _reads_outside(definition) -> bool:
+def _reads_outside_steps(definition) -> bool:
     steps = definition.get("steps") if isinstance(definition, dict) else None
-    return any(isinstance(s, dict) and s.get("tool") in THIRD_PARTY_TOOLS for s in steps or ())
+    return any(isinstance(s, dict) and reads_outside(s.get("tool") or "") for s in steps or ())
 
 
 def outside_procedures() -> frozenset[str]:
-    """Names of procedures, any household's and any version, whose steps call a third-party
-    tool, plus the built-in files (a record may predate a version's row)."""
+    """Names of procedures, any household's and any version, whose steps call a read-through
+    tool (`agents.legion.redact.reads_outside`), plus the built-in files (a record may predate
+    a version's row)."""
     from procedures.loader import read_definition
     from procedures.models import ProcedureVersion
 
@@ -39,13 +40,13 @@ def outside_procedures() -> frozenset[str]:
         for name, definition in ProcedureVersion.objects.values_list(
             "procedure__name", "definition"
         )
-        if _reads_outside(definition)
+        if _reads_outside_steps(definition)
     }
     root = Path(__file__).resolve().parents[3]
     for folder in _BUILTIN_DIRS:
         for path in sorted((root / folder).glob("*.yaml")):
             definition, _ = read_definition(path)
-            if _reads_outside(definition):
+            if _reads_outside_steps(definition):
                 names.add(definition["name"])
     return frozenset(names)
 
@@ -59,7 +60,7 @@ def count() -> tuple[int, int, int]:
     for body_gz in rows.values_list("body_gz", flat=True).iterator():
         scanned += 1
         stored = inflate_capped(bytes(body_gz)).decode("utf-8", errors="replace").splitlines()
-        kept = redact([], [(None, text) for text in stored], procedures=procedures)
+        kept = redact([], [(None, text) for text in stored], procedures=procedures, prints=False)
         changed = sum(1 for text, (_, after) in zip(stored, kept, strict=True) if text != after)
         if changed:
             affected += 1

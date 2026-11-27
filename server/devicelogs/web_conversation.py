@@ -392,19 +392,15 @@ def engine_user_line(at: datetime.datetime, text: str, *, typed: bool) -> tuple:
     return (at, line(at, TID_ENGINE, AUDIT, f"user final=true{flag} text={quoted(text, CAP_TURN)}"))
 
 
-# A barge-in over a reply that was withheld: his transcript may be that reply heard back through
-# the speaker, and the echo check has no words to compare it with, so it is not kept (#475).
+# A barge-in in the turn after one that read outside text, before that turn's reply reached the
+# record (it is written when the turn ends): his transcript may be that reply heard back, and
+# there is nothing yet to check it against, so it is not kept (#475). Rare: a race.
 WITHHELD_USER = "user_withheld reason=overlapped_withheld_answer"
 _WITHHELD = f"  0  {TID_ENGINE} I {AUDIT}: {WITHHELD_USER}"
 
 
 def engine_withheld_user_line(at: datetime.datetime) -> tuple:
     return (at, line(at, TID_ENGINE, AUDIT, WITHHELD_USER))
-
-
-def withheld_reply(reply: str) -> bool:
-    """Whether `last_reply`'s answer is the marker: the reply was not kept."""
-    return reply == read_through_lines.REDACTED
 
 
 def engine_assistant_line(at: datetime.datetime, text: str) -> tuple:
@@ -471,14 +467,16 @@ def utterances_received(row: DeviceLog) -> int:
     )
 
 
-def last_reply(row: DeviceLog) -> str:
-    """The assistant's most recent reply in this conversation, as one record line said it: the
-    reply that was playing, never several merged (round 4: the echo check compares against it)."""
+def last_reply(row: DeviceLog) -> tuple[str, tuple[str, ...]]:
+    """(the assistant's most recent reply in this conversation, as one record line said it, its
+    echo fingerprint). The reply that was playing, never several merged (round 4: the echo check
+    compares against it). A withheld reply (#475) has no words, only the fingerprint written just
+    before it (`read_through_lines`); either may be empty."""
     from devicelogs.views import inflate_capped
 
     body = inflate_capped(bytes(row.body_gz)).decode("utf-8", errors="replace").splitlines()
-    for text in reversed(body):
-        match = _ENGINE_TURN.match(text)
+    for n in range(len(body) - 1, -1, -1):
+        match = _ENGINE_TURN.match(body[n])
         if match is None or not match.group("ai"):
             continue
         try:
@@ -486,11 +484,10 @@ def last_reply(row: DeviceLog) -> str:
         except ValueError:
             continue
         if words == read_through_lines.REDACTED:
-            # Its words were not kept: the caller sees the marker (`withheld_reply`), not text.
-            return words
+            return "", read_through_lines.echo_print(body[n - 1]) if n else ()
         if isinstance(words, str) and words.strip():
-            return words
-    return ""
+            return words, ()
+    return "", ()
 
 
 CUT_OFF_NOTE = "(They spoke over this reply and stopped it here.)"

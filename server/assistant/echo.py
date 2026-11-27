@@ -46,3 +46,48 @@ def is_echo(transcript: str, reply: str) -> bool:
         and kept >= len(heard) - allowed_missing
         and (kept / len(heard) >= MIN_SHARE)
     )
+
+
+# ---- a reply that was not kept (#475) ---------------------------------------------------------
+#
+# A reply that read outside text is stored as a marker (CLAUDE.md section 7), so there are no
+# words to compare a barge-in with. Its fingerprint is kept instead: each word 3-gram, keyed with
+# the engine's SECRET_KEY (HMAC-SHA256), truncated. No text can be read back from it without the
+# key, and the test is the same in spirit: most of the transcript's 3-grams are the reply's.
+
+GRAM = 3
+PRINT_HEX = 8
+PRINT_MAX = 400
+# Of the transcript's 3-grams, this share must be in the reply's print. Lower than MIN_SHARE: one
+# misheard word breaks up to three 3-grams.
+PRINT_SHARE = 0.5
+
+
+def _grams(text: str) -> list[str]:
+    said = words(text)
+    return [" ".join(said[i : i + GRAM]) for i in range(len(said) - GRAM + 1)]
+
+
+def _key(gram: str) -> str:
+    import hashlib
+    import hmac
+
+    from django.conf import settings
+
+    digest = hmac.new(settings.SECRET_KEY.encode(), gram.encode(), hashlib.sha256).hexdigest()
+    return digest[:PRINT_HEX]
+
+
+def fingerprint(text: str) -> list[str]:
+    """The reply's keyed 3-gram hashes, in order, at most PRINT_MAX."""
+    return [_key(gram) for gram in _grams(text)][:PRINT_MAX]
+
+
+def is_echo_of_print(transcript: str, print_: list[str] | tuple[str, ...]) -> bool:
+    """`is_echo` against a fingerprint: the transcript has at least MIN_WORDS words and at least
+    PRINT_SHARE of its 3-grams are in the print."""
+    if len(words(transcript)) < MIN_WORDS or not print_:
+        return False
+    grams = [_key(gram) for gram in _grams(transcript)]
+    kept = set(print_)
+    return sum(1 for gram in grams if gram in kept) / len(grams) >= PRINT_SHARE
