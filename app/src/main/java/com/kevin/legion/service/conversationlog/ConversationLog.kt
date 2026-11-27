@@ -167,7 +167,10 @@ object ConversationLog {
             // Joins these records to the same run's raw logcat batches (2026-11-09).
             runId = PhoneLog.runId,
         )
-        turnOutbox = TurnOutbox(File(app.filesDir, "turnsave/pending.jsonl"), EngineTurnTransport(EngineHttp(EngineConfig(app))))
+        turnOutbox = TurnOutbox(
+            File(app.filesDir, "turnsave/pending.jsonl"),
+            EngineTurnTransport(EngineHttp(EngineConfig(app))),
+        )
         recorder = ConversationRecorder(s, writer, enabled = { keepAndSend })
     }
 

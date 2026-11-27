@@ -99,8 +99,9 @@ class TurnOutbox(
 
         /** The engine could not take [left] turns now; they are kept and tried again. */
         data class Kept(val sent: Int, val left: Int, val reason: String) : Outcome {
-            override val sentence = (if (sent > 0) "Saved $sent chat turns, then stopped: " else "Chat turns not saved: ") +
-                "$reason $left kept on this phone; they will be tried again."
+            override val sentence =
+                (if (sent > 0) "Saved $sent chat turns, then stopped: " else "Chat turns not saved: ") +
+                    "$reason $left kept on this phone; they will be tried again."
         }
     }
 
@@ -117,28 +118,35 @@ class TurnOutbox(
 
     fun pending(): Int = synchronized(lock) { read().size }
 
-    /** Sends queued turns oldest first until one fails. Single-flight: a second caller waits, then finds the queue empty. */
+    /**
+     * Sends queued turns oldest first until one fails. Single-flight: a second caller waits, then
+     * finds the queue empty.
+     */
     suspend fun drain(): Outcome = drainLock.withLock { drainLocked() }
 
     private suspend fun drainLocked(): Outcome {
         var sent = 0
         var refused = 0
-        while (true) {
+        var stop: Outcome? = null
+        while (stop == null) {
             val next = synchronized(lock) { read().firstOrNull() }
-            if (next == null) return if (sent + refused == 0) Outcome.NothingToSend else Outcome.Sent(sent, refused)
-            if (!transport.isUsable()) return Outcome.NoEngine
-            val result = transport.post(next)
-            val kind = RetryRules.classify(result)
-            if (kind == null) {
-                removeFirst(next)
-                sent++
-            } else if (kind in DROPPED) {
-                removeFirst(next)
-                refused++
-            } else {
-                return Outcome.Kept(sent, pending(), RetryRules.sentence(kind, result))
+            stop = when {
+                next == null -> if (sent + refused == 0) Outcome.NothingToSend else Outcome.Sent(sent, refused)
+                !transport.isUsable() -> Outcome.NoEngine
+                else -> {
+                    val result = transport.post(next)
+                    val kind = RetryRules.classify(result)
+                    if (kind == null || kind in DROPPED) {
+                        removeFirst(next)
+                        if (kind == null) sent++ else refused++
+                        null
+                    } else {
+                        Outcome.Kept(sent, pending(), RetryRules.sentence(kind, result))
+                    }
+                }
             }
         }
+        return checkNotNull(stop)
     }
 
     private fun removeFirst(line: String) = synchronized(lock) {
