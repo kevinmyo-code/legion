@@ -81,10 +81,28 @@ def word(text: str, cap: int = 100) -> str:
     return _WORD.sub("_", text.strip())[:cap] or "-"
 
 
+# Every character `str.splitlines` breaks on. JSON escapes the ones below U+0020 but keeps U+0085,
+# U+2028 and U+2029 raw (`ensure_ascii=False`), so a tool's reply holding one could forge a line
+# of its own in the stored record (the #160 review). Each is written as its JSON escape, which a
+# JSON field decodes back and which never splits a line.
+_BREAKS = re.compile(r"[\n\r\x0b\x0c\x1c\x1d\x1e\x85\u2028\u2029]")
+
+
+def _no_breaks(msg: str) -> str:
+    return _BREAKS.sub(lambda m: f"\\u{ord(m.group(0)):04x}", msg)
+
+
+def lines_of(body: str) -> list[str]:
+    """A stored record's lines: split on newline only, the one separator this module writes."""
+    return [text for text in body.split("\n") if text]
+
+
 def line(at: datetime.datetime, tid: int, tag: str, msg: str) -> str:
-    """One threadtime line, the shape `voice_audit._LINE` reads, in UTC."""
+    """One threadtime line, the shape `voice_audit._LINE` reads, in UTC. A line break inside
+    `msg` is escaped, so one message is always one line."""
     at = at.astimezone(datetime.UTC)
-    return f"{at:%m-%d %H:%M:%S}.{at.microsecond // 1000:03d}  0  {tid} I {tag}: {msg}"
+    stamp = f"{at:%m-%d %H:%M:%S}.{at.microsecond // 1000:03d}"
+    return f"{stamp}  0  {tid} I {tag}: {_no_breaks(msg)}"
 
 
 def _ms(at: datetime.datetime) -> int:
@@ -165,7 +183,7 @@ def append(row: DeviceLog, stamped: list[tuple[datetime.datetime, str]]) -> int:
     store. Returns how many lines were new. Raises TooLarge, storing nothing, past the cap."""
     from devicelogs.views import inflate_capped
 
-    existing = inflate_capped(bytes(row.body_gz)).decode("utf-8", errors="replace").splitlines()
+    existing = lines_of(inflate_capped(bytes(row.body_gz)).decode("utf-8", errors="replace"))
     # Before dedup: a retried upload is redacted the same way, so it still matches what is stored.
     stamped = read_through_lines.redact(existing, stamped)
     seen = set(existing)
@@ -459,7 +477,7 @@ def utterances_received(row: DeviceLog) -> int:
     body = inflate_capped(bytes(row.body_gz)).decode("utf-8", errors="replace")
     return sum(
         1
-        for text in body.splitlines()
+        for text in lines_of(body)
         if "cascade_turn status=" in text
         and "cascade_turn status=greeting" not in text
         # The assistant's own reply heard back is not an utterance (the echo layer), and nor is
@@ -476,7 +494,7 @@ def last_reply(row: DeviceLog) -> tuple[str, tuple[str, ...]]:
     before it (`read_through_lines`); either may be empty."""
     from devicelogs.views import inflate_capped
 
-    body = inflate_capped(bytes(row.body_gz)).decode("utf-8", errors="replace").splitlines()
+    body = lines_of(inflate_capped(bytes(row.body_gz)).decode("utf-8", errors="replace"))
     for n in range(len(body) - 1, -1, -1):
         match = _ENGINE_TURN.match(body[n])
         if match is None or not match.group("ai"):
@@ -515,7 +533,7 @@ def history(
     figure from an earlier turn is never re-read as fresh."""
     from devicelogs.views import inflate_capped
 
-    body = inflate_capped(bytes(row.body_gz)).decode("utf-8", errors="replace").splitlines()
+    body = lines_of(inflate_capped(bytes(row.body_gz)).decode("utf-8", errors="replace"))
     turns: list[dict] = []
     users = 0
 

@@ -253,7 +253,9 @@ def sweep_prints(now: datetime.datetime | None = None) -> int:
             body = inflate_capped(bytes(row.body_gz)).decode("utf-8", errors="replace")
             if f" {ECHO_EVENT} " not in body:
                 continue
-            lines = body.splitlines()
+            from devicelogs.web_conversation import lines_of
+
+            lines = lines_of(body)
             kept = drop_spent_prints(lines, now)
             if len(kept) == len(lines):
                 continue

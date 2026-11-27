@@ -19,6 +19,7 @@ from agents.legion.redact import reads_outside
 from devicelogs.models import DEVICE_LABEL_WEB, REASON_CONVERSATION, DeviceLog
 from devicelogs.read_through_lines import redact
 from devicelogs.views import inflate_capped
+from devicelogs.web_conversation import lines_of
 
 _BUILTIN_DIRS = ("procedures/builtin", "demo/procedures")
 
@@ -59,7 +60,7 @@ def count() -> tuple[int, int, int]:
     rows = DeviceLog.objects.filter(device_label=DEVICE_LABEL_WEB, reason=REASON_CONVERSATION)
     for body_gz in rows.values_list("body_gz", flat=True).iterator():
         scanned += 1
-        stored = inflate_capped(bytes(body_gz)).decode("utf-8", errors="replace").splitlines()
+        stored = lines_of(inflate_capped(bytes(body_gz)).decode("utf-8", errors="replace"))
         kept = redact([], [(None, text) for text in stored], procedures=procedures, prints=False)
         changed = sum(1 for text, (_, after) in zip(stored, kept, strict=True) if text != after)
         if changed:
