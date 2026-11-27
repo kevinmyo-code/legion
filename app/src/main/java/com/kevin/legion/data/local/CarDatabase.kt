@@ -676,6 +676,8 @@ abstract class CarDatabase : RoomDatabase() {
                 // here while DatabaseSnapshot.restore holds LOCK (via [withDatabaseLock])
                 // blocks instead of racing it: see [withDatabaseLock]'s doc comment.
                 INSTANCE?.let { return@synchronized it }
+                // Before Room exists, so nothing holds the file while it is copied.
+                PreMigrationBackup.runBeforeOpen(context.applicationContext, SCHEMA_VERSION)
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     CarDatabase::class.java,
