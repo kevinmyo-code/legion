@@ -132,6 +132,11 @@ jobs:
         with:
           cache-read-only: true
 
+      # Maven Central answers 429 to shared runner IPs (dry run 46031342679 failed twice on Supabase
+      # poms): Gradle looks on Google's mirror of Central first. See the init script's header.
+      - name: Fetch Maven Central artifacts from Google's mirror first
+        run: mkdir -p "$HOME/.gradle/init.d" && cp .github/gradle/central-mirror.init.gradle.kts "$HOME/.gradle/init.d/"
+
       - name: Committed models match app/models.sha256
         run: ./gradlew :app:verifyModels --no-daemon
 
