@@ -28,8 +28,8 @@ def _turn(chat, seq, **fields):
         "seq": seq,
         "surface": "voice",
         "user_text": "what is on my list",
-        # Sent on purpose: an old or hostile client may still post a reply, and the engine must ignore
-        # it (there is no column for it). No row ever holds the assistant's side.
+        # Sent on purpose: an old or hostile client may post a reply; the engine must ignore it
+        # (there is no column for it). No row ever holds the assistant's side.
         "assistant_text": "Milk and eggs.",
         "tool_calls": [],
         "spoken_at": timezone.now().isoformat(),
