@@ -318,6 +318,8 @@ class MidnightApplication : Application() {
             runCatching {
                 com.kevin.legion.service.conversationlog.ConversationLog.init(this)
                 com.kevin.legion.service.conversationlog.ConversationLog.uploadAtStart()
+                // Issue #450: each finished turn also goes to the engine as it ends.
+                com.kevin.legion.service.conversationlog.TurnLog.init(this)
             }.onFailure { MidnightEvents.appStartWorkFailed("conversation_log", it) }
         }
 

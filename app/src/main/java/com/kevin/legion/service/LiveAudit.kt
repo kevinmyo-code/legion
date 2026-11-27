@@ -1,6 +1,9 @@
 package com.kevin.legion.service
 
 import com.kevin.legion.service.conversationlog.ConversationLog
+import com.kevin.legion.service.conversationlog.TurnAction
+import com.kevin.legion.service.conversationlog.TurnAssembler
+import com.kevin.legion.service.conversationlog.TurnLog
 import com.kevin.legion.service.tools.LiveSurface
 import org.json.JSONObject
 
@@ -29,14 +32,21 @@ import org.json.JSONObject
  * never the on-screen probe buffer). Off ([enabled] false) means no line at all. [onSession] hears
  * every session start and end whatever [enabled] says, so the engine spool can seal and upload.
  * Thread-safe: the socket thread and the tool dispatcher both call in.
+ *
+ * **Each finished turn also goes to the engine as it ends** (issue #450): [turns] hears the same
+ * events whatever [enabled] says, builds the turn ([TurnAssembler]) and hands it to [TurnLog].
+ * Null (a test conversation) saves no turn.
  */
 @Suppress("TooManyFunctions") // one function per LIVE_AUDIT event, the format's whole surface
 internal class LiveAudit(
     private val sink: (String) -> Unit = { LiveLatency.audit(TAG, it) },
     private val isReadThroughTool: (String) -> Boolean = { GeminiLiveSession.isEpisodicExcludedTool(it) },
     private val onSession: (Boolean) -> Unit = { ConversationLog.onSession(it) },
+    turns: ((TurnAction) -> Unit)? = TurnLog::submit,
 ) {
     @Volatile var enabled = false
+
+    private val turn = turns?.let { TurnAssembler(emit = it) }
 
     private val toolNames = HashMap<String, String>()
 
@@ -58,6 +68,7 @@ internal class LiveAudit(
         toolNames.clear()
         readThroughIds.clear()
         resetTurn()
+        turn?.sessionStart()
         val async = asyncSet.sorted().joinToString(",").ifEmpty { "none" }
         val packToken = pack?.let { " pack=${token(it)}" }.orEmpty()
         emit("session_start model=${token(model)} async_set=$async$packToken")
@@ -67,17 +78,21 @@ internal class LiveAudit(
     @Synchronized
     fun sessionEnd(reason: String) {
         emit("session_end reason=${quote(reason)}")
+        turn?.sessionEnd()
         onSession(false)
     }
 
     /** [final] is the transcription's own `finished` flag, or true for a whole-turn line. */
     @Synchronized
-    fun user(text: String, final: Boolean, typed: Boolean = false) =
+    fun user(text: String, final: Boolean, typed: Boolean = false) {
+        turn?.user(text, final)
         emit("user final=$final" + (if (typed) " typed=true" else "") + " text=${quote(text)}")
+    }
 
     /** [readThrough] is the session's own per-turn flag (`mailToolCalledThisTurn`). */
     @Synchronized
     fun assistant(chunk: String, readThrough: Boolean) {
+        turn?.assistant(chunk, readThroughTurn = readThrough || readThroughToolThisTurn)
         if (readThrough || readThroughToolThisTurn) {
             if (!redactionLoggedThisTurn) emit("assistant text=${quote(REDACTED)}")
             redactionLoggedThisTurn = true
@@ -90,10 +105,12 @@ internal class LiveAudit(
     fun toolCall(id: String, name: String, async: Boolean, argsJson: String, via: String? = null) {
         toolNames[id] = name
         val args = runCatching { JSONObject(argsJson) }.getOrNull() ?: JSONObject()
-        if (isReadThroughTool(name) || isReadThroughTool(LiveSurface.resolve(name, args).name)) {
+        val readThroughTool = isReadThroughTool(name) || isReadThroughTool(LiveSurface.resolve(name, args).name)
+        if (readThroughTool) {
             readThroughToolThisTurn = true
             readThroughIds.add(id)
         }
+        turn?.toolCall(name, readThroughTool)
         // ADR 0086: an email's body never reaches this log; EmailToolbox.redactArgs keeps its length.
         val logged = EmailToolbox.redactArgs(name, argsJson)
         // `via` (live cost diet, 2026-11-10): the action tool the model called when [name] is the
@@ -158,6 +175,7 @@ internal class LiveAudit(
      */
     @Synchronized
     fun readThrough(source: String, tool: String? = null) {
+        turn?.readThrough()
         val line = "read_through source=${token(source)}" + (tool?.let { " tool=${token(it)}" } ?: "")
         if (readThroughLoggedThisTurn.add(line)) emit(line)
     }
@@ -166,6 +184,7 @@ internal class LiveAudit(
     @Synchronized
     fun turnComplete() {
         emit("turn_complete")
+        turn?.turnComplete()
         resetTurn()
     }
 

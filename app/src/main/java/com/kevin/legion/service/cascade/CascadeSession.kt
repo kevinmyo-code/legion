@@ -186,7 +186,7 @@ internal class CascadeSession(
 
     // A test conversation's audit goes to logcat only: never the engine spool, which memory reads.
     private val audit = if (test != null) {
-        LiveAudit(sink = { TestTurns.auditSink(LiveAudit.TAG, it) }, onSession = {})
+        LiveAudit(sink = { TestTurns.auditSink(LiveAudit.TAG, it) }, onSession = {}, turns = null)
     } else {
         LiveAudit()
     }
