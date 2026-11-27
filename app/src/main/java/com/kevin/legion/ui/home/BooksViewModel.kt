@@ -13,6 +13,7 @@ import com.kevin.legion.books.BookCoverCache
 import com.kevin.legion.books.AndroidPdfConversions
 import com.kevin.legion.books.BookCovers
 import com.kevin.legion.books.BookFormat
+import com.kevin.legion.books.BookLibraryScheduler
 import com.kevin.legion.books.PdfConversionScheduler
 import com.kevin.legion.books.ReadingSyncScheduler
 import com.kevin.legion.books.PdfSheetInfo
@@ -213,8 +214,14 @@ class BooksViewModel(
                 cachedCount = folders::cachedCount,
                 enqueueConversion = { PdfConversionScheduler.enqueue(app) },
                 pdfInfo = { items -> PdfSheetInfo.of(AndroidPdfConversions(app), items) },
-                enqueueSync = { ReadingSyncScheduler.enqueue(app) },
-                syncLine = { ReadingSyncScheduler.sheetLine(app) },
+                enqueueSync = {
+                    ReadingSyncScheduler.enqueue(app)
+                    BookLibraryScheduler.enqueue(app)
+                },
+                syncLine = {
+                    listOfNotNull(ReadingSyncScheduler.sheetLine(app), BookLibraryScheduler.sheetLine(app))
+                        .joinToString(" ").ifBlank { null }
+                },
                 coverOf = { book ->
                     withContext(Dispatchers.IO) {
                         cache.cached(book.documentId)?.let(BookCovers::decode)?.asImageBitmap()

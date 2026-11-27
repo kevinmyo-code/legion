@@ -6,7 +6,7 @@ import android.net.Uri
 
 /**
  * The Books folder grant: its tree URI in a private prefs file (not the engine, not synced; ADR
- * 0061) plus a persisted READ-only grant. Whether the grant is still alive is asked of the system
+ * 0061) plus a persisted read grant (and write, when the provider allows it, for library downloads). Whether the grant is still alive is asked of the system
  * each time ([isGranted]), never remembered, so a revoked grant shows as one. Same shape as
  * `games/GamesFolderStore`, a separate file so the two folders are independent.
  */
@@ -26,7 +26,15 @@ class BooksFolderStore(context: Context) {
                 app.contentResolver.releasePersistableUriPermission(previous, Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
         }
-        app.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        // Write too, so library downloads can land here (alfred-builds 06); a provider that refuses it keeps the read grant.
+        runCatching {
+            app.contentResolver.takePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+            )
+        }.onFailure {
+            app.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
         prefs.edit().putString(KEY_TREE, uri.toString()).remove(KEY_COUNT).apply()
     }
 
