@@ -20,8 +20,10 @@ function stamp(iso: string): string {
  *
  * Own conversations only, by the engine's design: another member's words and
  * tool results are private to them (ADR 0052), so the household's page is each
- * member's own. The engine withholds what a mail or web turn read (and the rest of
- * that session) before it sends the lines, so the page never relies on the device.
+ * member's own. The engine sends only the member's own lines, tool names and
+ * times: never the assistant's replies or a tool's arguments or results
+ * (CLAUDE.md section 7), so the page never relies on the device having
+ * redacted anything.
  *
  * Each stored batch is one block. A conversation the device split across two
  * uploads shows as two blocks: the page does not stitch them, and says so.
@@ -43,7 +45,7 @@ export function ConversationsScreen() {
   return (
     <SettingsPage
       title="Conversations"
-      subtitle="What you said to the assistant and what it did, as your phone and this browser uploaded it. Newest first. Only yours: nobody else in the household sees these."
+      subtitle="What you said to the assistant and which tools it used, as your phone and this browser uploaded it. Newest first. Only yours: nobody else in the household sees these."
     >
       {conversations.isError && (
         <ErrorSentence>
@@ -58,7 +60,8 @@ export function ConversationsScreen() {
       {devices?.map((device) => <DevicePanel key={device.device_label} device={device} />)}
       {devices && devices.length > 0 && (
         <p className="text-[0.8125rem] text-muted-foreground">
-          A conversation a device uploaded in two parts shows as two blocks.
+          The assistant's replies and tool details are not shown here. A conversation a device uploaded in
+          two parts shows as two blocks.
         </p>
       )}
       {moreToShow && (

@@ -66,9 +66,13 @@ describe('the conversations page', () => {
     expect(engine.searches['GET /api/device-logs/conversations/']).toBe('limit=30')
   })
 
-  test('says a split conversation shows as two blocks', async () => {
+  test('says replies and tool details are not shown, and that a split conversation is two blocks', async () => {
     renderApp('/settings/conversations', engineWith([WEB]), 'workbench')
-    expect(await screen.findByText('A conversation a device uploaded in two parts shows as two blocks.')).toBeInTheDocument()
+    expect(
+      await screen.findByText(
+        "The assistant's replies and tool details are not shown here. A conversation a device uploaded in two parts shows as two blocks.",
+      ),
+    ).toBeInTheDocument()
   })
 
   test('an unreadable batch is named in words, not dropped', async () => {
