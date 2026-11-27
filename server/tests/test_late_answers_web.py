@@ -105,7 +105,7 @@ def test_a_member_ask_is_answered_by_code_and_recorded(member, engine, household
     task = LateTask.objects.get()
     assert (task.origin_client, task.question) == ("web", "the invented ferry times")
     record = _record(_of(events, "turn")[0]["conversation_id"])
-    assert f'assistant text="{late.ACK}"' in record
+    assert f"assistant kept=false chars={len(late.ACK)}" in record  # never its words (#475)
 
 
 def test_a_member_hears_the_owed_line_after_his_answer_and_once(

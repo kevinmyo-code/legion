@@ -1,9 +1,10 @@
 # ruff: noqa: F811 - fixtures imported from the cascade tests
 """#475 through the cascade door (`POST /api/assistant/turn`, ADR 0102): a web search leaves no
-page text in the record, the answer heard back on a barge-in is caught as an echo by its keyed
-fingerprint and stored nowhere, and a real barge-in is stored as his words. Separate from
-`tests/test_web_read_through_record.py` because the cascade's autouse `_clean` unsets the Live
-pin those tests need."""
+third-party text in the durable record; the next turn still has the reply in its history (the
+transient context); the answer heard back on a barge-in is caught as an echo against the reply's
+own words and stored nowhere, and a real question asked over it is answered and stored as his
+words. Separate from `tests/test_web_read_through_record.py` because the cascade's autouse
+`_clean` unsets the Live pin those tests need."""
 
 from __future__ import annotations
 
@@ -12,8 +13,8 @@ import json
 import pytest
 
 from agents.runtime.model import FakeModel, call, say
-from devicelogs import web_conversation as wc
-from devicelogs.voice_audit import REDACTED
+from assistant import context as turn_context
+from devicelogs.models import DeviceLog
 from engine_mcp import web_search
 from tests.test_assistant_cascade import (  # noqa: F401 - fixtures
     PCM,
@@ -29,8 +30,6 @@ from tests.test_assistant_cascade import (  # noqa: F401 - fixtures
 pytestmark = pytest.mark.django_db
 
 PAGE = "Example Motors says the pump fails at 60,000 miles."
-ANSWER = f"It says: {PAGE} Worth checking before a long drive."
-MARK = json.dumps(REDACTED)
 
 
 @pytest.fixture(autouse=True)
@@ -46,54 +45,75 @@ def fake_web(monkeypatch):
     )
 
 
-def _searched(member, engine) -> str:
-    asked = "What does the web say about the pump?"
-    engine.model = FakeModel([call("web_search", {"query": "pump"}), say(ANSWER)])
+def _searched(member, engine, answer: str) -> str:
+    asked = "What does the web say about it?"
+    engine.model = FakeModel([call("web_search", {"query": "pump"}), say(answer)])
     first = _events(_post(member, text=asked))
-    assert "Example Motors" in " ".join(s["text"] for s in _of(first, "sentence"))  # said
     conversation = _of(first, "turn")[0]["conversation_id"]
     record = _record(conversation)
-    assert PAGE not in record and "60,000" not in record
-    assert f"text={json.dumps(asked)}" in record
-    assert f"assistant text={MARK}" in record
+    for word in ("Example Motors", "60,000", "Nvidia", '"query"'):
+        assert word not in record
+    assert f"text={json.dumps(asked)}" in record  # his words stay
+    assert "name=web_search success=true" in record and "assistant kept=false" in record
     return conversation
 
 
+def test_the_next_turn_has_the_reply_in_its_history_and_the_record_never_does(member, engine):
+    answer = f"It says: {PAGE}"
+    conversation = _searched(member, engine, answer)
+    engine.model = FakeModel([say("You're welcome.")])
+    _events(_post(member, text="Thanks", conversation_id=conversation))
+    replayed = json.dumps(engine.model.requests[0].contents)
+    assert "60,000" in replayed  # the live turn reads it, from the transient context
+    assert "60,000" not in _record(conversation)
+
+
 def test_the_answer_heard_back_is_an_echo_and_is_stored_nowhere(member, engine):
-    conversation = _searched(member, engine)
+    """The r4 review's leak pair: a spoken figure misheard as words is still the reply."""
+    conversation = _searched(
+        member,
+        engine,
+        f"It says: {PAGE} Worth checking before a long drive.",
+    )
     engine.model = FakeModel([])
-    engine.speech.heard = "says the pump fails at 60,000 miles worth checking before"
+    engine.speech.heard = "the pump fails at sixty thousand miles worth checking"
     events = _events(_post(member, audio=PCM, conversation_id=conversation, barge_in="1"))
     assert engine.model.requests == []  # no model round on its own voice
     assert _of(events, "done")[0]["ignored"] == "no_speech"
     record = _record(conversation)
     assert "status=echo" in record
-    assert "60,000" not in record and "Example Motors" not in record
+    assert "sixty thousand" not in record and "pump" not in record
 
 
-def test_a_real_barge_in_after_it_is_stored_as_his_words(member, engine):
-    conversation = _searched(member, engine)
-    engine.model = FakeModel([say("Okay.")])
-    engine.speech.heard = "Stop, can you add a reminder for the garage on Friday"
-    _events(_post(member, audio=PCM, conversation_id=conversation, barge_in="1"))
+def test_a_real_question_over_the_reply_is_answered_and_kept_as_his_words(member, engine):
+    """The r4 review's false-drop pair: his question shares words with the reply, and is his."""
+    conversation = _searched(
+        member,
+        engine,
+        "The stock price of Nvidia today is one hundred and forty dollars, up three percent on "
+        "the week.",
+    )
+    engine.model = FakeModel([say("That was today's price.")])
+    engine.speech.heard = "wait what is the stock price of nvidia today"
+    events = _events(_post(member, audio=PCM, conversation_id=conversation, barge_in="1"))
+    assert len(engine.model.requests) == 1  # answered
+    assert _of(events, "done")[0].get("ignored") is None
     record = _record(conversation)
-    assert 'text="Stop, can you add a reminder for the garage on Friday"' in record
-    assert wc.WITHHELD_USER not in record
-    # The read turn's print went when this turn completed; this (carried, withheld) reply has its
-    # own until the next turn does.
-    assert record.count(" assistant_echo print=") == 1
+    assert 'text="wait what is the stock price of nvidia today"' in record
+    assert "status=echo" not in record
 
 
-def test_a_barge_in_before_the_read_turns_reply_is_written_keeps_no_words(
-    member, engine, monkeypatch
-):
-    """The race: the read turn's reply reaches the record when that turn ends, so a barge-in
-    can arrive first. Its transcript may be that reply, with nothing yet to check it against."""
-    conversation = _searched(member, engine)
-    monkeypatch.setattr(wc, "last_reply", lambda row: ("", ()))  # as if not yet written
-    engine.model = FakeModel([say("Okay.")])
-    engine.speech.heard = "the pump fails at 60,000 miles"
-    _events(_post(member, audio=PCM, conversation_id=conversation, barge_in="1"))
-    record = _record(conversation)
-    assert "60,000" not in record
-    assert wc.WITHHELD_USER in record
+def test_the_reply_is_in_the_context_from_its_first_sentence(member, engine):
+    """Written as each sentence goes out, not when the turn ends: a barge-in that arrives while
+    the reply plays finds it for the echo check."""
+    engine.model = FakeModel([say("First part. Second part.")])
+    events = _post(member, text="Hello")
+    stream = iter(events.streaming_content)
+    seen = b""
+    while b"event: sentence" not in seen:
+        seen += next(stream)
+    conversation = json.loads(seen.split(b"data: ")[1].split(b"\n")[0])["conversation_id"]
+    row = DeviceLog.objects.get(batch_id=conversation)
+    assert turn_context.last_reply(row).startswith("First part.")
+    for _ in stream:
+        pass

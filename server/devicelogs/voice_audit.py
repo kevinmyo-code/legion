@@ -459,6 +459,11 @@ def _items(events, verbose):
             continue
         if event == "assistant":
             text = fields.get("text", "")
+            if fields.get("kept") == "false":
+                # A web record keeps that the assistant spoke, never what it said (#475).
+                flush()
+                items.append((time, "ASSISTANT", "[not kept]", None))
+                continue
             if text == REDACTED:
                 flush()
                 items.append((time, "ASSISTANT", "[redacted]", None))

@@ -60,18 +60,18 @@ def test_a_turn_refused_demo_full_runs_when_resent(visitor, engine, monkeypatch)
 
 
 def test_a_turn_that_failed_before_it_ran_is_not_a_duplicate(visitor, engine, monkeypatch):
-    from devicelogs import web_conversation
+    from assistant import context as turn_context
 
     turn_id = str(uuid.uuid4())
-    real = web_conversation.history
+    real = turn_context.history
 
     def broken(*a, **k):
         raise RuntimeError("history unreadable")
 
-    monkeypatch.setattr(web_conversation, "history", broken)
+    monkeypatch.setattr(turn_context, "history", broken)
     visitor.raise_request_exception = False
     assert _post(visitor, text="Hi.", turn_id=turn_id).status_code == 500
-    monkeypatch.setattr(web_conversation, "history", real)
+    monkeypatch.setattr(turn_context, "history", real)
     engine.model = FakeModel([say("Hello.")])
     assert _said(_events(_post(visitor, text="Hi.", turn_id=turn_id))) == ["Hello."]
 

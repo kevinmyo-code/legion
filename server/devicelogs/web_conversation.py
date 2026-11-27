@@ -13,14 +13,21 @@ Who writes what:
 - **The mint** (`POST /api/assistant/session`) opens the row: `batch_id` is a fresh conversation
   id, handed back to the browser, and the first line is `session_start model=<the model>`.
 - **The tool door** (`POST /api/assistant/tool`) writes each tool call itself, `tool_call` with
-  the arguments and `tool_result` with the outcome, the engine's words (trimmed) and the latency it
-  measured. The engine ran the tool, so it is the authority; a tab that dies mid-conversation
-  still leaves every tool call on the record.
-- **The browser** (`POST /api/assistant/conversation`) sends what only it hears: the visitor's and
-  the assistant's words (Gemini's input and output transcriptions, or the typed text), turn ends,
+  its name and `tool_result` with how it ended and the latency it measured. The engine ran the
+  tool, so it is the authority; a tab that dies mid-conversation still leaves every tool call on
+  the record.
+- **The browser** (`POST /api/assistant/conversation`) sends what only it hears: the visitor's
+  words (Gemini's input transcription, or the typed text), that the assistant spoke, turn ends,
   interruptions, cancelled tool calls, mic changes, the end, and two timings (cold start, reply).
   It sends EVENTS, never lines: this module writes every line, so a browser cannot forge a tool
   line or a tag the parser would believe.
+
+**What the record never holds (#475, CLAUDE.md section 7).** The assistant's words, a tool's
+arguments and a tool's reply, in any turn: a reply can be built on a web search, the brief's news
+or a GitHub title, which other people wrote, and a reply or an argument can carry that text on.
+The record keeps his own words, tool names with how they ended, times and markers. What the live
+turn needs to carry the conversation on is `assistant.context`: transient, deleted within the
+hour, never in a backup.
 
 No audio, ever. The `pid tid` columns of a line name its writer: `0 1` the browser, `0 2` the
 engine. Times are UTC. A browser's times are its own clock plus `clock_offset_ms`, measured once at
@@ -44,9 +51,6 @@ import uuid
 from django.db import DatabaseError, transaction
 from django.utils import timezone
 
-from agents.legion.redact import OUTSIDE_ANSWER_NOTE
-from assistant import read_through
-from devicelogs import read_through_lines
 from devicelogs.models import (
     DEVICE_LABEL_WEB,
     MAX_UPLOAD_BYTES,
@@ -66,6 +70,8 @@ TID_ENGINE = 2
 CAP_TOOL = 400
 CAP_TURN = 2000
 _WORD = re.compile(r"\s+")
+# "MM-DD HH:MM:SS.mmm": a line's sort key.
+_STAMP_LEN = 18
 
 
 def _trim(text: str, cap: int) -> str:
@@ -184,8 +190,6 @@ def append(row: DeviceLog, stamped: list[tuple[datetime.datetime, str]]) -> int:
     from devicelogs.views import inflate_capped
 
     existing = lines_of(inflate_capped(bytes(row.body_gz)).decode("utf-8", errors="replace"))
-    # Before dedup: a retried upload is redacted the same way, so it still matches what is stored.
-    stamped = read_through_lines.redact(existing, stamped)
     seen = set(existing)
     fresh: list[str] = []
     latest = row.window_end
@@ -198,10 +202,7 @@ def append(row: DeviceLog, stamped: list[tuple[datetime.datetime, str]]) -> int:
             latest = at
     if not fresh:
         return 0
-    opened = (existing or fresh)[0]
-    merged = sorted(existing + fresh, key=lambda text: read_through_lines.sort_key(opened, text))
-    # An echo print lives only for its window (`read_through_lines.drop_spent_prints`).
-    merged = read_through_lines.drop_spent_prints(merged, timezone.now())
+    merged = sorted(existing + fresh, key=lambda text: text[:_STAMP_LEN])
     body = _body(merged)
     if len(body) > MAX_UPLOAD_BYTES:
         raise TooLarge(
@@ -227,25 +228,18 @@ def tool_lines(
     outcome: str,
     text: str,
 ) -> list[tuple[datetime.datetime, str]]:
-    """The engine's lines for one tool call: the call with its arguments, its latency, and the
-    result with the outcome and the engine's words, trimmed."""
+    """The engine's lines for one tool call: the call by name, its latency, and how it ended.
+    Never its arguments or the engine's words (module doc): `args` and `text` are taken so every
+    door can hand over the whole call, and are dropped here."""
+    del args, text
     ms = max(int((ended - started).total_seconds() * 1000), 0)
     call, tool = word(call_id), word(name)
-    try:
-        args_json = json.dumps(args, ensure_ascii=False, separators=(",", ":"), default=str)
-    except (TypeError, ValueError):
-        args_json = json.dumps(str(args))
-    response = json.dumps(
-        {"success": success, "outcome": outcome, "message": _trim(text, CAP_TOOL)},
-        ensure_ascii=False,
-        separators=(",", ":"),
-    )
     flag = "true" if success else "false"
-    called = f"tool_call id={call} name={tool} async=false args={_trim(args_json, CAP_TOOL)}"
+    called = f"tool_call id={call} name={tool} async=false"
     timed = f"tool_ms={ms} tool={tool} sent=true async=false"
     result = (
         f"tool_result id={call} name={tool} success={flag} ms={ms} scheduling=none "
-        f"sent=true response={response}"
+        f"sent=true outcome={word(outcome or '-', 40)}"
     )
     return [
         (started, line(started, TID_ENGINE, AUDIT, called)),
@@ -264,12 +258,7 @@ def record_tool(request, conversation_id, **call) -> None:
             row = owned(request, conversation_id)
             if row is None:
                 return
-            lines = tool_lines(**call)
-            if read_through.read_third_party(request):
-                # This request read outside text (a procedure step's `brief_latest`), so its reply
-                # may hold it whatever the tool's name.
-                lines = [(at, read_through_lines.redact_tool_result(text)) for at, text in lines]
-            append(row, lines)
+            append(row, tool_lines(**call))
     except TooLarge:
         return
     except DatabaseError:
@@ -345,7 +334,7 @@ def event_line(event: dict, at: datetime.datetime) -> str | None:
         text = event.get("text") or ""
         if not text.strip():
             return None
-        msg = f"assistant text={quoted(text, CAP_TURN)}"
+        msg = assistant_msg(text)
     elif kind == "interrupted":
         msg = f"interrupted source={word(event.get('reason') or 'server')}"
     elif kind == "turn_complete":
@@ -397,14 +386,21 @@ def prune_visit_records(now: datetime.datetime | None = None) -> int:
 #
 # On the cascade path the ENGINE heard the words (it transcribed them) and wrote the reply, so it
 # writes the `user` and `assistant` lines itself, as `0 2` lines, the way the tool door writes tool
-# calls. The browser no longer sends them for a cascade conversation. The same lines are the
-# conversation's history for the next turn (`history`): only engine-written lines count, so a
-# browser upload (`0 1`) can never put words in the assistant's mouth.
+# calls. The browser no longer sends them for a cascade conversation. The next turn's history is
+# `assistant.context`, never these lines; they still count his turns (`user_turns`), which number
+# the read-through marks and the carry, so the count never restarts when the context expires.
 
-_ENGINE_TURN = re.compile(
-    r"^\S+ \S+  0  " + str(TID_ENGINE) + r" I " + AUDIT + r": "
-    r"(?:(?P<user>user final=true(?: typed=true)?)|(?P<ai>assistant)) text=(?P<text>\".*\")$"
+_ENGINE_USER = re.compile(
+    r"^\S+ \S+  0  " + str(TID_ENGINE) + r" I " + AUDIT + r": user final=true(?: typed=true)? text="
 )
+
+
+def user_turns(row: DeviceLog) -> int:
+    """How many of his turns the record holds (engine-written lines only)."""
+    from devicelogs.views import inflate_capped
+
+    body = inflate_capped(bytes(row.body_gz)).decode("utf-8", errors="replace")
+    return sum(1 for text in lines_of(body) if _ENGINE_USER.match(text))
 
 
 def engine_user_line(at: datetime.datetime, text: str, *, typed: bool) -> tuple:
@@ -412,26 +408,13 @@ def engine_user_line(at: datetime.datetime, text: str, *, typed: bool) -> tuple:
     return (at, line(at, TID_ENGINE, AUDIT, f"user final=true{flag} text={quoted(text, CAP_TURN)}"))
 
 
-# A barge-in in the turn after one that read outside text, before that turn's reply reached the
-# record (it is written when the turn ends): his transcript may be that reply heard back, and
-# there is nothing yet to check it against, so it is not kept (#475). Rare: a race.
-WITHHELD_USER = "user_withheld reason=overlapped_withheld_answer"
-_WITHHELD = f"  0  {TID_ENGINE} I {AUDIT}: {WITHHELD_USER}"
-
-
-def engine_withheld_user_line(at: datetime.datetime) -> tuple:
-    return (at, line(at, TID_ENGINE, AUDIT, WITHHELD_USER))
+def assistant_msg(text: str) -> str:
+    """That the assistant spoke, and how much: never what it said (module doc)."""
+    return f"assistant kept=false chars={len(text.strip())}"
 
 
 def engine_assistant_line(at: datetime.datetime, text: str) -> tuple:
-    return (at, line(at, TID_ENGINE, AUDIT, f"assistant text={quoted(text, CAP_TURN)}"))
-
-
-def engine_replay_line(at: datetime.datetime, text: str) -> tuple:
-    """What `history` replays for the assistant line that follows it, in place of its words: a
-    marker for sentences the model must never be handed again (his profile, 2026-11-18). Written
-    just before that line; empty means replay nothing for it."""
-    return (at, line(at, TID_ENGINE, AUDIT, f"assistant_replay text={quoted(text, CAP_TURN)}"))
+    return (at, line(at, TID_ENGINE, AUDIT, assistant_msg(text)))
 
 
 def engine_read_through_line(at: datetime.datetime, source: str) -> tuple:
@@ -486,132 +469,3 @@ def utterances_received(row: DeviceLog) -> int:
         and "cascade_turn status=nothing_heard" not in text
     )
 
-
-def last_reply(row: DeviceLog) -> tuple[str, tuple[str, ...]]:
-    """(the assistant's most recent reply in this conversation, as one record line said it, its
-    echo fingerprint). The reply that was playing, never several merged (round 4: the echo check
-    compares against it). A withheld reply (#475) has no words, only the fingerprint written just
-    before it (`read_through_lines`); either may be empty."""
-    from devicelogs.views import inflate_capped
-
-    body = lines_of(inflate_capped(bytes(row.body_gz)).decode("utf-8", errors="replace"))
-    for n in range(len(body) - 1, -1, -1):
-        match = _ENGINE_TURN.match(body[n])
-        if match is None or not match.group("ai"):
-            continue
-        try:
-            words = json.loads(match.group("text"))
-        except ValueError:
-            continue
-        if words == read_through_lines.REDACTED:
-            return "", read_through_lines.echo_print(body[n - 1]) if n else ()
-        if isinstance(words, str) and words.strip():
-            return words, ()
-    return "", ()
-
-
-CUT_OFF_NOTE = "(They spoke over this reply and stopped it here.)"
-
-
-_WRITE_DONE = re.compile(r" tool_result id=\S+ name=(?P<name>\S+) success=true ")
-_REPLAY = re.compile(
-    r"^\S+ \S+  0  "
-    + str(TID_ENGINE)
-    + r" I "
-    + AUDIT
-    + r": assistant_replay text=(?P<text>\".*\")$"
-)
-
-
-def history(
-    row: DeviceLog, *, max_turns: int, opened_line: str = "", writes: frozenset[str] = frozenset()
-) -> tuple[list[dict], int]:
-    """(the last `max_turns` exchanges as model contents, how many user turns the record holds).
-
-    Only engine-written words: the person's as `user`, the reply as `model`, in time order. Tool
-    calls and their results are not replayed (the model asks again when it needs a figure), so a
-    figure from an earlier turn is never re-read as fresh."""
-    from devicelogs.views import inflate_capped
-
-    body = lines_of(inflate_capped(bytes(row.body_gz)).decode("utf-8", errors="replace"))
-    turns: list[dict] = []
-    users = 0
-
-    def note(words: str) -> None:
-        if turns and turns[-1]["role"] == "model":
-            turns[-1]["parts"][0]["text"] += " " + words
-        else:
-            turns.append({"role": "model", "parts": [{"text": words}]})
-
-    replay: str | None = None
-    for text in body:
-        found = _REPLAY.match(text)
-        if found is not None:
-            try:
-                replay = json.loads(found.group("text"))
-            except ValueError:
-                replay = ""
-            continue
-        done = _WRITE_DONE.search(text) if writes else None
-        if done is not None and done.group("name") in writes:
-            # A change that went through is part of the history even when its reply never reached
-            # the page (a hang-up mid-turn, finding 5), so a repeated ask is not made twice.
-            note(f"(Done: {done.group('name')}.)")
-            continue
-        if _WITHHELD in text:
-            # His turn happened; its words were not kept (`engine_withheld_user_line`). It still
-            # counts, so turn numbers (the read-through marks, the carry) stay his.
-            users += 1
-            continue
-        if "interrupted source=" in text:
-            # The person talked over the reply: the model is told, so the next answer picks up
-            # what they said instead of finishing or repeating this one (voice-persona section 8).
-            if turns and turns[-1]["role"] == "model":
-                said = turns[-1]["parts"][0]
-                if not said["text"].endswith(CUT_OFF_NOTE):
-                    said["text"] += " " + CUT_OFF_NOTE
-            continue
-        match = _ENGINE_TURN.match(text)
-        if match is None:
-            continue
-        try:
-            words = json.loads(match.group("text"))
-        except ValueError:
-            continue
-        role = "user" if match.group("user") else "model"
-        if role == "model" and replay is not None:
-            # The marker written before this line stands in for its words.
-            words, replay = replay, None
-        if role == "model" and words == read_through_lines.REDACTED:
-            # A reply that read outside text was not kept (section 7): the model is told it
-            # answered and that the answer is gone, as the agent trace tells it, never the marker.
-            if turns and turns[-1]["parts"][0]["text"].endswith(OUTSIDE_ANSWER_NOTE):
-                continue
-            words = OUTSIDE_ANSWER_NOTE
-        if not isinstance(words, str) or not words.strip():
-            continue
-        if role == "user":
-            users += 1
-        if turns and turns[-1]["role"] == role:
-            turns[-1]["parts"][0]["text"] += " " + words
-        else:
-            turns.append({"role": role, "parts": [{"text": words}]})
-    # Keep whole exchanges from the end, starting on a user turn.
-    kept: list[dict] = []
-    seen = 0
-    for content in reversed(turns):
-        kept.append(content)
-        if content["role"] == "user":
-            seen += 1
-            if seen >= max_turns:
-                break
-    kept.reverse()
-    if kept and kept[0]["role"] != "user":
-        # The conversation opened with the assistant's greeting (ADR 0102): the page's
-        # open stands in as the turn it answered, so contents still start with a user turn.
-        if opened_line:
-            kept.insert(0, {"role": "user", "parts": [{"text": opened_line}]})
-        else:
-            while kept and kept[0]["role"] != "user":
-                kept.pop(0)
-    return kept, users

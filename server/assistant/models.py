@@ -170,3 +170,40 @@ class TurnSeen(models.Model):
             models.UniqueConstraint(fields=["turn_id", "user"], name="turn_seen_once_per_user")
         ]
         indexes = [models.Index(fields=["at"], name="turn_seen_at")]
+
+
+class TurnContext(models.Model):
+    """The model's working context for an open web conversation (#475, `assistant.context`): his
+    words, the assistant's replies as said (and what history replays in their place), the names
+    of the tools a turn ran, and where he spoke over a reply. Transient: every row of a
+    conversation is deleted 30 minutes after its last turn, when the page ends it, and by the
+    hourly sweep; the nightly backup dumps none of it (`ingest.backup.TRANSIENT_TABLES`).
+
+    Keyed to the conversation's record row, scoped and deleted with it, like `ReadThroughTurn`.
+    Not a tenant table: only the live turn of the same conversation reads it.
+    """
+
+    USER = "user"
+    MODEL = "model"
+    TOOL = "tool"
+    INTERRUPTED = "interrupted"
+
+    conversation = models.ForeignKey(
+        "devicelogs.DeviceLog", on_delete=models.CASCADE, related_name="+"
+    )
+    kind = models.TextField()
+    text = models.TextField(blank=True, default="")
+    # What history replays for a reply instead of its words (his profile, `TurnReport.replay`);
+    # null means the words themselves.
+    replay = models.TextField(null=True, blank=True)
+    # A tool's name and whether it went through (history notes a change that went through).
+    name = models.TextField(blank=True, default="")
+    ok = models.BooleanField(default=False)
+    at = models.DateTimeField()
+
+    class Meta:
+        db_table = "assistant_turn_context"
+        indexes = [
+            models.Index(fields=["conversation", "at"], name="turn_context_conversation"),
+            models.Index(fields=["at"], name="turn_context_at"),
+        ]

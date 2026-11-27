@@ -206,7 +206,8 @@ def test_a_typed_turn_answers_in_text_and_speaks_nothing(member, engine):
     conversation = _of(events, "turn")[0]["conversation_id"]
     record = _record(conversation)
     assert '0  2 I LIVE_AUDIT: user final=true typed=true text="Anything on today?"' in record
-    assert 'assistant text="Nothing is on today."' in record
+    # That it answered, never what it said (#475).
+    assert "assistant kept=false chars=20" in record and "Nothing is on today" not in record
     assert "cascade_turn status=done spoken=false" in record
     # The model saw the web prompt and the member's declarations, nothing else. The clock rides
     # in the turn, never in the cached prefix.

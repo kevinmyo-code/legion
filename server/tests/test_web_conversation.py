@@ -137,13 +137,13 @@ def test_tool_calls_and_the_upload_make_one_record_that_renders(member_web):
     body = _body(row)
     # The writer is in the tid column: 1 the browser, 2 the engine.
     assert '  0  1 I LIVE_AUDIT: user final=true typed=true text="What lists do we have?"' in body
-    assert (
-        "  0  2 I LIVE_AUDIT: tool_call id=c1 name=list_checklists async=false "
-        'args={"include_ticked":false}'
-    ) in body
+    # A tool by name and how it ended; never its arguments or its words (#475).
+    assert "  0  2 I LIVE_AUDIT: tool_call id=c1 name=list_checklists async=false\n" in body
     ok = "true" if not response.data["is_error"] else "false"
     assert f"LIVE_AUDIT: tool_result id=c1 name=list_checklists success={ok}" in body
-    assert f'response={{"success":{ok},"outcome":"{response.data["outcome"]}","message":' in body
+    assert f"outcome={response.data['outcome']}" in body
+    assert "args=" not in body and "response=" not in body
+    assert "Groceries list" not in body and "assistant kept=false chars=26" in body
     assert "LIVE_LATENCY: tool_ms=" in body
     assert row.line_count == len(body.splitlines())
 
@@ -153,7 +153,7 @@ def test_tool_calls_and_the_upload_make_one_record_that_renders(member_web):
     assert any(k.startswith("USER: (typed) What lists do we have?") for k in kinds)
     assert any(k.startswith("TOOL -> list_checklists(") for k in kinds)
     assert any(k.startswith("TOOL <- list_checklists") for k in kinds)
-    assert any(k.startswith("ASSISTANT: You have a Groceries list.") for k in kinds)
+    assert any(k.startswith("ASSISTANT: [not kept]") for k in kinds)
     assert any(k.startswith("cold start 900ms") for k in kinds)
     assert any(k.startswith("reply 1100ms") for k in kinds)
 

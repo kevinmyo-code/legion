@@ -67,6 +67,12 @@ class Command(BaseCommand):
         parser.add_argument("--dry-run", action="store_true")
 
     def handle(self, *args, **options):
+        if not options["dry_run"]:
+            # First, before anything here can fail: an open web conversation's transient context
+            # (#475, `assistant.context`) never outlives its TTL by more than this hour.
+            from assistant import context as turn_context
+
+            contexts = turn_context.expire()
         expired = DemoVisit.objects.filter(expires_at__lte=timezone.now())
         households = Household.objects.filter(
             is_demo_visit=True,
@@ -108,9 +114,6 @@ class Command(BaseCommand):
         records = prune_visit_records()
         runs = prune_runs()
         traces = sum(prune_agent_traces().values())
-        from devicelogs.read_through_lines import sweep_prints
-
-        prints = sweep_prints()
         from demo import funnel
 
         counts = funnel.prune(VISIT_RETENTION_DAYS)
@@ -141,8 +144,8 @@ class Command(BaseCommand):
             f"Deleted {n_households} expired demo visit household(s) ({rows} rows, visitors "
             f"included) and {n_legacy} older visitor(s) with their tokens, and {records} visit "
             f"conversation record(s) older than {VISIT_RETENTION_DAYS} days, and {runs} procedure "
-            f"run(s) past retention, and {traces} agent trace row(s) past retention, and {prints} "
-            f"echo fingerprint(s) past their window, and "
+            f"run(s) past retention, and {traces} agent trace row(s) past retention, and "
+            f"{contexts} conversation context row(s) past their 30 minutes, and "
             f"{counts} funnel count row(s) older than {VISIT_RETENTION_DAYS} days, and {shop} "
             f"store-rep order or callback row(s) older than {VISIT_RETENTION_DAYS} days. "
             + spare_line

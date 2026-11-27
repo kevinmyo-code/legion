@@ -53,6 +53,7 @@ from rest_framework.views import APIView
 from agents.voice.speech import MAX_AUDIO_BYTES, MAX_UTTERANCE_SECONDS
 from api.schema import DetailSerializer
 from assistant import cascade, live, read_through, turn_slots, voice_engine
+from assistant import context as turn_context
 from assistant.companions import companion_for
 from assistant.models import AssistantCall
 from assistant.prompt import MAX_OFFSET_MINUTES, MIN_OFFSET_MINUTES, RECRUITER_OPENER
@@ -702,6 +703,9 @@ class AssistantConversationView(_AssistantView):
                     {"detail": "Nothing was stored. No conversation with that id is yours."},
                     status=status.HTTP_404_NOT_FOUND,
                 )
+            if any(e["kind"] == "session_end" for e in events.validated_data):
+                # The page ended the conversation: its transient context goes now (#475).
+                turn_context.end(row)
             try:
                 stored = web_conversation.append(
                     row, web_conversation.browser_lines(row, events.validated_data)
@@ -794,7 +798,7 @@ WRITE_TOOLS = frozenset(
 ) | shop_tools.WRITE_TOOLS
 # Past this the conversation continues in a fresh record (finding 9); the cap is 5 MiB.
 RECORD_ROLLOVER_BYTES = 4 * 1024 * 1024
-# The turn a conversation's opening greeting answers, in its history (`web_conversation.history`).
+# The turn a conversation's opening greeting answers, in its history (`turn_context.history`).
 OPENED_LINE = "(They opened the assistant.)"
 
 
@@ -949,6 +953,11 @@ def _turn_sse(
     answered = answered or (lambda: None)
     spoken = turn_input.audio is not None or turn_input.greet
     turn = None
+    # The reply, written to the conversation's transient context as each sentence goes out
+    # (`assistant.context`, #475): a barge-in that arrives while it plays finds it for the echo
+    # check. Never to the record.
+    reply = turn_context.Reply(request, row_id)
+    sentences: list[str] = []
     try:
         model, speech = _cascade_clients()
         turn = cascade.run_turn(
@@ -970,6 +979,9 @@ def _turn_sse(
             report=report,
         )
         for event in turn:
+            if event.type == "sentence" and event.data.get("text"):
+                sentences.append(event.data["text"])
+                reply.said(" ".join(sentences))
             yield event.sse()
             if event.type == "done":
                 # Written to the browser: a re-send of this turn is now a duplicate (N5).
@@ -996,13 +1008,13 @@ def _turn_sse(
         said = " ".join(report.said).strip()
         if said:
             replay = report.history_text()
-            if replay != said:
-                # History replays this instead of what was said (his profile:
-                # `TurnReport.replay`); the record keeps what was said, for him to read.
-                lines.append(web_conversation.engine_replay_line(now, replay))
+            # History replays `replay` instead of what was said when they differ (his profile:
+            # `TurnReport.replay`). The record says only that a reply was made.
+            reply.said(said, replay if replay != said else None)
             lines.append(web_conversation.engine_assistant_line(now, said))
         if report.status == "cancelled":
             lines.append(web_conversation.engine_interrupted_line(now))
+            turn_context.add_interrupted(request, row_id, now)
         timing = cascade.timing_line(report, spoken=spoken)
         lines.append(web_conversation.engine_latency_line(now, timing))
         web_conversation.record_lines(request, row_id, lines)
@@ -1351,12 +1363,13 @@ class AssistantTurnView(_AssistantView):
                 if carried_window is not None:
                     row.window_start = carried_window
                     row.save(update_fields=["window_start"])
-            history, turn_no = web_conversation.history(
+            history = turn_context.history(
                 row,
                 max_turns=cascade.HISTORY_TURNS,
                 opened_line=RECRUITER_OPENER if is_recruiter(request.user) else OPENED_LINE,
                 writes=WRITE_TOOLS,
             )
+            turn_no = web_conversation.user_turns(row)
             system, context, companion = system_prompt_parts_for(
                 request.user,
                 now=datetime.now(UTC),
@@ -1364,7 +1377,6 @@ class AssistantTurnView(_AssistantView):
                 cascade=True,
             )
             _audit(request, AssistantCall.SESSION, Outcome.OK)
-            reply, reply_print = web_conversation.last_reply(row)
             turn_input = cascade.TurnInput(
                 audio=audio,
                 text=text or None,
@@ -1373,8 +1385,7 @@ class AssistantTurnView(_AssistantView):
                 greeting_history=_greeting_history(data.get("greeting_history")),
                 spoken=bool(data.get("spoken")) and bool(text),
                 barge_in=bool(data.get("barge_in")) and audio is not None,
-                last_reply=reply,
-                last_reply_print=reply_print,
+                last_reply=turn_context.last_reply(row),
                 chip=suggestions.chip_for(request.user, data.get("chip"), text),
             )
             response = StreamingHttpResponse(

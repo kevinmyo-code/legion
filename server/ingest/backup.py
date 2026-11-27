@@ -223,11 +223,18 @@ def _tail(text: str, lines: int = 20) -> str:
     return "\n".join((text or "").strip().splitlines()[-lines:])
 
 
+# Tables whose rows never go into a backup, only their shape (so a restore still has them, empty):
+# an open web conversation's transient context (#475, `assistant.context`), read-through text
+# kept for the live turn only and deleted within the hour.
+TRANSIENT_TABLES: tuple[str, ...] = ("assistant_turn_context",)
+
+
 def pg_dump(path: Path, *, run=subprocess.run, binary: str | None = None) -> None:
-    """`pg_dump -Fc` of the LEGION schemas into `path`."""
+    """`pg_dump -Fc` of the LEGION schemas into `path`, without the rows of TRANSIENT_TABLES."""
     binary = binary or pg_binary("pg_dump")
     args = [binary, "--format=custom", f"--file={path}"]
     args += [f"--schema={name}" for name in schemas()]
+    args += [f"--exclude-table-data=*.{table}" for table in TRANSIENT_TABLES]
     completed = run(args, env=libpq_env(), capture_output=True, text=True, check=False)
     if completed.returncode != 0:
         raise BackupError(
@@ -688,6 +695,9 @@ def compare(restored: dict[str, int], live: dict[str, int]) -> tuple[list[str], 
             mismatched.append(table)
         elif r == lv:
             lines.append(f"{table}: {r} = live")
+        elif r == 0 and table.rpartition(".")[2] in TRANSIENT_TABLES:
+            # Dumped without its rows on purpose (`TRANSIENT_TABLES`): empty is the right restore.
+            lines.append(f"{table}: 0 restored, transient and never backed up (live has {lv})")
         else:
             delta = lv - r
             why = (

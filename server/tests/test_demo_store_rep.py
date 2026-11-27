@@ -579,7 +579,8 @@ def test_the_after_call_card_is_built_from_the_record(visitor, shop_visit, engin
     assert card.status_code == 200, card.data
     data = card.data
     assert data["outcome"] == "order_placed" and data["outcome_words"] == "Order placed"
-    assert [line["who"] for line in data["transcript"]][:2] == ["visitor", "assistant"]
+    # The visitor's words only: the record never keeps the assistant's (#475).
+    assert [line["who"] for line in data["transcript"]] == ["visitor", "visitor"]
     assert data["transcript"][0]["typed"] is True
     record = data["record"]
     assert record["orders"][0]["total_cents"] == 28_900

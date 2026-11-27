@@ -74,8 +74,8 @@ def test_an_echo_turn_asks_no_model_keeps_nothing_and_keeps_the_acknowledgement(
     assert _of(events, "sentence") == [] and _of(events, "audio") == []
     assert _of(events, "done")[0]["ignored"] == "no_speech"
     record = _record(conversation)
-    assert 'Brake fluid is also on the schedule."' in record  # the reply, once
-    assert record.count("Brake fluid") == 1  # never stored as the person's line
+    # Neither the reply (never on the record, #475) nor its echo as the person's line.
+    assert "Brake fluid" not in record
     assert "status=echo" in record
     assert any("echo" in r.getMessage() and "Brake" not in r.getMessage() for r in caplog.records)
     # The echo neither counts as side talk nor uses up the first-utterance acknowledgement.

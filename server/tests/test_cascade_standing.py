@@ -183,7 +183,7 @@ def test_a_turn_opens_a_record_with_the_words_and_the_tool_calls(member, engine)
     record = _record(conversation)
     assert "user final=true typed=true" in record and "What's on?" in record
     assert "tool_call id=c1 name=list_events" in record
-    assert "assistant text=" in record and "Nothing on." in record
+    assert "assistant kept=false" in record and "Nothing on." not in record  # #475
 
 
 def test_a_refused_tool_call_is_on_the_record_with_its_words(visitor, engine):

@@ -843,14 +843,14 @@ def test_no_model_request_in_a_conversation_ever_holds_his_sentences(loaded, vis
     assert "(Read aloud from Kevin's profile: Experience, sentences 1 to 5 of 7.)" in later
 
 
-def test_the_record_keeps_what_was_said_and_history_replays_the_marker(loaded, visitor, engine):
+def test_the_record_keeps_no_words_and_history_replays_the_marker(loaded, visitor, engine):
     engine.model = FakeModel([ak("education"), say("Glad to help.")])
     first = _events(_post(visitor, text="Where did he study?"))
     conversation = _of(first, "turn")[0]["conversation_id"]
     record = _record(conversation)
-    # Kevin reads his record with the real words in it.
-    assert json.dumps(" ".join(EDUCATION)) in record
-    assert "assistant_replay text=" in record
+    # The record never keeps the assistant's words (#475); history replays the marker.
+    assert json.dumps(" ".join(EDUCATION)) not in record
+    assert "assistant kept=false" in record
     _events(_post(visitor, text="Thanks.", conversation_id=conversation))
     replayed = engine.model.requests[-1].contents
     assert replayed[-2] == {

@@ -2,11 +2,12 @@
 
 Built by code, with no model call, from what the engine already keeps for the visit:
 
-- the conversation's own record (`devicelogs.web_conversation`): the visitor's words and the
-  assistant's as the engine wrote them (typed turns marked typed), each tool call, and each
-  turn's `cascade_turn` timing line, whose `first_sound_ms` is the engine-side time from the
-  utterance reaching the engine to the first audio it sent back (a filler line counts; upload and
-  playback on the visitor's side are not in it);
+- the conversation's own record (`devicelogs.web_conversation`): the visitor's words (typed turns
+  marked typed; the assistant's words, a tool's arguments and its reply are never on the record,
+  #475), each tool call by name, and each turn's `cascade_turn` timing line, whose
+  `first_sound_ms` is the engine-side time from the utterance reaching the engine to the first
+  audio it sent back (a filler line counts; upload and playback on the visitor's side are not in
+  it);
 - the visit's orders and callback request (`demo.models`).
 
 No cost figure: the demo's cost strip is the tester visit's only (Kevin, 2026-11-19).
@@ -189,6 +190,11 @@ def build(user) -> dict | None:
         if visit
         else None
     )
+    if not parsed["skus"]:
+        # The record holds no tool arguments (#475): what was discussed is what was quoted.
+        parsed["skus"] = [
+            line["sku"] for o in orders for line in o.lines if line.get("sku") in catalogue.BY_SKU
+        ]
     if any(o.status == ShopOrder.PLACED for o in orders):
         outcome = ORDER_PLACED
     elif callback is not None or any(t["name"] == "shop_handoff" for t in parsed["tools"]):
