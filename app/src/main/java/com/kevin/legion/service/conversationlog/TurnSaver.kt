@@ -97,6 +97,9 @@ class TurnSaver(
         publish()
     }
 
+    /** Who is signed in now, for stamping a turn when it is spoken. */
+    fun identity(): String? = box.currentIdentity()
+
     /** App start: with the log off, a queue left by an earlier run must never be sent. */
     fun clearIfOff() {
         if (!keep()) discardQueued()

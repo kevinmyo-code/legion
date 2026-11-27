@@ -189,6 +189,9 @@ object ConversationLog {
         recorder = ConversationRecorder(s, writer, enabled = { keepAndSend })
     }
 
+    /** Who is signed in to the engine now (user id and address), or null; stamped on each spoken turn. */
+    fun identity(): String? = turnSaver?.identity()
+
     /** The turn queue's transport: sends as the engine account signed in now, and says who that is. */
     private fun engineTurnTransport(app: Context): EngineTurnTransport {
         val config = EngineConfig(app)

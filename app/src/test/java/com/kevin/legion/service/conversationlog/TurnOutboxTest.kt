@@ -26,7 +26,10 @@ class TurnOutboxTest {
 
         override fun identity() = who
 
-        override suspend fun post(json: String): PostResult {
+        val owners = mutableListOf<String>()
+
+        override suspend fun post(json: String, owner: String): PostResult {
+            owners += owner
             val body = JSONObject(json)
             val result = script(body)
             if (result is PostResult.Ok) sent += body
@@ -34,13 +37,14 @@ class TurnOutboxTest {
         }
     }
 
-    private fun turn(seq: Int, user: String = "line $seq") = SavedTurn(
+    private fun turn(seq: Int, user: String = "line $seq", owner: String? = "member-a@engine") = SavedTurn(
         chatId = "11111111-1111-1111-1111-111111111111",
         seq = seq,
         surface = "voice",
         userText = user,
         toolCalls = listOf(SavedToolCall("start_timer", ok = true)),
         spokenAtMs = 1_700_000_000_000L,
+        owner = owner,
     )
 
     private fun box(fake: Fake, max: Int = 500) = TurnOutbox(tmp.root.resolve("turns.jsonl"), fake, max = max)
@@ -260,7 +264,7 @@ class TurnOutboxTest {
         val box = box(fake)
         box.enqueue(turn(0))
         fake.who = "member-b@engine"
-        box.enqueue(turn(1))
+        box.enqueue(turn(1, owner = "member-b@engine"))
         fake.usable = true
         box.drain()
         assertEquals(listOf(1), seqs(fake))
@@ -294,7 +298,7 @@ class TurnOutboxTest {
         val fake = Fake().apply { who = null }
         val box = box(fake)
         try {
-            box.enqueue(turn(0))
+            box.enqueue(turn(0, owner = null))
             org.junit.Assert.fail("expected NotSignedIn")
         } catch (_: TurnOutbox.NotSignedIn) {
             assertEquals(0, box.pending())
@@ -307,5 +311,64 @@ class TurnOutboxTest {
         box.enqueue(turn(0))
         box.drain(canSend = { false })
         assertTrue(fake.sent.isEmpty())
+    }
+
+    @Test fun `a 429 keeps the whole backlog and sends nothing more`() = runBlocking {
+        val fake = Fake().apply { script = { PostResult.Http(429, "Too Many Requests") } }
+        val box = box(fake)
+        (0..9).forEach { box.enqueue(turn(it)) }
+        val outcome = box.drain()
+        assertTrue(outcome is TurnOutbox.Outcome.Kept)
+        assertEquals(10, box.pending())
+        assertEquals(0, box.takeRefused())
+        fake.script = { PostResult.Ok(201) }
+        box.drain()
+        assertEquals((0..9).toList(), seqs(fake))
+    }
+
+    @Test fun `408 and 425 are kept like 429, and a plain 400 is still dropped`() = runBlocking {
+        for (status in listOf(408, 425)) {
+            val fake = Fake().apply { script = { PostResult.Http(status, "later") } }
+            val box = TurnOutbox(tmp.newFile("t$status.jsonl"), fake)
+            box.enqueue(turn(0))
+            box.drain()
+            assertEquals("status $status", 1, box.pending())
+        }
+        val fake = Fake().apply { script = { PostResult.Http(400, "Nothing was saved.") } }
+        val box = TurnOutbox(tmp.newFile("t400.jsonl"), fake)
+        box.enqueue(turn(0))
+        box.drain()
+        assertEquals(0, box.pending())
+        assertEquals(1, box.takeRefused())
+    }
+
+    @Test fun `a 403 is kept and worded as not allowed, not as sign in again`() = runBlocking {
+        val fake = Fake().apply { script = { PostResult.Http(403, "forbidden") } }
+        val box = box(fake)
+        box.enqueue(turn(0))
+        val outcome = box.drain()
+        assertEquals(1, box.pending())
+        assertTrue(outcome.sentence, outcome.sentence.contains("this sign-in is not allowed to save turns"))
+        assertFalse(outcome.sentence, outcome.sentence.contains("Sign in again"))
+    }
+
+    @Test fun `a line whose turn cannot be read is dropped and counted and the rest still go`() = runBlocking {
+        val fake = Fake()
+        val file = tmp.root.resolve("turns.jsonl")
+        file.writeText("""{"owner":"member-a@engine","turn":"not an object"}""" + "\n")
+        val box = TurnOutbox(file, fake)
+        box.enqueue(turn(1))
+        box.drain()
+        assertEquals(listOf(1), seqs(fake))
+        assertEquals(0, box.pending())
+        assertEquals(1, box.takeRefused())
+    }
+
+    @Test fun `the post is made as the owner the line was queued with`() = runBlocking {
+        val fake = Fake()
+        val box = box(fake)
+        box.enqueue(turn(0, owner = "member-a@engine"))
+        box.drain()
+        assertEquals(listOf("member-a@engine"), fake.owners)
     }
 }

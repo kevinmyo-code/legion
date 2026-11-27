@@ -29,18 +29,19 @@ class TurnSaverTest {
 
         override fun identity() = who
 
-        override suspend fun post(json: String): PostResult = script()
+        override suspend fun post(json: String, owner: String): PostResult = script()
     }
 
     private val logged = mutableListOf<Pair<String, Throwable?>>()
 
-    private fun turn(seq: Int) = SavedTurn(
+    private fun turn(seq: Int, owner: String? = "member-a@engine") = SavedTurn(
         chatId = "11111111-1111-1111-1111-111111111111",
         seq = seq,
         surface = "voice",
         userText = "line $seq",
         toolCalls = emptyList(),
         spokenAtMs = 1_700_000_000_000L,
+        owner = owner,
     )
 
     private fun saver(box: TurnOutbox, keep: Boolean = true) = TurnSaver(
@@ -101,7 +102,7 @@ class TurnSaverTest {
 
             override fun identity(): String = "member-a@engine"
 
-            override suspend fun post(json: String): PostResult = PostResult.Ok(201)
+            override suspend fun post(json: String, owner: String): PostResult = PostResult.Ok(201)
         }
         val box = TurnOutbox(tmp.root.resolve("turns.jsonl"), failing)
         box.enqueue(turn(0))
@@ -201,7 +202,7 @@ class TurnSaverTest {
     @Test fun `a turn spoken while signed out is counted as not saved`() {
         val fake = Fake().apply { who = null }
         val saver = saver(box(fake))
-        saver.save(turn(0))
+        saver.save(turn(0, owner = null))
         assertEquals(1, saver.lostTurns)
         assertTrue(saver.status.value!!.contains("could not be saved"))
     }

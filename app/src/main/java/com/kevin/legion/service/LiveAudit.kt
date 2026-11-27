@@ -41,6 +41,8 @@ internal class LiveAudit(
     private val onTurn: (SavedTurn) -> Unit = { ConversationLog.saveTurn(it) },
     private val now: () -> Long = System::currentTimeMillis,
     private val newChatId: () -> String = { UUID.randomUUID().toString() },
+    /** Who is signed in now; stamped on the turn when it is first spoken, not when it is queued. */
+    private val identity: () -> String? = { ConversationLog.identity() },
 ) {
     @Volatile var enabled = false
 
@@ -57,6 +59,7 @@ internal class LiveAudit(
     private val turnTools = ArrayList<SavedToolCall>()
     private var turnTyped = false
     private var crisisHeard = false
+    private var turnOwner: String? = null
 
     // Ids of calls whose result is redacted because the call stands for a read-through tool under
     // a folded name (`look_up` with `domain: ask_mail`, `day` with `get_sitrep`): the result line
@@ -113,6 +116,27 @@ internal class LiveAudit(
     fun keepWords(text: String, typed: Boolean = false) = takeWords(text, typed, whole = false)
 
     /**
+     * The cascade's version of [keepWords]: [text] is the whole heard turn (words carried from a merged
+     * turn are already in it), so it REPLACES whatever an earlier turn that never finished left held,
+     * words and tool names both. Nothing is said twice and a cancelled turn is not folded into the next.
+     */
+    @Synchronized
+    fun replaceWords(text: String) {
+        turnUser.clear()
+        turnTools.clear()
+        turnTyped = false
+        takeWords(text, typed = false, whole = false)
+    }
+
+    /** Drops the held words and tool names of a turn that was cancelled (merged into the next one). */
+    @Synchronized
+    fun dropTurn() {
+        turnUser.clear()
+        turnTools.clear()
+        turnTyped = false
+    }
+
+    /**
      * Drops the words held for the turn in progress and takes no more until it ends (a crisis was
      * heard: it is not "what we talked about", and the later transcript chunks of the same turn are not
      * either).
@@ -127,6 +151,7 @@ internal class LiveAudit(
 
     private fun takeWords(text: String, typed: Boolean, whole: Boolean) {
         if (!enabled || crisisHeard) return
+        if (turnOwner == null) turnOwner = identity()
         val words = collapse(scrub(text))
         if (whole && words.isNotEmpty()) turnUser.clear()
         if (words.isNotEmpty()) turnUser += words
@@ -196,7 +221,10 @@ internal class LiveAudit(
         val folded = readThroughIds.remove(result.id)
         val withheld = folded || isReadThroughTool(result.name)
         // The name and whether it worked; never the result (it may be mail or the web).
-        if (enabled) turnTools += SavedToolCall(result.name, result.success)
+        if (enabled) {
+            if (turnOwner == null) turnOwner = identity()
+            turnTools += SavedToolCall(result.name, result.success)
+        }
         val body = if (withheld) quote(REDACTED) else json(result.responseJson)
         emit(
             "tool_result id=${token(result.id)} name=${token(result.name)} success=${result.success} " +
@@ -253,6 +281,7 @@ internal class LiveAudit(
         turnTools.clear()
         turnTyped = false
         crisisHeard = false
+        turnOwner = null
         thread = chat ?: ChatThread(newChatId())
     }
 
@@ -270,6 +299,7 @@ internal class LiveAudit(
                     userText = turnUser.joinToString(" ").ifEmpty { null },
                     toolCalls = turnTools.toList(),
                     spokenAtMs = now(),
+                    owner = turnOwner,
                 ),
             )
         }
@@ -277,6 +307,7 @@ internal class LiveAudit(
         turnTools.clear()
         turnTyped = false
         crisisHeard = false
+        turnOwner = null
     }
 
     /** [source] is `server` (the Live API's `interrupted`) or `barge_in` (the phone's own gate). */

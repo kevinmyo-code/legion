@@ -28,7 +28,7 @@ class LiveAuditTestConversationTest {
 
         override fun identity() = "member-a@engine"
 
-        override suspend fun post(json: String): PostResult = PostResult.Unreachable("offline")
+        override suspend fun post(json: String, owner: String): PostResult = PostResult.Unreachable("offline")
     }
 
     @Before fun install() {
@@ -55,7 +55,7 @@ class LiveAuditTestConversationTest {
     }
 
     @Test fun `a conversation with the default audit saves its turn`() {
-        speak(LiveAudit(sink = {}, onSession = {}))
+        speak(LiveAudit(sink = {}, onSession = {}, identity = { "member-a@engine" }))
         assertEquals(1, box.pending())
     }
 

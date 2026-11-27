@@ -1302,6 +1302,7 @@ internal class CascadeSession(
                 val p = pending ?: return
                 p.merged = true
                 carry = (carry + " " + p.heard).trim()
+                audit.dropTurn() // its words are in carry now and come back with the next heard line (ticket 450)
                 turnJob?.cancel()
                 speaker?.interrupt()
                 val reason = if (tools > 0) "speech_during_lookup" else "speech_resumed"
@@ -1840,6 +1841,7 @@ internal class CascadeSession(
         scope.launch(Dispatchers.IO) { runCatching { ProactiveBus.noteReply(ctx, heard) } }
         if (CrisisDetector.detect(heard)) {
             discardDraftOf(u, "not_answered")
+            audit.discardWords() // the opening of a merged crisis utterance may already be held (ticket 450)
             shutdown("crisis")
             host.crisis()
             return
@@ -1848,7 +1850,7 @@ internal class CascadeSession(
             discardDraftOf(u, "not_answered")
             return
         }
-        audit.keepWords(heard)
+        audit.replaceWords(heard)
         val record = TurnRecord(heard, voicedMs = (stt as? SttResult.Text)?.voicedMs)
         // Words carried from a dropped turn are not in this audio: the engine gets them as a transcript.
         record.engineUtt = u.engine?.takeIf { heard == words.trim() }

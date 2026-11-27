@@ -26,6 +26,8 @@ data class SavedTurn(
     val userText: String?,
     val toolCalls: List<SavedToolCall>,
     val spokenAtMs: Long,
+    /** Who was signed in when it was spoken ([TurnTransport.identity]); null when nobody was. Not sent. */
+    val owner: String? = null,
 ) {
     fun toJson(): String = JSONObject()
         .put("chat_id", chatId)
@@ -49,8 +51,11 @@ interface TurnTransport {
      */
     fun identity(): String?
 
-    /** `POST /api/member-memories/turns` with [json] as the body. */
-    suspend fun post(json: String): PostResult
+    /**
+     * `POST /api/member-memories/turns` with [json] as the body, as [owner]. A transport that finds
+     * the phone is no longer signed in as [owner] sends nothing.
+     */
+    suspend fun post(json: String, owner: String): PostResult
 }
 
 class EngineTurnTransport(
@@ -61,10 +66,17 @@ class EngineTurnTransport(
 
     override fun identity(): String? = identity.invoke()
 
-    override suspend fun post(json: String): PostResult = http.post(PATH, json).toPostResult()
+    override suspend fun post(json: String, owner: String): PostResult =
+        // Checked right before the request is built, so the token it carries is the owner's.
+        if (identity.invoke() != owner) {
+            PostResult.Http(UNAUTHORIZED_HELD, "signed in as someone else")
+        } else {
+            http.post(PATH, json).toPostResult()
+        }
 
     companion object {
         const val PATH = "/api/member-memories/turns"
+        private const val UNAUTHORIZED_HELD = 401
     }
 }
 
@@ -142,7 +154,7 @@ class TurnOutbox(
      * the trim threw away (0 when none), so the caller can say so. Safe from any thread.
      */
     fun enqueue(turn: SavedTurn): Int = synchronized(lock) {
-        val owner = transport.identity() ?: throw NotSignedIn()
+        val owner = turn.owner ?: throw NotSignedIn()
         val line = JSONObject().put("owner", owner).put("turn", JSONObject(turn.toJson())).toString()
         val lines = read() + line
         val cut = (lines.size - max).coerceAtLeast(0)
@@ -152,6 +164,9 @@ class TurnOutbox(
 
     /** Every queued turn, whoever spoke it. */
     fun pending(): Int = synchronized(lock) { read().size }
+
+    /** Who the phone is signed in as now. */
+    fun currentIdentity(): String? = transport.identity()
 
     /** Queued turns of the identity signed in now. */
     fun ownPending(): Int = synchronized(lock) {
@@ -225,7 +240,14 @@ class TurnOutbox(
 
     /** Posts the oldest queued [line]; a saved or dropped turn leaves the queue, a kept one stops the drain. */
     private suspend fun attempt(line: String): Attempt {
-        val result = transport.post(bodyOf(line))
+        val owner = ownerOf(line).orEmpty()
+        val body = runCatching { bodyOf(line) }.getOrNull()
+        if (body == null) {
+            // A line that cannot be read as a turn would block this member's queue for good: drop and count it.
+            remove(line)
+            return Attempt.Refused
+        }
+        val result = transport.post(body, owner)
         val kind = RetryRules.classify(result)
         return when {
             kind == null -> {
@@ -233,6 +255,9 @@ class TurnOutbox(
                 Attempt.Saved
             }
             isMissingRoute(result, kind) -> Attempt.Stop(OLD_ENGINE_REASON)
+            result is PostResult.Http && result.status == FORBIDDEN ->
+                Attempt.Stop("this sign-in is not allowed to save turns.")
+            result is PostResult.Http && result.status in TRANSIENT -> Attempt.Stop(RetryRules.sentence(kind, result))
             kind in DROPPED -> {
                 remove(line)
                 Attempt.Refused
@@ -267,6 +292,11 @@ class TurnOutbox(
         private val DROPPED = setOf(FailureKind.REFUSED, FailureKind.TOO_LARGE)
 
         private const val NOT_FOUND = 404
+        private const val FORBIDDEN = 403
+
+        // Answers that say "not now", not "no": the turn is kept and tried again at the next trigger
+        // (startup, the ticker, a session end). Request timeout, too early, too many requests.
+        private val TRANSIENT = setOf(408, 425, 429)
         private const val OLD_ENGINE_REASON = "the engine does not take saved turns yet and needs updating."
 
         /** An engine without the route answers 404 (or the old "unknown" 400): its turns are kept, not dropped. */

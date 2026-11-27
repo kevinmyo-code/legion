@@ -9,9 +9,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Each finished turn is handed on as one [SavedTurn] (memory chain ticket 450): the person's words,
- * the assistant's spoken reply, the tools it ran. A read-through turn reaches the sink already
- * stripped (CLAUDE.md sec 7); the engine gates it again. Made-up words only.
+ * Each finished turn is handed on as one [SavedTurn] (memory chain ticket 450): the person's own words
+ * and the NAMES of the tools it ran. The assistant's reply and a tool's result are never collected
+ * (CLAUDE.md sec 7: either can carry text other people wrote). Made-up words only.
  */
 class LiveAuditTurnTest {
     private val turns = mutableListOf<SavedTurn>()
@@ -309,5 +309,56 @@ class LiveAuditTurnTest {
         audit.toolResult(toolResult("t2", "start_timer", """{"success":true}"""))
         audit.sessionEnd("crisis")
         assertTrue(turns.isEmpty())
+    }
+
+    @Test
+    fun `a merged turn saves his words once`() {
+        audit.sessionStart("model", emptySet())
+        audit.user("add milk", final = true, save = false)
+        audit.replaceWords("add milk")
+        audit.dropTurn() // the cascade merges: the words go to carry
+        audit.user("add milk and eggs", final = true, save = false)
+        audit.replaceWords("add milk and eggs")
+        audit.turnComplete()
+        assertEquals("add milk and eggs", turns.single().userText)
+    }
+
+    @Test
+    fun `a heard turn replaces what a cancelled one left, tool names included`() {
+        audit.sessionStart("model", emptySet())
+        audit.replaceWords("what is the weather")
+        audit.toolCall("t1", "get_weather", async = false, argsJson = "{}")
+        audit.toolResult(toolResult("t1", "get_weather", """{"success":true}"""))
+        // that turn never completed (an engine miss); he asks something else
+        audit.replaceWords("add milk")
+        audit.turnComplete()
+        val t = turns.single()
+        assertEquals("add milk", t.userText)
+        assertTrue(t.toolCalls.isEmpty())
+    }
+
+    @Test
+    fun `a merged turn then a crisis saves nothing`() {
+        audit.sessionStart("model", emptySet())
+        audit.replaceWords("I cannot do this anymore")
+        audit.discardWords() // the cascade crisis branch, before shutdown
+        audit.sessionEnd("crisis")
+        assertTrue(turns.isEmpty())
+    }
+
+    @Test
+    fun `the turn is stamped with who was signed in when it was spoken`() {
+        var who: String? = "member-a@engine"
+        val stamped = LiveAudit(
+            sink = {},
+            onSession = {},
+            onTurn = { turns += it },
+            identity = { who },
+        ).apply { enabled = true }
+        stamped.sessionStart("model", emptySet())
+        stamped.replaceWords("add milk")
+        who = "member-b@engine" // someone else signs in before the turn finishes
+        stamped.turnComplete()
+        assertEquals("member-a@engine", turns.single().owner)
     }
 }
