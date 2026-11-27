@@ -76,12 +76,22 @@ object PreMigrationBackup {
     ): Outcome {
         if (!dbFile.exists()) return Outcome.NotNeeded
         val stored = storedVersion(dbFile)
-        if (stored == targetVersion || stored == 0) return Outcome.NotNeeded
+        val needed = stored != targetVersion && stored != 0
+        return if (needed) copyFiles(dbFile, root, stored, targetVersion, nowMs, copyFile) else Outcome.NotNeeded
+    }
 
+    private fun copyFiles(
+        dbFile: File,
+        root: File,
+        stored: Int?,
+        targetVersion: Int,
+        nowMs: Long,
+        copyFile: (File, File) -> Unit,
+    ): Outcome {
         root.mkdirs()
         root.listFiles()?.filter { it.name.startsWith(PARTIAL_PREFIX) }?.forEach { it.deleteRecursively() }
         val partial = File(root, "$PARTIAL_PREFIX$nowMs")
-        return try {
+        return runCatching<Outcome> {
             check(partial.mkdirs()) { "could not create ${partial.name}" }
             for (suffix in SIDECARS) {
                 val source = File(dbFile.path + suffix)
@@ -92,7 +102,7 @@ object PreMigrationBackup {
             File(root, FAILURE_FILE).delete()
             list(root).drop(KEEP).forEach { it.dir.deleteRecursively() }
             Outcome.Taken(Backup(nowMs, stored, targetVersion, final))
-        } catch (e: Exception) {
+        }.getOrElse { e ->
             partial.deleteRecursively()
             val reason = e.message ?: e.javaClass.simpleName
             runCatching { File(root, FAILURE_FILE).writeText("$nowMs\n$reason") }
@@ -118,7 +128,8 @@ object PreMigrationBackup {
         root.listFiles().orEmpty().mapNotNull { dir ->
             val m = NAME.matchEntire(dir.name) ?: return@mapNotNull null
             if (!dir.isDirectory) return@mapNotNull null
-            Backup(m.groupValues[1].toLong(), m.groupValues[2].toIntOrNull(), m.groupValues[3].toInt(), dir)
+            val (takenAt, from, to) = m.destructured
+            Backup(takenAt.toLong(), from.toIntOrNull(), to.toInt(), dir)
         }.sortedByDescending { it.takenAtMs }
 
     fun status(root: File): Status {
