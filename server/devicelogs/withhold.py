@@ -12,8 +12,11 @@ the memory job agree on which turns are tainted:
 - a turn (the lines up to `turn_complete`, or to a session boundary) is tainted when it calls a
   tool in `READ_THROUGH_TOOLS`, carries a `read_through` mark, or already holds a redaction mark;
 - from a tainted turn to the end of its session, the assistant's words are withheld (they may
-  paraphrase what was read) and so is every tool reply in a tainted turn;
-- the person's own words always show, and the next session starts clean.
+  paraphrase what was read), and so is every tool call's arguments (the model may have filled
+  them from what it read); a tool's reply is withheld in a tainted turn;
+- the person's own words always show, and the next session starts clean;
+- a session is not a stored batch: the phone seals a batch by size, so one that opens without a
+  `session_start` carries the taint of the batch before it (`opens_session`, `carry`).
 
 Stored data is never edited: this only changes what is shown.
 """
@@ -55,13 +58,32 @@ def _with_response(msg: str) -> str:
     return msg if start < 0 else msg[: start + 9] + json.dumps(WITHHELD)
 
 
-def withhold(text: str) -> str:
-    """`text` with third-party content replaced by `WITHHELD`, in the stored line format."""
+def _with_args(msg: str) -> str:
+    """`msg` with its `args=` value (always the last field) replaced."""
+    start = msg.find(" args=")
+    return msg if start < 0 else msg[: start + 6] + json.dumps(WITHHELD)
+
+
+def _parsed(text: str) -> tuple[list, list]:
     records = voice_audit._records(text.splitlines())
-    parsed = [
+    return records, [
         voice_audit.parse_audit(msg) if tag == voice_audit.AUDIT else (None, {})
         for _date, _time, tag, msg in records
     ]
+
+
+def opens_session(text: str) -> bool:
+    """True when the batch's first audit line is a `session_start`. A phone batch sealed by size
+    can open mid-session, and then it continues the previous batch's session."""
+    _records, parsed = _parsed(text)
+    return next((event for event, _ in parsed if event), None) == "session_start"
+
+
+def withhold(text: str, carry: bool = False) -> tuple[str, bool]:
+    """(`text` with third-party content replaced by `WITHHELD`, whether the session is still
+    tainted at the batch's end). `carry` is that flag from the batch before, for a batch that
+    opens mid-session."""
+    records, parsed = _parsed(text)
     # Pass 1: mark every record in a tainted turn. A turn ends at its `turn_complete`, at a
     # `session_end`, or just before the next `session_start`.
     tainted = [False] * len(records)
@@ -80,7 +102,7 @@ def withhold(text: str) -> str:
             close(i + 1)
     close(len(records))
     out: list[str] = []
-    session_tainted = False
+    session_tainted = carry
     previous_withheld = False
     for (date, time, tag, msg), (event, fields), turn_tainted in zip(
         records, parsed, tainted, strict=True
@@ -96,7 +118,9 @@ def withhold(text: str) -> str:
             continue
         if event == "tool_result" and turn_tainted:
             msg = _with_response(msg)
+        if event == "tool_call" and session_tainted:
+            msg = _with_args(msg)
         if tag == voice_audit.AUDIT:
             previous_withheld = False
         out.append(f"{date} {time} 0 0 I {tag}: {msg}")
-    return "\n".join(out)
+    return "\n".join(out), session_tainted

@@ -20,8 +20,8 @@ function stamp(iso: string): string {
  *
  * Own conversations only, by the engine's design: another member's words and
  * tool results are private to them (ADR 0052), so the household's page is each
- * member's own. Mail was redacted on the device before upload and arrives
- * redacted; nothing here can undo that.
+ * member's own. The engine withholds what a mail or web turn read (and the rest of
+ * that session) before it sends the lines, so the page never relies on the device.
  *
  * Each stored batch is one block. A conversation the device split across two
  * uploads shows as two blocks: the page does not stitch them, and says so.

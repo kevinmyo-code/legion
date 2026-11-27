@@ -297,3 +297,74 @@ def test_a_head_unit_token_is_refused_and_its_row_never_listed(
     )
     assert unit_client(issued.data["token"]).get(URL).status_code in (401, 403, 404)
     assert token_a.get(URL).data == {"devices": []}
+
+
+# --- the taint is per conversation session, not per stored batch ------------------------------
+
+PARAPHRASE = "the invented pickup moves to noon, as the mail says"
+
+
+def _lines(*rows) -> str:
+    return "\n".join(AUDIT.format(t, tid, body) for t, tid, body in rows)
+
+
+def _both(token_a, first: str, second: str):
+    """Two batches of one device, `first` older. Returns (first_id, second_id, batches by id)."""
+    one = _upload(token_a, first)
+    two = _upload(token_a, second)
+    _age(one, 10)
+    batches = token_a.get(URL).data["devices"][0]["batches"]
+    return one, two, {str(b["id"]): "\n".join(b["lines"]) for b in batches}
+
+
+def test_a_session_split_across_two_batches_stays_withheld(token_a):
+    """The phone seals a batch by size, so a session's later turns can open the next batch with
+    no `session_start`. The mail in batch one still taints them."""
+    first = _lines(
+        ("20:00.000", 2, "session_start model=invented"),
+        ("20:02.000", 2, "tool_call id=m1 name=read_mail async=false args={}"),
+        ("20:03.000", 1, "turn_complete"),
+    )
+    second = _lines(
+        ("21:01.000", 1, 'user final=true text="And then?"'),
+        ("21:02.000", 2, 'tool_call id=c1 name=get_codes async=false args={"q":"mail-derived"}'),
+        ("21:03.000", 1, f'assistant text="{PARAPHRASE}"'),
+    )
+    _one, two, shown = _both(token_a, first, second)
+    assert PARAPHRASE not in shown[two] and "mail-derived" not in shown[two]
+    assert "ASSISTANT: withheld: read from mail" in shown[two]
+    assert "USER: And then?" in shown[two]
+
+
+def test_a_batch_that_opens_a_session_is_not_tainted_by_the_one_before(token_a):
+    first = _lines(
+        ("20:00.000", 2, "session_start model=invented"),
+        ("20:02.000", 2, "tool_call id=m1 name=read_mail async=false args={}"),
+    )
+    second = _lines(
+        ("21:00.000", 2, "session_start model=invented"),
+        ("21:03.000", 1, 'assistant text="A fresh session."'),
+    )
+    _one, two, shown = _both(token_a, first, second)
+    assert "ASSISTANT: A fresh session." in shown[two]
+
+
+def test_a_clean_session_split_across_two_batches_is_shown(token_a):
+    first = _lines(("20:00.000", 2, "session_start model=invented"))
+    second = _lines(("21:03.000", 1, 'assistant text="Nothing private here."'))
+    _one, two, shown = _both(token_a, first, second)
+    assert "ASSISTANT: Nothing private here." in shown[two]
+
+
+def test_tool_arguments_in_a_tainted_session_are_withheld(token_a):
+    _upload(
+        token_a,
+        _lines(
+            ("20:00.000", 2, "session_start model=invented"),
+            ("20:01.000", 2, "read_through source=grounding"),
+            ("20:02.000", 2, 'tool_call id=c1 name=add_event async=false args={"t":"from-mail"}'),
+        ),
+    )
+    joined = _joined(token_a)
+    assert "from-mail" not in joined
+    assert "TOOL -> add_event(withheld: read from mail)" in joined

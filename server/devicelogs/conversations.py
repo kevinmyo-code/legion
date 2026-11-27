@@ -28,6 +28,7 @@ Nothing here logs a record's text.
 
 from __future__ import annotations
 
+from django.db.models import Q
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
 from rest_framework import serializers
 from rest_framework.response import Response
@@ -37,7 +38,7 @@ from api.schema import DetailSerializer
 from devicelogs.models import REASON_CONVERSATION
 from devicelogs.records import TAGS, _bad, _own
 from devicelogs.render import NO_AUDIT_LINES, batch_header, batch_text, render
-from devicelogs.withhold import withhold
+from devicelogs.withhold import opens_session, withhold
 
 DEFAULT_PER_DEVICE = 10
 MAX_PER_DEVICE = 30
@@ -72,10 +73,44 @@ def _unreadable(row, reason: str) -> tuple[str, list, str]:
     return header, [], f"could not be read: {reason}"
 
 
-def _batch(row) -> dict:
+MAX_CHAIN = 30  # earlier batches walked back to find where a session opened
+
+
+def _carry_in(row, device_rows) -> bool:
+    """Whether the session this batch continues was already tainted. A batch that opens with
+    `session_start` continues nothing. One that does not continues the device's batch before it,
+    so the earlier batches are walked back to the session's opener and folded forward. A batch
+    that cannot be read, or a session older than `MAX_CHAIN` batches, fails closed."""
+    if opens_session(batch_text(row)):
+        return False
+    earlier = device_rows.filter(
+        Q(received_at__lt=row.received_at) | Q(received_at=row.received_at, id__lt=row.id)
+    ).order_by("-received_at", "-id")[:MAX_CHAIN]
+    chain = []
+    for prior in earlier:
+        chain.append(prior)
+        try:
+            if opens_session(batch_text(prior)):
+                break
+        except Exception:  # noqa: BLE001 - cannot tell what it held, so withhold
+            return True
+    else:
+        if len(chain) == MAX_CHAIN:
+            return True
+    carry = False
+    for prior in reversed(chain):
+        try:
+            _text, carry = withhold(batch_text(prior), carry)
+        except Exception:  # noqa: BLE001
+            return True
+    return carry
+
+
+def _batch(row, device_rows) -> dict:
     """One batch, rendered with third-party text withheld. Any failure names this batch only."""
     try:
-        lines = render(withhold(batch_text(row))) or [NO_AUDIT_LINES]
+        text, _tainted = withhold(batch_text(row), _carry_in(row, device_rows))
+        lines = render(text) or [NO_AUDIT_LINES]
         header = batch_header(row, len(lines))
         problem = None
     except ValueError as exc:  # already in words (bad gzip, too large)
@@ -120,7 +155,8 @@ class ConversationsView(APIView):
         except ValueError:
             return _bad("limit must be a whole number.")
         limit = max(1, min(limit, MAX_PER_DEVICE))
-        rows = _own(request).filter(reason=REASON_CONVERSATION)
+        own = _own(request).filter(reason=REASON_CONVERSATION)
+        rows = own
         device = request.query_params.get("device")
         if device:
             rows = rows.filter(device_label__iexact=device)
@@ -142,7 +178,7 @@ class ConversationsView(APIView):
                     {
                         "device_label": label,
                         "total": totals[label],
-                        "batches": [_batch(by_id[i]) for i in ids],
+                        "batches": [_batch(by_id[i], own.filter(device_label=label)) for i in ids],
                     }
                     for label, ids in kept.items()
                 ]
