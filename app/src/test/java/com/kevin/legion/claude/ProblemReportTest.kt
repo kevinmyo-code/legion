@@ -98,6 +98,9 @@ class ProblemReportTest {
     @Test
     fun `an offline fix machine still queues the report and says it has not run`() {
         backend.machines(machine("Alienware", state = "offline"))
+        backend.createOut = {
+            ClaudeOutcome.Ok(ClaudeCreated(41, ClaudeTask.QUEUED, ClaudeMachineRef("Alienware", "offline", NOW)))
+        }
         val result = report()
         assertTrue(result is ClaudeSendResult.Sent)
         assertTrue(result.sentence.contains("Nothing has run yet"))

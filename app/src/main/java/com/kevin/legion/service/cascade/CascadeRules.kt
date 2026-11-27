@@ -677,6 +677,7 @@ object ScriptedLines {
         "claude_session/answer" to "answered Claude", "claude_session/assign" to "moved that task",
         "claude_session/send_file" to "sent the file", "claude_session/quiet" to "turned Claude's results off",
         "claude_session/unquiet" to "turned Claude's results back on",
+        "claude_session/report" to "filed that report with Claude",
         "app_update/install" to "started the update's install",
         // Tools that are one write each, by name.
         "accept_goal_plan" to "accepted the plan", "accept_proposal" to "accepted %s",
