@@ -79,6 +79,9 @@ def test_a_real_barge_in_after_it_is_stored_as_his_words(member, engine):
     record = _record(conversation)
     assert 'text="Stop, can you add a reminder for the garage on Friday"' in record
     assert wc.WITHHELD_USER not in record
+    # The read turn's print went when this turn completed; this (carried, withheld) reply has its
+    # own until the next turn does.
+    assert record.count(" assistant_echo print=") == 1
 
 
 def test_a_barge_in_before_the_read_turns_reply_is_written_keeps_no_words(

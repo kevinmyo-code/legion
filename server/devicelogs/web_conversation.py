@@ -182,6 +182,8 @@ def append(row: DeviceLog, stamped: list[tuple[datetime.datetime, str]]) -> int:
         return 0
     opened = (existing or fresh)[0]
     merged = sorted(existing + fresh, key=lambda text: read_through_lines.sort_key(opened, text))
+    # An echo print lives only for its window (`read_through_lines.drop_spent_prints`).
+    merged = read_through_lines.drop_spent_prints(merged, timezone.now())
     body = _body(merged)
     if len(body) > MAX_UPLOAD_BYTES:
         raise TooLarge(

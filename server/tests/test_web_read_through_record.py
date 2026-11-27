@@ -388,3 +388,92 @@ def test_count_command_finds_an_old_morning_briefing_reply(household_user):
     call_command("count_read_through_web", stdout=out)
     # The call's arguments, its reply and the answer after it; his line is never counted.
     assert "1 scanned, 1 the current rule would redact, 3 lines" in out.getvalue()
+
+
+# ---- the echo print is transient ---------------------------------------------------------------
+
+
+def _printed_turn(s):
+    """A read turn as the cascade stores it: his words, the search, the withheld reply with its
+    print, and the turn's timing line."""
+    timing = (_at(s + 4), wc.line(_at(s + 4), 2, "LIVE_LATENCY", "cascade_turn status=done"))
+    return _texts(redact([], [_user(s), *_tool(s + 1, "web_search"), _said(s + 3, PAGE), timing]))
+
+
+def _prints(lines):
+    return [text for text in lines if f" {ECHO_EVENT} " in text]
+
+
+def test_a_print_lives_until_the_next_turn_completes():
+    from devicelogs.read_through_lines import drop_spent_prints
+
+    lines = _printed_turn(0)
+    assert len(_prints(lines)) == 1
+    now = _at(30)
+    assert drop_spent_prints(lines, now) == lines  # the read turn's own timing keeps it
+    heard = lines + [_user(10, "And?")[1]]
+    assert len(_prints(drop_spent_prints(heard, now))) == 1  # the next turn is still running
+    done = heard + [wc.line(_at(12), 2, "LIVE_LATENCY", "cascade_turn status=done")]
+    kept = drop_spent_prints(done, now)
+    assert _prints(kept) == [] and len(kept) == len(done) - 1
+
+
+def test_a_print_lives_at_most_five_minutes():
+    from devicelogs.read_through_lines import ECHO_TTL, drop_spent_prints
+
+    lines = _printed_turn(0)
+    assert len(_prints(drop_spent_prints(lines, _at(3) + ECHO_TTL - timedelta(seconds=1)))) == 1
+    assert _prints(drop_spent_prints(lines, _at(3) + ECHO_TTL)) == []
+
+
+@pytest.mark.django_db
+@pytest.mark.usefixtures("google")
+def test_the_hourly_job_sweeps_a_print_left_behind(household_user):
+    """A conversation that simply stopped: no next turn ever closed the window."""
+    cid = _mint(browser(household_user))
+    row = DeviceLog.objects.get(batch_id=cid)
+    stamped = datetime.now(UTC) - timedelta(minutes=10)
+    lines = [
+        text
+        for _, text in redact(
+            [],
+            [
+                wc.engine_user_line(stamped, "pump?", typed=True),
+                *wc.tool_lines(
+                    call_id="c1",
+                    name="web_search",
+                    args={"query": "pump"},
+                    started=stamped,
+                    ended=stamped,
+                    success=True,
+                    outcome="ok",
+                    text=PAGE,
+                ),
+                wc.engine_assistant_line(stamped, PAGE),
+            ],
+        )
+    ]
+    assert len(_prints(lines)) == 1
+    row.body_gz = gzip.compress(("\n".join(lines) + "\n").encode())
+    row.save(update_fields=["body_gz"])
+    out = StringIO()
+    call_command("prune_demo_visitors", stdout=out)
+    assert "1 echo fingerprint(s) past their window" in out.getvalue()
+    body = _body(cid)
+    assert _prints(body.splitlines()) == []
+    assert f"assistant text={MARK}" in body  # the rest of the record is untouched
+
+
+def test_a_retried_upload_is_redacted_the_same_way():
+    """A repeated `user` line from a retry must not start a turn of its own and move the next
+    answer out of the carried turn (CI, round 3)."""
+    fresh = [
+        _said(3, PAGE),
+        (_at(4), wc.line(_at(4), 1, wc.AUDIT, "turn_complete")),
+        _user(6, "Thanks"),
+        _said(7, PAGE),
+    ]
+    stored = _texts([_user(0), *_tool(1, "web_search")])
+    first = _texts(redact(stored, fresh))
+    again = _texts(redact(stored + first, fresh))
+    assert PAGE not in "\n".join(first + again)

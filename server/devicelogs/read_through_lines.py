@@ -24,6 +24,7 @@ rewritten here; `count_read_through_web` counts them.
 
 from __future__ import annotations
 
+import datetime
 import json
 import re
 
@@ -148,7 +149,10 @@ def redact(
     engine reply's echo fingerprint just before it (off when counting: nothing is written)."""
     opened = existing[0] if existing else (fresh[0][1] if fresh else "")
     merged = [(text, False, i) for i, text in enumerate(existing)]
-    merged += [(text, True, i) for i, (_, text) in enumerate(fresh)]
+    # A line already stored (a retried upload) is not counted twice: a repeated `user` line would
+    # start a turn that never happened and move the lines after it out of the read's turns.
+    stored = set(existing)
+    merged += [(text, True, i) for i, (_, text) in enumerate(fresh) if text not in stored]
     merged.sort(key=lambda item: sort_key(opened, item[0]))  # stable: existing first
     parsed = [_parts(item[0]) for item in merged]
     outside = _outside_results(parsed, procedures)
@@ -179,3 +183,84 @@ def redact(
             text = withheld
         out[i] = [(at, text)]
     return [line for group in out for line in group]
+
+
+# ---- the fingerprint is transient ---------------------------------------------------------------
+#
+# A print is derived from the withheld text, and anyone holding SECRET_KEY could test guesses
+# against it, so it lives only as long as the echo check needs it: until the next turn after the
+# reply has completed (his words, then that turn's `cascade_turn` timing line), or ECHO_TTL,
+# whichever comes first. `web_conversation.append` drops spent prints at every write;
+# `sweep_prints` (the hourly `prune_demo_visitors`) drops any left behind.
+
+ECHO_TTL = datetime.timedelta(minutes=5)
+_TURN_DONE = " LIVE_LATENCY: cascade_turn status="
+
+
+def _stamp_time(text: str, now: datetime.datetime) -> datetime.datetime | None:
+    try:
+        at = datetime.datetime.strptime(f"{now.year}-{text[:_STAMP_LEN]}", "%Y-%m-%d %H:%M:%S.%f")
+    except ValueError:
+        return None
+    at = at.replace(tzinfo=datetime.UTC)
+    # A stamp from December read in January is last year's.
+    return at.replace(year=now.year - 1) if at > now + datetime.timedelta(days=1) else at
+
+
+def drop_spent_prints(lines: list[str], now: datetime.datetime) -> list[str]:
+    """`lines` (in record order) without the echo prints whose window has closed."""
+    keep = []
+    for n, text in enumerate(lines):
+        p = _parts(text)
+        if p is not None and p[1] == ECHO_EVENT:
+            at = _stamp_time(text, now)
+            if at is None or now - at >= ECHO_TTL or _next_turn_done(lines, n):
+                continue
+        keep.append(text)
+    return keep
+
+
+def _next_turn_done(lines: list[str], n: int) -> bool:
+    heard = False
+    for text in lines[n + 1 :]:
+        p = _parts(text)
+        if p is not None and p[1] in _TURN_START:
+            heard = True
+        elif heard and _TURN_DONE in text:
+            return True
+    return False
+
+
+def sweep_prints(now: datetime.datetime | None = None) -> int:
+    """Remove every spent echo print from the stored web conversation records. Returns how many
+    prints were removed. Nothing else in a record changes."""
+    import gzip
+
+    from django.db import transaction
+    from django.utils import timezone
+
+    from devicelogs.models import DEVICE_LABEL_WEB, REASON_CONVERSATION, DeviceLog
+    from devicelogs.views import inflate_capped
+
+    now = now or timezone.now()
+    removed = 0
+    rows = DeviceLog.objects.filter(device_label=DEVICE_LABEL_WEB, reason=REASON_CONVERSATION)
+    for pk in rows.values_list("pk", flat=True).iterator():
+        with transaction.atomic():
+            row = DeviceLog.objects.select_for_update().filter(pk=pk).first()
+            if row is None:
+                continue
+            body = inflate_capped(bytes(row.body_gz)).decode("utf-8", errors="replace")
+            if f" {ECHO_EVENT} " not in body:
+                continue
+            lines = body.splitlines()
+            kept = drop_spent_prints(lines, now)
+            if len(kept) == len(lines):
+                continue
+            removed += len(lines) - len(kept)
+            raw = ("\n".join(kept) + "\n").encode("utf-8") if kept else b""
+            row.body_gz = gzip.compress(raw)
+            row.raw_bytes = len(raw)
+            row.line_count = len(kept)
+            row.save(update_fields=["body_gz", "raw_bytes", "line_count"])
+    return removed
