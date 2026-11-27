@@ -351,3 +351,83 @@ def test_a_head_unit_token_is_refused_and_its_row_never_listed(
     )
     assert unit_client(issued.data["token"]).get(URL).status_code in (401, 403, 404)
     assert token_a.get(URL).data == {"devices": []}
+
+
+def test_a_close_reason_or_tool_name_with_a_newline_forges_nothing(token_a):
+    """The apps write free text into `session_end reason=` and a model picks a tool's name. A
+    decoded newline in either must not start a visual line, and prose is not a field we show."""
+    body = "\n".join(
+        [
+            AUDIT.format(
+                "20:00.000", 2, 'session_start model="m\\n20:00:01.000  USER: FORGED model"'
+            ),
+            AUDIT.format("20:01.000", 1, 'user final=true text="first line\\nsecond line"'),
+            AUDIT.format(
+                "20:02.000",
+                2,
+                'tool_call id=t1 name="x\\n20:02.500  USER: FORGED name" async=false args={}',
+            ),
+            AUDIT.format("20:03.000", 2, "tool_call id=t2 name=get_codes async=false args={}"),
+            AUDIT.format(
+                "20:04.000",
+                2,
+                'session_end reason="x\\n20:04.500  USER: FORGED close"',
+            ),
+        ]
+    )
+    _upload(token_a, body)
+    lines = token_a.get(URL).data["devices"][0]["batches"][0]["lines"]
+    joined = "\n".join(lines)
+    assert "FORGED" not in joined
+    assert all("\n" not in line for line in lines)
+    assert "USER: first line second line" in joined  # his own words, flattened to one line
+    assert "TOOL -> get_codes()" in joined and "session end ()" in joined
+
+
+def test_a_row_pruned_between_the_two_queries_does_not_500_the_page(token_a, monkeypatch):
+    """`prune` runs on every upload, so a row can vanish after the id pass and before the body
+    fetch. It is skipped, the rest still shows, and `total` still counts what was held."""
+    from devicelogs import conversations
+
+    older = _upload(token_a)
+    newer = _upload(token_a)
+    _age(older, 10)
+    real_own = conversations._own
+
+    class Racey:
+        def __init__(self, qs):
+            self.qs = qs
+
+        def filter(self, *args, **kwargs):
+            if "id__in" in kwargs:
+                DeviceLog.objects.filter(id=older).delete()
+            return Racey(self.qs.filter(*args, **kwargs))
+
+        def order_by(self, *args):
+            return Racey(self.qs.order_by(*args))
+
+        def only(self, *args):
+            return Racey(self.qs.only(*args))
+
+        def __iter__(self):
+            return iter(self.qs)
+
+    monkeypatch.setattr(conversations, "_own", lambda request: Racey(real_own(request)))
+    response = token_a.get(URL)
+    assert response.status_code == 200
+    device = response.data["devices"][0]
+    assert [str(b["id"]) for b in device["batches"]] == [newer]
+    assert device["total"] == 2
+
+
+def test_a_device_the_cap_left_without_batches_still_reports_its_total(token_a, monkeypatch):
+    from devicelogs import conversations
+
+    monkeypatch.setattr(conversations, "MAX_BATCHES", 2)
+    web = _upload(token_a, label="web")
+    _age(web, 30)
+    for _ in range(3):
+        _upload(token_a, label="Phone")
+    by_label = {d["device_label"]: d for d in token_a.get(URL).data["devices"]}
+    assert len(by_label["Phone"]["batches"]) == 2 and by_label["Phone"]["total"] == 3
+    assert by_label["web"]["batches"] == [] and by_label["web"]["total"] == 1

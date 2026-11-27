@@ -32,6 +32,8 @@ Nothing here logs a record's text.
 
 from __future__ import annotations
 
+import re
+
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
 from rest_framework import serializers
 from rest_framework.response import Response
@@ -43,6 +45,7 @@ from devicelogs.own_lines import own_lines
 from devicelogs.records import TAGS, _bad, _own
 from devicelogs.render import batch_header, batch_text, render
 
+_BREAKS = re.compile(r"[^\S ]")  # every whitespace character but a plain space
 NOTHING_OF_YOURS = "(nothing of yours in this batch)"
 DEFAULT_PER_DEVICE = 10
 MAX_PER_DEVICE = 30
@@ -80,7 +83,10 @@ def _unreadable(row, reason: str) -> tuple[str, list, str]:
 def _batch(row) -> dict:
     """One batch, cut to the person's own lines. Any failure names this batch only."""
     try:
-        lines = render(own_lines(batch_text(row))) or [NOTHING_OF_YOURS]
+        # One element is one visual line: a decoded newline or separator inside a field must
+        # not start another (a forged `USER:` line), so every one becomes a space.
+        lines = [_BREAKS.sub(" ", line) for line in render(own_lines(batch_text(row)))]
+        lines = lines or [NOTHING_OF_YOURS]
         header = batch_header(row, len(lines))
         problem = None
     except ValueError as exc:  # already in words (bad gzip, too large)

@@ -10,9 +10,11 @@ the rest, line by line, with no state and no special cases.
 Kept:
 
 - the person's own lines (`user`, his transcribed or typed words);
-- tool NAMES, whether each succeeded and how long it took (`tool_call` and `tool_result` with
-  `args=` and `response=` cut off);
-- session starts and ends, turn ends, and the timing and barge-in lines, which carry numbers.
+- tool NAMES, whether each succeeded and how long it took, rebuilt from a short list of fields so
+  `args=`, `response=` and any other free text are gone; a name that is not a plain identifier
+  drops the line;
+- session starts and ends (the close reason only when it is a plain identifier, since the apps
+  write exception and server sentences there), turn ends, and the timing and barge-in lines.
 
 Dropped: every assistant line, every tool argument and reply, and any event not listed here (a
 nudge, a procedure run, a cancel line: their free text is not known to be clean).
@@ -23,16 +25,26 @@ whose opener was pruned, is treated exactly like any other.
 
 from __future__ import annotations
 
+import json
 import re
 
 from devicelogs import voice_audit
 
-KEPT_EVENTS = frozenset(
-    {"session_start", "session_end", "turn_complete", "user", "tool_call", "tool_result"}
-)
+# Per kept event, the fields that may be shown. A line is REBUILT from these, so anything else a
+# writer put on it (args, response, a close reason, a model-chosen name) is gone, not hidden.
+KEPT_FIELDS = {
+    "session_start": ("model", "async_set", "pack"),
+    "session_end": ("reason",),
+    "turn_complete": (),
+    "user": ("final", "typed", "text"),
+    "tool_call": ("id", "name", "async"),
+    "tool_result": ("id", "name", "success", "ms", "scheduling", "sent"),
+}
+# A field that is a name or a number, never prose: a value that is not one is dropped (and a tool
+# line without a usable name is dropped whole). `text` is the person's own words, the one exception.
+_IDENTIFIER = re.compile(r"[A-Za-z0-9_.:+-]{1,64}")
+_REQUIRED = {"tool_call": "name", "tool_result": "name"}
 KEPT_TAGS = frozenset({"LIVE_LATENCY", voice_audit.BARGE})
-# Values that run to the end of the line, cut from a tool line.
-_CUT = {"tool_call": " args=", "tool_result": " response="}
 # The writer's exact line format, ASCII only, from the first character of a real line. The parser's
 # own pattern lets any Unicode space (a no-break space, U+2028) stand in for a separator.
 _LINE = re.compile(
@@ -44,12 +56,20 @@ _LINE = re.compile(
 _SEPARATORS = re.compile("[\r\x0b\x0c\x1c\x1d\x1e\x85\u2028\u2029]")
 
 
-def _without_content(event: str, msg: str) -> str:
-    marker = _CUT.get(event)
-    if marker is None:
-        return msg
-    start = msg.find(marker)
-    return msg if start < 0 else msg[:start]
+def _rebuilt(event: str, fields: dict) -> str | None:
+    """The kept fields of one audit line, or None when the line has no usable name."""
+    parts = [event]
+    for key in KEPT_FIELDS[event]:
+        value = fields.get(key)
+        if not isinstance(value, str):
+            continue
+        if key == "text":
+            parts.append(f"text={json.dumps(value, ensure_ascii=False)}")
+        elif _IDENTIFIER.fullmatch(value):
+            parts.append(f"{key}={value}")
+        elif _REQUIRED.get(event) == key:
+            return None
+    return " ".join(parts)
 
 
 def own_lines(text: str) -> str:
@@ -69,10 +89,12 @@ def own_lines(text: str) -> str:
     out = []
     for date, time, tag, msg in records:
         if tag == voice_audit.AUDIT:
-            event, _fields = voice_audit.parse_audit(msg)
-            if event not in KEPT_EVENTS:
+            event, fields = voice_audit.parse_audit(msg)
+            if event not in KEPT_FIELDS:
                 continue
-            msg = _without_content(event, msg)
+            msg = _rebuilt(event, fields)
+            if msg is None:
+                continue
         elif tag not in KEPT_TAGS:
             continue
         out.append(f"{date} {time} 0 0 I {tag}: {_SEPARATORS.sub(' ', msg)}")

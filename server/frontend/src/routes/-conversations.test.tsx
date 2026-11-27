@@ -66,6 +66,12 @@ describe('the conversations page', () => {
     expect(engine.searches['GET /api/device-logs/conversations/']).toBe('limit=30')
   })
 
+  test('a device the 60-batch cap left without any says how many older batches are not shown', async () => {
+    const capped: ConversationDevice = { device_label: 'Tablet', total: 3, batches: [] }
+    renderApp('/settings/conversations', engineWith([PHONE, capped]), 'workbench')
+    expect(await screen.findByText('3 older batches not shown.')).toBeInTheDocument()
+  })
+
   test('says replies and tool details are not shown, and that a split conversation is two blocks', async () => {
     renderApp('/settings/conversations', engineWith([WEB]), 'workbench')
     expect(

@@ -91,9 +91,11 @@ function DevicePanel({ device }: { device: ConversationDevice }) {
     <Panel
       title={device.device_label}
       description={
-        shown < device.total
-          ? `Showing the newest ${shown} of ${device.total} uploads.`
-          : `${device.total} ${device.total === 1 ? 'upload' : 'uploads'}.`
+        shown === 0 && device.total > 0
+          ? `${device.total} older ${device.total === 1 ? 'batch' : 'batches'} not shown.`
+          : shown < device.total
+            ? `Showing the newest ${shown} of ${device.total} uploads.`
+            : `${device.total} ${device.total === 1 ? 'upload' : 'uploads'}.`
       }
     >
       <ul className="flex flex-col gap-3">
