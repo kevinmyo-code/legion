@@ -2,9 +2,10 @@
 
     GET /api/device-logs/conversations/?device=web&limit=10
 
-The caller's own `reason=conversation` batches, each rendered with `devicelogs.render.render_batch`
-(the function `manage.py device_logs --render` prints), grouped by device, newest first. One call
-instead of a list plus a render per row, so a page paints from a single request.
+The caller's own `reason=conversation` batches, each cut to his own lines (`devicelogs.own_lines`)
+and rendered with `devicelogs.render.render` (the timeline `manage.py device_logs --render`
+prints), grouped by device, newest first. One call instead of a list plus a render per row, so a
+page paints from a single request.
 
 **Data shape.** `devices[]`, ordered by each device's newest batch; each has `device_label`,
 `total` (how many conversation batches the engine holds for it, so the page can say "showing 10 of
@@ -146,7 +147,7 @@ class ConversationsView(APIView):
                     {
                         "device_label": label,
                         "total": totals[label],
-                        "batches": [_batch(by_id[i]) for i in ids],
+                        "batches": [_batch(by_id[i]) for i in ids if i in by_id],
                     }
                     for label, ids in kept.items()
                 ]

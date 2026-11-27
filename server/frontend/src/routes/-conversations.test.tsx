@@ -17,7 +17,7 @@ const PHONE: ConversationDevice = {
   device_label: 'Phone',
   total: 14,
   batches: [
-    makeBatch('b-new', '2026-11-20T09:30:00Z', ['USER: what is on my list', 'TOOL <- read_lists ok 120ms', 'ASSISTANT: two things']),
+    makeBatch('b-new', '2026-11-20T09:30:00Z', ['USER: what is on my list', 'TOOL -> read_lists()', 'TOOL <- read_lists ok 120ms']),
     makeBatch('b-old', '2026-11-19T18:00:00Z', ['USER: good evening']),
   ],
 }
@@ -44,7 +44,7 @@ describe('the conversations page', () => {
     expect(screen.getByRole('heading', { name: 'web' })).toBeInTheDocument()
 
     const timeline = screen.getByText(/USER: what is on my list/)
-    expect(timeline.textContent).toBe('USER: what is on my list\nTOOL <- read_lists ok 120ms\nASSISTANT: two things')
+    expect(timeline.textContent).toBe('USER: what is on my list\nTOOL -> read_lists()\nTOOL <- read_lists ok 120ms')
     const order = screen.getAllByText(/^USER:/).map((node) => node.textContent)
     expect(order).toEqual([
       expect.stringContaining('what is on my list'),
@@ -79,10 +79,10 @@ describe('the conversations page', () => {
     const broken = {
       ...makeBatch('bad', '2026-11-17T08:00:00Z', []),
       readable: false,
-      problem: 'That batch is stored but cannot be read: The file is not valid gzip data.',
+      problem: 'could not be read: The file is not valid gzip data.',
     }
     renderApp('/settings/conversations', engineWith([{ device_label: 'Phone', total: 1, batches: [broken] }]), 'workbench')
-    expect(await screen.findByText('That batch is stored but cannot be read: The file is not valid gzip data.')).toBeInTheDocument()
+    expect(await screen.findByText('could not be read: The file is not valid gzip data.')).toBeInTheDocument()
     expect(screen.getByText('(could not be read)')).toBeInTheDocument()
   })
 
@@ -91,9 +91,21 @@ describe('the conversations page', () => {
     expect(await screen.findByText('The engine holds no conversations from your devices.')).toBeInTheDocument()
   })
 
+  test('a refusal is worded as a sign-in problem, not as the engine being down', async () => {
+    const engine = engineWith([PHONE])
+    engine.conversations.failing = 403
+    renderApp('/settings/conversations', engine, 'workbench')
+    expect(
+      await screen.findByText(
+        'The engine refused this request (you may need to sign in again), so this is not the real list of conversations. Nothing was changed.',
+      ),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/Could not reach the engine/)).not.toBeInTheDocument()
+  })
+
   test('the engine being down is its own sentence, never the empty one', async () => {
     const engine = engineWith([PHONE])
-    engine.conversations.failing = true
+    engine.conversations.failing = 503
     renderApp('/settings/conversations', engine, 'workbench')
     expect(
       await screen.findByText(

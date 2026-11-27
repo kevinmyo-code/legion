@@ -56,7 +56,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
   {
     to: '/settings/conversations',
     label: 'Conversations',
-    blurb: 'What you said to the assistant and what it did, newest first.',
+    blurb: 'What you said to the assistant and which tools it used, newest first.',
     icon: MessagesSquare,
   },
   {

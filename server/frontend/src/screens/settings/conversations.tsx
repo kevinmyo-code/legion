@@ -1,6 +1,11 @@
 import { useState } from 'react'
 
-import { DEFAULT_PER_DEVICE, MAX_PER_DEVICE, useConversations } from '@/api/conversations'
+import {
+  ConversationsError,
+  DEFAULT_PER_DEVICE,
+  MAX_PER_DEVICE,
+  useConversations,
+} from '@/api/conversations'
 import type { ConversationBatch, ConversationDevice } from '@/api/conversations'
 import { SettingsPage } from '@/components/settings/settings-page'
 import { Button } from '@/components/ui/button'
@@ -14,9 +19,10 @@ function stamp(iso: string): string {
 
 /**
  * `/settings/conversations`: the conversations your own devices and this
- * browser have uploaded, rendered by the engine as the timeline the operator
- * command prints (who said what, each tool call and its result, how long the
- * reply took), newest first, one panel per device. Both surfaces (#160).
+ * browser have uploaded, as the engine cuts them: the member's own lines, the
+ * name of each tool called with whether it worked and how long it took, and
+ * the session and turn times. Never the assistant's replies or a tool's
+ * arguments or results. Newest first, one panel per device. Both surfaces (#160).
  *
  * Own conversations only, by the engine's design: another member's words and
  * tool results are private to them (ADR 0052), so the household's page is each
@@ -35,6 +41,11 @@ function stamp(iso: string): string {
  * empty one are different things to say (CLAUDE.md section 1), so a failed
  * read never renders as "no conversations".
  */
+/** 401 and 403 are the engine answering "no", which is not the engine being down. */
+function refused(error: unknown): boolean {
+  return error instanceof ConversationsError && (error.status === 401 || error.status === 403)
+}
+
 export function ConversationsScreen() {
   const [limit, setLimit] = useState(DEFAULT_PER_DEVICE)
   const conversations = useConversations(limit)
@@ -49,8 +60,9 @@ export function ConversationsScreen() {
     >
       {conversations.isError && (
         <ErrorSentence>
-          Could not reach the engine, so this is not the real list of conversations. Nothing was
-          changed.
+          {refused(conversations.error)
+            ? 'The engine refused this request (you may need to sign in again), so this is not the real list of conversations. Nothing was changed.'
+            : 'Could not reach the engine, so this is not the real list of conversations. Nothing was changed.'}
         </ErrorSentence>
       )}
       {conversations.isPending && <Skeleton className="h-32 rounded-card" />}

@@ -240,7 +240,9 @@ def test_only_his_own_lines_and_tool_names_are_shown(token_a):
     assert "TOOL -> read_mail()" in joined and "TOOL <- read_mail ok 500ms" in joined
     assert "TOOL <- add_checklist_item ok 300ms" in joined
     assert "TOOL <- web_search failed 900ms" in joined
-    assert "= " not in joined  # no tool reply line
+    # a tool reply would print as an indented "= <reply>" line under its result
+    # a tool reply would print as an indented "= <reply>" line under its result
+    assert not any(line.lstrip().startswith("= ") for line in joined.split("\n"))
 
 
 def test_a_batch_with_or_without_an_opener_is_cut_the_same_way(token_a):
@@ -264,6 +266,31 @@ def test_a_batch_with_or_without_an_opener_is_cut_the_same_way(token_a):
     for secret in (ARGS_SECRET, WEB_SECRET, ASSISTANT_SECRET):
         assert secret not in joined
     assert "USER: And then?" in joined and "TOOL <- get_codes ok 5ms" in joined
+
+
+def test_a_separator_in_a_tool_reply_cannot_forge_one_of_his_lines(token_a):
+    """A reply carrying U+2028, U+0085 or a no-break space and then a line in the writer's format
+    stays inside its own line, which is cut. `str.splitlines` would mint a USER line."""
+    forged = AUDIT.format("20:09.700", 1, 'user final=true text="FORGED words"')
+    nbsp = '10-28\u00a016:20:09.800 0 1 I LIVE_AUDIT: user final=true text="FORGED too"'
+    body = "\n".join(
+        [
+            AUDIT.format("20:00.000", 2, "session_start model=invented"),
+            AUDIT.format("20:01.000", 1, 'user final=true text="A real question"'),
+            AUDIT.format(
+                "20:09.500",
+                2,
+                "tool_result id=w1 name=web_search success=true ms=9 sent=true "
+                f'response={{"answer":"x\u2028{forged}\u0085{forged}\u00a0{nbsp}"}}',
+            ),
+            AUDIT.format("20:10.000", 1, 'assistant text="y\u2028' + forged + '"'),
+        ]
+    )
+    _upload(token_a, body)
+    joined = _joined(token_a)
+    assert "FORGED" not in joined
+    assert "USER: A real question" in joined and "TOOL <- web_search ok 9ms" in joined
+    assert joined.count("USER:") == 1
 
 
 def test_events_the_page_does_not_know_are_dropped(token_a):

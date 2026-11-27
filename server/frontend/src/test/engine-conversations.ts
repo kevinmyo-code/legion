@@ -10,15 +10,16 @@ import type { Reply } from './engine'
  */
 export interface ConversationsState {
   devices: ConversationDevice[]
-  /** The route alone is unreachable (the engine answers 503), the rest of the app still works. */
-  failing: boolean
+  /** The route alone answers this status (503: down, 403: refused); the rest of the app works. */
+  failing: number | false
 }
 
 export function defaultConversations(): ConversationsState {
   return { devices: [], failing: false }
 }
 
-/** A readable batch, with made-up lines, for a test to seed. */
+/** A readable batch, with made-up lines in the shape the engine sends (his lines, tool names and
+ * times: never an assistant line or a tool's reply), for a test to seed. */
 export function makeBatch(id: string, receivedAt: string, lines: string[]): ConversationBatch {
   return {
     id,
@@ -39,7 +40,7 @@ export function handleConversations(
 ): Reply | undefined {
   if (method !== 'GET' || pathname !== '/api/device-logs/conversations/') return undefined
   if (host.conversations.failing) {
-    return { status: 503, body: { detail: 'The engine cannot answer right now.' } }
+    return { status: host.conversations.failing, body: { detail: 'The engine cannot answer right now.' } }
   }
   const limit = Math.max(1, Math.min(Number(search.get('limit') ?? 10), 30))
   return {

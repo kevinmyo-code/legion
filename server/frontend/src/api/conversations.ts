@@ -5,7 +5,7 @@ import type { components } from '@/api/schema'
 
 /**
  * `GET /api/device-logs/conversations/`: the caller's own conversation batches,
- * rendered by the engine, newest first, grouped by device (#160). One request,
+ * cut to the member's own lines by the engine, newest first, grouped by device (#160). One request,
  * so the page never shows a half-rendered list.
  *
  * Three states, as everywhere: still asking, the data, and could not reach the
@@ -14,6 +14,13 @@ import type { components } from '@/api/schema'
  */
 export type ConversationDevice = components['schemas']['ConversationDevice']
 export type ConversationBatch = components['schemas']['ConversationBatch']
+
+/** A non-2xx answer, with its status so the screen can tell a refusal from an outage. */
+export class ConversationsError extends Error {
+  constructor(readonly status: number) {
+    super(`GET /api/device-logs/conversations/ answered ${status}`)
+  }
+}
 
 export const DEFAULT_PER_DEVICE = 10
 export const MAX_PER_DEVICE = 30
@@ -26,7 +33,7 @@ export function useConversations(limit: number) {
         params: { query: { limit } },
       })
       if (!response.ok || !data) {
-        throw new Error(`GET /api/device-logs/conversations/ answered ${response.status}`)
+        throw new ConversationsError(response.status)
       }
       return data.devices
     },
