@@ -1,0 +1,9 @@
+# The android-all-instrumented jars the unit suite loads, for ONE Robolectric version.
+# Read by .github/scripts/robolectric_prefetch.sh. The `-iN` suffix and the build ids change between
+# Robolectric releases, so this table is keyed by version: the script FAILS when the version in
+# gradle/libs.versions.toml differs from the line below. To bump Robolectric, update both: take the
+# names from DefaultSdkProvider in the new release (default SDK = app targetSdk, plus every
+# `@Config(sdk = [..])` under app/src/test).
+version 4.16.1
+14-robolectric-10818077-i7
+11-robolectric-6757853-i7
