@@ -42,6 +42,8 @@ on:
       - 'tools/voice_eval/**'
       - 'tools/voice_audit.py'
       - '.github/workflows/android.yml'
+      - '.github/robolectric-android-all.txt'
+      - '.github/scripts/robolectric_prefetch.sh'
       - '.github/scripts/junit_totals.py'
   pull_request:
     paths:
@@ -60,6 +62,8 @@ on:
       - 'tools/voice_eval/**'
       - 'tools/voice_audit.py'
       - '.github/workflows/android.yml'
+      - '.github/robolectric-android-all.txt'
+      - '.github/scripts/robolectric_prefetch.sh'
       - '.github/scripts/junit_totals.py'
   workflow_dispatch:
 
