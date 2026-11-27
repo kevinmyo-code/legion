@@ -177,7 +177,7 @@ object ConversationLog {
         turnSaver = TurnSaver(
             box = TurnOutbox(
                 File(app.filesDir, "turnsave/pending.jsonl"),
-                EngineTurnTransport(EngineHttp(EngineConfig(app))),
+                engineTurnTransport(app),
             ),
             writer = writer,
             scope = scope,
@@ -187,6 +187,12 @@ object ConversationLog {
         // applySettings ran before the saver existed: with the log off, clear what an earlier run left.
         turnSaver?.let { saver -> writer.execute { saver.clearIfOff() } }
         recorder = ConversationRecorder(s, writer, enabled = { keepAndSend })
+    }
+
+    /** The turn queue's transport: sends as the engine account signed in now, and says who that is. */
+    private fun engineTurnTransport(app: Context): EngineTurnTransport {
+        val config = EngineConfig(app)
+        return EngineTurnTransport(EngineHttp(config)) { config.userId()?.let { "$it@${config.baseUrl()}" } }
     }
 
     /** Re-read both switches. Called at every session start and whenever Settings flips one. */

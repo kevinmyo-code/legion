@@ -297,4 +297,17 @@ class LiveAuditTurnTest {
         say("what is the weather", "Mild.")
         assertEquals(listOf("what is the weather"), turns.map { it.userText })
     }
+
+    @Test
+    fun `a crisis turn leaves no row at all, tool names included`() {
+        audit.sessionStart("model", emptySet())
+        audit.user("I want to", final = true)
+        audit.toolCall("t1", "start_timer", async = false, argsJson = "{}")
+        audit.toolResult(toolResult("t1", "start_timer", """{"success":true}"""))
+        audit.discardWords()
+        audit.toolCall("t2", "start_timer", async = false, argsJson = "{}")
+        audit.toolResult(toolResult("t2", "start_timer", """{"success":true}"""))
+        audit.sessionEnd("crisis")
+        assertTrue(turns.isEmpty())
+    }
 }

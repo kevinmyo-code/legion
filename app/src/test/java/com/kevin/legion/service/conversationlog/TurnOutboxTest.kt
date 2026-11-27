@@ -17,10 +17,14 @@ class TurnOutboxTest {
     @get:Rule val tmp = TemporaryFolder()
 
     private class Fake(var usable: Boolean = true) : TurnTransport {
+        /** Who the phone is signed in as; a test changes it to model a sign-in as someone else. */
+        var who: String? = "member-a@engine"
         val sent = mutableListOf<JSONObject>()
         var script: (JSONObject) -> PostResult = { PostResult.Ok(201) }
 
         override fun isUsable() = usable
+
+        override fun identity() = who
 
         override suspend fun post(json: String): PostResult {
             val body = JSONObject(json)
@@ -231,5 +235,77 @@ class TurnOutboxTest {
                 "They are kept on this phone and will be tried again.",
             box.drain().sentence,
         )
+    }
+
+    @Test fun `turns queued as one member are never sent under another sign-in and go when they return`() =
+        runBlocking {
+            val fake = Fake(usable = false)
+            val box = box(fake)
+            (0..1).forEach { box.enqueue(turn(it)) }
+            fake.usable = true
+            fake.who = "member-b@engine"
+            val outcome = box.drain()
+            assertTrue(outcome is TurnOutbox.Outcome.NothingToSend)
+            assertTrue(fake.sent.isEmpty())
+            assertEquals(2, box.pending())
+            assertEquals(2, box.heldForOthers())
+            fake.who = "member-a@engine"
+            box.drain()
+            assertEquals(listOf(0, 1), seqs(fake))
+            assertEquals(0, box.pending())
+        }
+
+    @Test fun `the second member own turns go while the first member waits`() = runBlocking {
+        val fake = Fake(usable = false)
+        val box = box(fake)
+        box.enqueue(turn(0))
+        fake.who = "member-b@engine"
+        box.enqueue(turn(1))
+        fake.usable = true
+        box.drain()
+        assertEquals(listOf(1), seqs(fake))
+        assertEquals(1, box.heldForOthers())
+        assertEquals(1, box.pending())
+    }
+
+    @Test fun `the same member on another engine address is another sign-in`() = runBlocking {
+        val fake = Fake(usable = false)
+        val box = box(fake)
+        box.enqueue(turn(0))
+        fake.usable = true
+        fake.who = "member-a@other-engine"
+        box.drain()
+        assertTrue(fake.sent.isEmpty())
+        assertEquals(1, box.heldForOthers())
+    }
+
+    @Test fun `a line with no owner from an older queue is dropped and counted`() = runBlocking {
+        val fake = Fake()
+        val file = tmp.root.resolve("turns.jsonl")
+        file.writeText(turn(0).toJson() + "\n")
+        val box = TurnOutbox(file, fake)
+        box.drain()
+        assertTrue(fake.sent.isEmpty())
+        assertEquals(0, box.pending())
+        assertEquals(1, box.takeRefused())
+    }
+
+    @Test fun `signed out nothing can be queued`() {
+        val fake = Fake().apply { who = null }
+        val box = box(fake)
+        try {
+            box.enqueue(turn(0))
+            org.junit.Assert.fail("expected NotSignedIn")
+        } catch (_: TurnOutbox.NotSignedIn) {
+            assertEquals(0, box.pending())
+        }
+    }
+
+    @Test fun `a drain does not send once sending is switched off`() = runBlocking {
+        val fake = Fake()
+        val box = box(fake)
+        box.enqueue(turn(0))
+        box.drain(canSend = { false })
+        assertTrue(fake.sent.isEmpty())
     }
 }

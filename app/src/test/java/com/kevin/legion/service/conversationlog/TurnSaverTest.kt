@@ -23,7 +23,11 @@ class TurnSaverTest {
         var usable: Boolean = true,
         var script: () -> PostResult = { PostResult.Ok(201) },
     ) : TurnTransport {
+        var who: String? = "member-a@engine"
+
         override fun isUsable() = usable
+
+        override fun identity() = who
 
         override suspend fun post(json: String): PostResult = script()
     }
@@ -94,6 +98,8 @@ class TurnSaverTest {
     @Test fun `a failing queue read is said in words not swallowed`() = runBlocking {
         val failing = object : TurnTransport {
             override fun isUsable(): Boolean = throw IOException("disk gone")
+
+            override fun identity(): String = "member-a@engine"
 
             override suspend fun post(json: String): PostResult = PostResult.Ok(201)
         }
@@ -176,5 +182,38 @@ class TurnSaverTest {
         box.enqueue(turn(0))
         saver(box, keep = true).clearIfOff()
         assertEquals(1, box.pending())
+    }
+
+    @Test fun `turns from another sign-in are said to be waiting`() {
+        val fake = Fake(usable = false)
+        val box = box(fake)
+        val saver = saver(box)
+        saver.save(turn(0))
+        saver.save(turn(1))
+        fake.usable = true
+        fake.who = "member-b@engine"
+        runBlocking { saver.drain() }
+        val status = saver.status.value!!
+        assertTrue(status, status.contains("2 chat turns from another sign-in are waiting."))
+        assertEquals(2, box.pending())
+    }
+
+    @Test fun `a turn spoken while signed out is counted as not saved`() {
+        val fake = Fake().apply { who = null }
+        val saver = saver(box(fake))
+        saver.save(turn(0))
+        assertEquals(1, saver.lostTurns)
+        assertTrue(saver.status.value!!.contains("could not be saved"))
+    }
+
+    @Test fun `a turn arriving after the switch went off is never queued or sent`() {
+        var on = true
+        val box = box(Fake())
+        val queued = mutableListOf<Runnable>()
+        val saver = TurnSaver(box, { queued += it }, CoroutineScope(Dispatchers.Unconfined), { on }, { _, _ -> })
+        saver.save(turn(0))
+        on = false
+        queued.forEach { it.run() }
+        assertEquals(0, box.pending())
     }
 }

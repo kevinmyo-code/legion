@@ -26,6 +26,8 @@ class LiveAuditTestConversationTest {
     private val offline = object : TurnTransport {
         override fun isUsable() = false
 
+        override fun identity() = "member-a@engine"
+
         override suspend fun post(json: String): PostResult = PostResult.Unreachable("offline")
     }
 

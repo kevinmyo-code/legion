@@ -42,12 +42,24 @@ interface TurnTransport {
     /** True when the phone has an engine address and a device token. */
     fun isUsable(): Boolean
 
+    /**
+     * Who the phone is signed in as right now, engine address included, or null when signed out. A
+     * queued turn carries it from when it was spoken and is sent only while it still matches: a turn
+     * is a member's private record and must never be posted under another member's token.
+     */
+    fun identity(): String?
+
     /** `POST /api/member-memories/turns` with [json] as the body. */
     suspend fun post(json: String): PostResult
 }
 
-class EngineTurnTransport(private val http: EngineHttp) : TurnTransport {
+class EngineTurnTransport(
+    private val http: EngineHttp,
+    private val identity: () -> String?,
+) : TurnTransport {
     override fun isUsable(): Boolean = http.isUsable()
+
+    override fun identity(): String? = identity.invoke()
 
     override suspend fun post(json: String): PostResult = http.post(PATH, json).toPostResult()
 
@@ -68,6 +80,12 @@ class EngineTurnTransport(private val http: EngineHttp) : TurnTransport {
  * yet (404, or an old "unknown" answer) keeps the queue instead: the turns wait for the update, and
  * the cap trims the oldest if it never comes. A 409 (another member holds that chat id and turn
  * number) drops only that turn.
+ *
+ * **Each queued line carries who spoke it** (`owner`, from [TurnTransport.identity]) and is posted
+ * only while the phone is still signed in as that identity. After a sign-in as someone else the
+ * earlier member's turns are held, not sent and not deleted ([heldForOthers]); they drain if that
+ * member signs back in. A line with no owner (an older queue format) cannot be attributed, so it is
+ * dropped and counted ([takeRefused]).
  */
 class TurnOutbox(
     private val file: File,
@@ -115,32 +133,68 @@ class TurnOutbox(
         synchronized(lock) { if (file.exists()) write(emptyList()) }
     }
 
+    /** Thrown by [enqueue] when nobody is signed in: the turn has no owner to be sent as. */
+    class NotSignedIn : IllegalStateException("not signed in to an engine")
+
     /**
-     * Appends [turn]; trims the oldest past [max]. Returns how many turns the trim threw away (0 when
-     * none), so the caller can say so. Safe from any thread.
+     * Appends [turn] under the current identity; trims the oldest past [max]. Returns how many turns
+     * the trim threw away (0 when none), so the caller can say so. Safe from any thread.
      */
     fun enqueue(turn: SavedTurn): Int = synchronized(lock) {
-        val lines = read() + turn.toJson()
+        val owner = transport.identity() ?: throw NotSignedIn()
+        val line = JSONObject().put("owner", owner).put("turn", JSONObject(turn.toJson())).toString()
+        val lines = read() + line
         val cut = (lines.size - max).coerceAtLeast(0)
         write(lines.drop(cut))
         cut
     }
 
+    /** Every queued turn, whoever spoke it. */
     fun pending(): Int = synchronized(lock) { read().size }
+
+    /** Queued turns of the identity signed in now. */
+    fun ownPending(): Int = synchronized(lock) {
+        val me = transport.identity()
+        read().count { ownerOf(it) == me }
+    }
+
+    /** Queued turns spoken under another sign-in, waiting for that member to sign back in. */
+    fun heldForOthers(): Int = synchronized(lock) {
+        val me = transport.identity()
+        if (me == null) 0 else read().count { line -> ownerOf(line).let { it != null && it != me } }
+    }
+
+    private fun ownerOf(line: String): String? =
+        runCatching { JSONObject(line).optString("owner", "").ifEmpty { null } }.getOrNull()
+
+    private fun bodyOf(line: String): String = JSONObject(line).getJSONObject("turn").toString()
+
+    /** Drops lines with no owner (an older format): they cannot be attributed. Counted as refused. */
+    private fun dropUnowned() = synchronized(lock) {
+        val lines = read()
+        val kept = lines.filter { ownerOf(it) != null }
+        if (kept.size != lines.size) {
+            write(kept)
+            refusedDropped.addAndGet(lines.size - kept.size)
+        }
+    }
 
     /**
      * Sends queued turns oldest first until one fails. Single-flight: a second caller waits, then
      * finds the queue empty.
      */
-    suspend fun drain(): Outcome = drainLock.withLock { drainLocked() }
+    suspend fun drain(canSend: () -> Boolean = { true }): Outcome = drainLock.withLock { drainLocked(canSend) }
 
-    private suspend fun drainLocked(): Outcome {
+    private suspend fun drainLocked(canSend: () -> Boolean): Outcome {
         var sent = 0
         var refused = 0
         var stop: Outcome? = null
+        dropUnowned()
         while (stop == null) {
-            val next = synchronized(lock) { read().firstOrNull() }
+            val me = transport.identity()
+            val next = synchronized(lock) { read().firstOrNull { ownerOf(it) == me } }
             stop = when {
+                !canSend() -> Outcome.NothingToSend
                 next == null -> if (sent + refused == 0) Outcome.NothingToSend else Outcome.Sent(sent, refused)
                 !transport.isUsable() -> Outcome.NoEngine
                 else -> when (val attempt = attempt(next)) {
@@ -153,7 +207,7 @@ class TurnOutbox(
                         refusedDropped.incrementAndGet()
                         null
                     }
-                    is Attempt.Stop -> Outcome.Kept(sent, pending(), attempt.reason)
+                    is Attempt.Stop -> Outcome.Kept(sent, ownPending(), attempt.reason)
                 }
             }
         }
@@ -170,25 +224,26 @@ class TurnOutbox(
 
     /** Posts the oldest queued [line]; a saved or dropped turn leaves the queue, a kept one stops the drain. */
     private suspend fun attempt(line: String): Attempt {
-        val result = transport.post(line)
+        val result = transport.post(bodyOf(line))
         val kind = RetryRules.classify(result)
         return when {
             kind == null -> {
-                removeFirst(line)
+                remove(line)
                 Attempt.Saved
             }
             isMissingRoute(result, kind) -> Attempt.Stop(OLD_ENGINE_REASON)
             kind in DROPPED -> {
-                removeFirst(line)
+                remove(line)
                 Attempt.Refused
             }
             else -> Attempt.Stop(RetryRules.sentence(kind, result))
         }
     }
 
-    private fun removeFirst(line: String) = synchronized(lock) {
+    private fun remove(line: String) = synchronized(lock) {
         val lines = read()
-        if (lines.firstOrNull() == line) write(lines.drop(1))
+        val at = lines.indexOf(line)
+        if (at >= 0) write(lines.filterIndexed { i, _ -> i != at })
     }
 
     private fun read(): List<String> =

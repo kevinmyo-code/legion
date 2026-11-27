@@ -41,6 +41,8 @@ class TurnSaver(
     fun save(turn: SavedTurn) {
         if (!keep()) return
         writer.execute {
+            // Read again here: the switch may have gone off between the call and this write.
+            if (!keep()) return@execute
             try {
                 val cut = box.enqueue(turn)
                 if (cut > 0) {
@@ -50,7 +52,12 @@ class TurnSaver(
                 }
             } catch (e: Exception) {
                 lost.incrementAndGet()
-                log("a chat turn could not be written on this phone", e)
+                val why = if (e is TurnOutbox.NotSignedIn) {
+                    "a chat turn was not saved: signed out"
+                } else {
+                    "a chat turn could not be written on this phone"
+                }
+                log(why, e)
                 publish()
                 return@execute
             }
@@ -62,7 +69,7 @@ class TurnSaver(
     @Suppress("TooGenericExceptionCaught") // as above
     suspend fun drain() {
         val outcome = try {
-            box.drain()
+            box.drain(canSend = keep)
         } catch (e: CancellationException) {
             lost.addAndGet(box.takeRefused())
             throw e
@@ -78,7 +85,7 @@ class TurnSaver(
         val refused = box.takeRefused()
         lost.addAndGet(refused)
         if (outcome is TurnOutbox.Outcome.NothingToSend) {
-            if (refused > 0) publish()
+            publish()
             return
         }
         if (outcome is TurnOutbox.Outcome.Sent) {
@@ -109,6 +116,12 @@ class TurnSaver(
         } else {
             null
         }
-        _status.value = listOfNotNull(lastOutcome, lostLine).joinToString(" ").ifBlank { null }
+        val held = box.heldForOthers()
+        val heldLine = when {
+            held == 0 -> null
+            held == 1 -> "1 chat turn from another sign-in is waiting."
+            else -> "$held chat turns from another sign-in are waiting."
+        }
+        _status.value = listOfNotNull(lastOutcome, lostLine, heldLine).joinToString(" ").ifBlank { null }
     }
 }

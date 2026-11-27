@@ -120,6 +120,7 @@ internal class LiveAudit(
     @Synchronized
     fun discardWords() {
         turnUser.clear()
+        turnTools.clear()
         turnTyped = false
         crisisHeard = true
     }
@@ -258,7 +259,8 @@ internal class LiveAudit(
     /** Hands the turn in progress to [onTurn] when it holds anything, then clears it. Caller holds the lock. */
     private fun flushTurn() {
         val hasContent = turnUser.isNotEmpty() || turnTools.isNotEmpty()
-        if (enabled && hasContent) {
+        // A crisis turn leaves no row at all: no words, no tool names, nothing to say it happened.
+        if (enabled && hasContent && !crisisHeard) {
             val chat = thread ?: ChatThread(newChatId()).also { thread = it }
             onTurn(
                 SavedTurn(
