@@ -106,7 +106,9 @@ jobs:
     environment: gates
     timeout-minutes: 45
     env:
-      JAVA_TOOL_OPTIONS: -Duser.language=en -Duser.country=US
+      # The voice eval is a Robolectric test: its android-all jar comes from Google's mirror of Maven
+      # Central, not Central, which answers 429 to shared runner IPs (#226; gates run 46031862886).
+      JAVA_TOOL_OPTIONS: -Duser.language=en -Duser.country=US -Drobolectric.dependency.repo.url=https://maven-central.storage-download.googleapis.com/maven2
       SHA: ${{ inputs.sha }}
       CASES: ${{ inputs.phone_cases }}
     steps:
@@ -153,6 +155,11 @@ jobs:
         uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4 (v4.4.3)
         with:
           cache-read-only: true
+
+      # Gradle looks on Google's mirror of Maven Central first (Central answers 429 to shared runner
+      # IPs). From trusted/, this run's dev tip: an older sha under test may not have the file.
+      - name: Fetch Maven Central artifacts from Google's mirror first
+        run: mkdir -p "$HOME/.gradle/init.d" && cp trusted/.github/gradle/central-mirror.init.gradle.kts "$HOME/.gradle/init.d/"
 
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
