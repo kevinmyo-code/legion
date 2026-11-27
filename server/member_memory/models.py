@@ -362,3 +362,78 @@ class MemoryReviewChange(models.Model):
 
     def __str__(self) -> str:
         return f"memory review change {self.id} ({self.action}, {self.status})"
+
+
+# Issue #450: who may say a turn came from them over REST. The web assistant's turns are the
+# engine's own and would be written by the engine, never posted.
+TURN_SOURCE_PHONE = "phone"
+TURN_SOURCE_HEADUNIT = "headunit"
+TURN_SOURCES: tuple[str, ...] = (TURN_SOURCE_PHONE, TURN_SOURCE_HEADUNIT)
+# Generous for one spoken turn; a longer one keeps its end cut, not the turn refused.
+TURN_TEXT_MAX_CHARS = 4000
+TURN_SESSION_MAX_CHARS = 64
+
+
+class ConversationTurn(models.Model):
+    """`public.member_conversation_turns`: one finished turn, saved the moment it ends (#450).
+
+    Kevin, 2026-11-25: a new chat asked "what did we talk about today?" knew nothing of a chat from
+    minutes earlier, because a conversation reached the engine as a 3-minute log batch and memory
+    only after the hourly job. This is the raw recent record, written per turn: the person's words
+    and the reply that was spoken, tool turns included. It is not a memory and is never recalled
+    as one; the hourly `consolidate_memories` job still distils long-term facts from the
+    conversation records, unchanged.
+
+    **What is never here** (CLAUDE.md section 7): a tool's arguments or result (only its name), a
+    turn that read third-party text (dropped whole, the person's words included, as consolidation
+    drops it), a turn carrying the redaction marker, a turn that looks like it holds a vault
+    identifier, and any part of a conversation in which a crisis phrase was heard (the whole
+    session's turns are deleted, the ones said before it included: they are the same exchange).
+
+    Private to the member who spoke it, like a memory review (`owner_user = member`, a check
+    constraint and the ADR 0052 owner guard). One row per `(member, session, turn)`, so a client
+    that retries a turn after a dropped reply rewrites the same row and never adds a second.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    household = models.ForeignKey("household.Household", on_delete=models.PROTECT, related_name="+")
+    member = models.ForeignKey("household.User", on_delete=models.CASCADE, related_name="+")
+    owner_user = models.ForeignKey("household.User", on_delete=models.CASCADE, related_name="+")
+    # The client's own id for one conversation (open to close), opaque here.
+    session = models.TextField()
+    # The turn's place in its conversation, counted by the client from 0.
+    turn = models.IntegerField()
+    source = models.TextField()
+    user_text = models.TextField(blank=True, default="")
+    assistant_text = models.TextField(blank=True, default="")
+    # Names only, never arguments or results.
+    tools = models.JSONField(default=list, blank=True)
+    # When the turn ended, by the client's clock.
+    spoken_at = models.DateTimeField()
+    created_at = models.DateTimeField(db_default=Now())
+
+    class Meta:
+        db_table = "member_conversation_turns"
+        indexes = [
+            models.Index(
+                fields=["household", "member", "-spoken_at"], name="member_turns_member_idx"
+            ),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["member", "session", "turn"], name="member_turns_once_per_turn"
+            ),
+            models.CheckConstraint(
+                condition=models.Q(source__in=TURN_SOURCES), name="member_turns_source_valid"
+            ),
+            models.CheckConstraint(
+                condition=models.Q(turn__gte=0), name="member_turns_turn_not_negative"
+            ),
+            models.CheckConstraint(
+                condition=models.Q(owner_user=models.F("member")),
+                name="member_turns_private_to_its_member",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"turn {self.turn} of {self.session}"

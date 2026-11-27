@@ -12175,6 +12175,122 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: ''
+  /api/member-memories/turns:
+    get:
+      operationId: api_member_memories_turns_list
+      description: The caller's own conversation turns, newest first.
+      parameters:
+      - in: query
+        name: limit
+        schema:
+          type: integer
+        description: Default 50, max 200.
+      - in: query
+        name: session
+        schema:
+          type: string
+        description: Only this conversation's turns.
+      tags:
+      - member-memories
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TurnList'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+    post:
+      operationId: api_member_memories_turns_save
+      description: 'Saves one finished turn for the caller the moment it ends. Saving
+        the same session and turn again rewrites it (200). A turn that read third-party
+        text, holds a crisis phrase (every turn of that session is then deleted),
+        or looks like it holds an identity or bank number is not kept: 200 with `kept:
+        false`, never retry it.'
+      tags:
+      - member-memories
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TurnSave'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TurnSave'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TurnSave'
+        required: true
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TurnSaved'
+          description: ''
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TurnSaved'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+    delete:
+      operationId: api_member_memories_turns_forget
+      description: Deletes every turn of one of the caller's conversations, for good.
+      parameters:
+      - in: query
+        name: session
+        schema:
+          type: string
+        description: The conversation to forget.
+        required: true
+      tags:
+      - member-memories
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TurnForget'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
   /api/memory/companion_memories/:
     get:
       operationId: api_memory_companion_memories_list
@@ -27902,6 +28018,55 @@ components:
       - day
       - trend_lbs
       - weight_lbs
+    Turn:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        session:
+          type: string
+        turn:
+          type: integer
+        source:
+          $ref: '#/components/schemas/AppEnum'
+        user_text:
+          type: string
+        assistant_text:
+          type: string
+        tools:
+          type: array
+          items:
+            type: string
+          description: Names only.
+        spoken_at:
+          type: string
+          format: date-time
+      required:
+      - assistant_text
+      - id
+      - session
+      - source
+      - spoken_at
+      - tools
+      - turn
+      - user_text
+    TurnForget:
+      type: object
+      properties:
+        deleted:
+          type: integer
+      required:
+      - deleted
+    TurnList:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Turn'
+      required:
+      - results
     TurnRefusal:
       type: object
       description: |-
@@ -28037,6 +28202,71 @@ components:
         * `check_in` - check_in
         * `proactive` - proactive
         * `say` - say
+    TurnSave:
+      type: object
+      properties:
+        session:
+          type: string
+          description: The client's own id for the conversation.
+          maxLength: 64
+        turn:
+          type: integer
+          minimum: 0
+          description: Counted from 0 within the session.
+        source:
+          allOf:
+          - $ref: '#/components/schemas/AppEnum'
+          default: phone
+        user_text:
+          type: string
+          default: ''
+        assistant_text:
+          type: string
+          default: ''
+          description: What was spoken back, a tool turn's included. Never a tool's
+            result.
+        tools:
+          type: array
+          items:
+            type: string
+            maxLength: 100
+          description: The names of the tools the turn called, never arguments.
+          maxItems: 50
+        read_through:
+          type: boolean
+          default: false
+          description: The client saw third-party text in this turn; the turn is then
+            not kept.
+        spoken_at:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - session
+      - turn
+    TurnSaved:
+      type: object
+      properties:
+        kept:
+          type: boolean
+        reason:
+          type: string
+          nullable: true
+          description: 'Why it was not kept: read_through, crisis, sensitive or empty.
+            Null when kept.'
+        detail:
+          type: string
+          nullable: true
+          description: The reason in words.
+        turn:
+          allOf:
+          - $ref: '#/components/schemas/Turn'
+          nullable: true
+      required:
+      - detail
+      - kept
+      - reason
+      - turn
     UntilReasonEnum:
       enum:
       - next_income
