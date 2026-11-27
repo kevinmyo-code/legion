@@ -50,3 +50,50 @@ def add_place_address(cursor) -> str | None:
         return "places: public.places does not exist here; nothing added."
     cursor.execute(ADDRESS_ADD_SQL)
     return None
+
+
+# The label cap (django-engine ticket 14): `api/places.LABEL_MAX_LENGTH` in
+# SQL, so a writer that is not `PlaceSerializer` is held to it too. The number
+# is written out rather than imported so this migration's SQL cannot change
+# under an applied database; `tests/test_places_label_check.py` fails if the
+# two ever disagree. `length(label)`, not `trim`: the serializer measures the
+# stored string, and so does this.
+#
+# NOT VALID first, VALIDATE only when no row breaks it. Every writer has
+# capped labels at 30 since the column existed (the phone's `normalizeLabel`,
+# then the serializer), so live data is expected clean, but nobody can read
+# prod from here and a CHECK that fails on one stray row fails the deploy.
+# Such a row is not renamed or cut short here: the label is the place's
+# identity (URL key, `events.trigger_place_label`, the geofence requestId),
+# and truncating it could collide with another place's label. It stays,
+# unvalidated, and the next run validates once it is gone. Postgres still
+# checks a NOT VALID constraint on UPDATE, so until then that one row cannot
+# be tombstoned or renamed by the API.
+LABEL_CHECK_NAME = "places_label_length"
+
+LABEL_ADD_SQL = f"""
+alter table public.places drop constraint if exists {LABEL_CHECK_NAME};
+alter table public.places add constraint {LABEL_CHECK_NAME}
+    check (length(label) <= 30) not valid;
+"""
+
+LABEL_DROP_SQL = f"""
+alter table if exists public.places drop constraint if exists {LABEL_CHECK_NAME};
+"""
+
+
+def add_place_label_check(cursor) -> str | None:
+    """Adds `places_label_length`, validated when every row passes. None
+    when it is on and validated, or why not."""
+    if not _table_exists(cursor, "places"):
+        return "places: public.places does not exist here; nothing added."
+    cursor.execute(LABEL_ADD_SQL)
+    cursor.execute("select count(*) from public.places where length(label) > 30")
+    overlong = cursor.fetchone()[0]
+    if overlong:
+        return (
+            f"places: {overlong} place label(s) over 30 characters, so "
+            f"{LABEL_CHECK_NAME} holds new writes but is not validated."
+        )
+    cursor.execute(f"alter table public.places validate constraint {LABEL_CHECK_NAME}")
+    return None
