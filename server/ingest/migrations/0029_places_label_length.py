@@ -4,7 +4,8 @@
 The SQL is `api/place_columns.py`. Guarded on the table existing, like
 `0017`: a no-op on the pytest database at `migrate` time, where
 `tests/conftest.py` calls the same function once it exists. Never fails on
-an existing overlong row; it leaves the CHECK NOT VALID and says so.
+an existing overlong row; it leaves the CHECK NOT VALID and says so, and
+`backup_nightly` validates it once no live row is over 30.
 """
 
 from django.db import migrations
