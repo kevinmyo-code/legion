@@ -6,7 +6,6 @@ import com.kevin.midnightai.data.local.CarDatabase
 import com.kevin.midnightai.data.local.CompanionMemory
 import com.kevin.midnightai.data.local.EpisodicTurn
 import com.kevin.midnightai.service.ConversationState
-import org.json.JSONArray
 
 /**
  * Companion-memory map, ticket 02 (2026-07-22): distills each finished Live
@@ -79,7 +78,7 @@ object MemoryConsolidator {
 
             val vehicleId = turns.first().vehicleId
             val now = com.kevin.midnightai.time.TrustedClock.nowMs()
-            for (m in distilled) {
+            for (m in distilled.memories) {
                 memoryDao.insert(CompanionMemory(
                     vehicleId = vehicleId,
                     text = m.text,
@@ -91,56 +90,41 @@ object MemoryConsolidator {
                 ))
             }
             if (ConversationState.isBusy) continue // don't delete turns a live convo might still need
+            // Issue #452: what the next chat is told about this one, kept before its raw turns go.
+            RecentChatStore.forContext(context).record(
+                RecentChat(
+                    vehicleId = vehicleId,
+                    endedAtMs = turns.maxOf { it.timestamp },
+                    summary = distilled.summary?.takeUnless(CrisisDetector::detect),
+                    driverLines = RecentChatsNote.driverLines(turns),
+                ),
+            )
             turnDao.deleteSession(sessionId)
         }
     }
 
-    private data class DistilledMemory(val text: String, val importance: Int, val category: String)
-
     /** One SubAgent one-shot per session; returns null on any failure (retry next pass). */
-    private suspend fun distill(turns: List<EpisodicTurn>): List<DistilledMemory>? {
+    private suspend fun distill(turns: List<EpisodicTurn>): ConsolidationReply.Parsed? {
         val transcript = turns.joinToString("\n") { t ->
             val speaker = if (t.role == EpisodicTurn.Role.DRIVER) "Driver" else "You"
             "$speaker: ${t.text}"
         }
         val result = agent().askTyped(context = transcript, question = DISTILL_QUESTION)
         val text = (result as? AgentResult.Success)?.text ?: return null
-        return parseMemories(text)
+        return ConsolidationReply.parse(text)
     }
 
-    private fun parseMemories(raw: String): List<DistilledMemory>? {
-        val start = raw.indexOf('[')
-        val end = raw.lastIndexOf(']')
-        if (start == -1 || end == -1 || end < start) return null
-        return try {
-            val arr = JSONArray(raw.substring(start, end + 1))
-            (0 until arr.length()).mapNotNull { i ->
-                val o = arr.optJSONObject(i) ?: return@mapNotNull null
-                val text = o.optString("text").trim()
-                if (text.isBlank()) return@mapNotNull null
-                val category = o.optString("category").trim().lowercase()
-                if (category !in VALID_CATEGORIES) return@mapNotNull null
-                val importance = o.optInt("importance", 5).coerceIn(1, 10)
-                DistilledMemory(text, importance, category)
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "failed to parse consolidation output: ${e.message}")
-            null
-        }
-    }
-
-    private val VALID_CATEGORIES = setOf(
-        CompanionMemory.Category.CAR_ANCHORED,
-        CompanionMemory.Category.DRIVER,
-        CompanionMemory.Category.RELATIONSHIP,
-    )
-
+    // Issue #452: the same one-shot now also writes the chat's summary, which the next chat is
+    // told (RecentChatsNote). A reply in the old bare-array shape still parses, with no summary.
     private const val DISTILL_QUESTION =
-        "Distill this conversation into durable memories. Respond with ONLY a raw JSON array (no " +
-            "markdown, no commentary, no code fences) of 0 to 5 objects, each with keys \"text\" " +
-            "(a short, spoken-friendly memory in third person about the driver, e.g. \"Mentioned " +
-            "wanting an LS swap eventually\"), \"importance\" (integer 1-10), and \"category\" " +
-            "(exactly one of \"car_anchored\", \"driver\", \"relationship\")."
+        "Distill this conversation. Respond with ONLY a raw JSON object (no markdown, no " +
+            "commentary, no code fences) with two keys. \"summary\": two to four plain sentences, " +
+            "in the third person, on what was talked about, what was decided and anything the " +
+            "driver or you promised to do; one short sentence if nothing of substance was said. " +
+            "\"memories\": an array of 0 to 5 objects, each with keys \"text\" (a short, " +
+            "spoken-friendly memory in third person about the driver, e.g. \"Mentioned wanting an " +
+            "LS swap eventually\"), \"importance\" (integer 1-10), and \"category\" (exactly one of " +
+            "\"car_anchored\", \"driver\", \"relationship\")."
 
     // The rubric + category definitions. "You" in the transcript is this
     // companion's own turns - kept as "You" (not a name) since the identity
@@ -149,7 +133,9 @@ object MemoryConsolidator {
         You are distilling a conversation between a driver and their car companion into a small
         number of durable memories - key events worth remembering, not a transcript. Most ordinary
         chit-chat, small talk, and filler has NOTHING worth keeping - return an empty array for those.
-        Only extract something a person would actually remember days or weeks later.
+        Only extract something a person would actually remember days or weeks later. The summary
+        is different: it always says, briefly, what the conversation was about, using only what
+        was said.
 
         Importance scale (1-10), for a CAR companion, be honest and use the full range:
         - 9-10: a named future plan or project (a specific mod, a planned trip), an explicit

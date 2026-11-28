@@ -18,6 +18,7 @@ import com.kevin.legion.service.tools.day.RelativeDay
 import com.kevin.legion.vehicle.ObdBluetoothManager
 import com.kevin.legion.vehicle.VehicleController
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.withContext
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -42,6 +43,11 @@ class AriaBrain private constructor(context: Context) {
     private val appContext = context.applicationContext
     private val conversationAuditDao = CarDatabase.getDatabase(context).conversationAuditDao()
     private val memories by lazy { com.kevin.legion.memory.MemoryController.forContext(appContext) }
+    private val recentChats by lazy {
+        com.kevin.legion.backend.engine.DjangoRecentChatsSource(
+            com.kevin.legion.backend.engine.EngineHttp(com.kevin.legion.backend.engine.EngineConfig(appContext)),
+        )
+    }
     private val auditDao = CarDatabase.getDatabase(context).memoryAuditDao()
     private val geocoder by lazy { Geocoder(appContext, Locale.getDefault()) }
 
@@ -406,6 +412,17 @@ class AriaBrain private constructor(context: Context) {
     }
 
     /**
+     * Issue #452: the last couple of conversation summaries and how the newest chat ended, from the
+     * engine ([com.kevin.legion.memory.RecentChats]), bounded so a slow engine never holds a chat's
+     * start. Null when there is nothing, or the engine cannot be read.
+     */
+    private suspend fun buildRecentChatsNote(): String? {
+        val now = System.currentTimeMillis()
+        val read = runCatching { com.kevin.legion.memory.RecentChats.read(recentChats, now) }.getOrNull()
+        return read?.let { com.kevin.legion.memory.RecentChats.note(it, ZoneId.systemDefault()) }
+    }
+
+    /**
      * The volatile half: live OBD codes, location, current saved place,
      * now-playing, odometer/maintenance, and the car to-do
      * list. Always built fresh (cheap, mostly cached reads), so it's current at
@@ -426,7 +443,12 @@ class AriaBrain private constructor(context: Context) {
         // the clock rather than trust this note.
         sb.appendSection(clockNote(RelativeDay.now()))
 
+        // Issue #452: the last chats, read beside the continuity note's own engine read so the two
+        // waits overlap. Not behind CONTINUITY_MIN_GAP_MS: minutes after a chat is exactly when it
+        // is wanted.
+        val lastChats = async { buildRecentChatsNote() }
         buildContinuityNote()?.let { sb.appendSection(it) }
+        lastChats.await()?.let { sb.appendSection(it) }
 
         if (ObdBluetoothManager.isConnected) {
             val codes = cachedDtcCodes()

@@ -416,6 +416,29 @@ class AriaBrain private constructor(context: Context) {
         return continuityText(recallMemories(query = "", limit = CONTINUITY_MEMORY_COUNT))
     }
 
+    /**
+     * Issue #452: the last chat summaries and the driver's last words of the newest chat
+     * ([RecentChatsNote]), from [RecentChatStore] and, for a chat not yet consolidated, the raw
+     * buffer. Null when there is nothing to carry.
+     */
+    private suspend fun buildRecentChatsNote(): String? {
+        val vehicleId = ActiveVehicle.current(appContext)
+        val raw = episodicTurnDao.latestForVehicle(vehicleId, RAW_TURNS_READ)
+        val newestSession = raw.firstOrNull()?.sessionId
+        val pending = newestSession?.let { session ->
+            val turns = raw.filter { it.sessionId == session }
+            RecentChat(vehicleId, turns.maxOf { it.timestamp }, null, RecentChatsNote.driverLines(turns))
+                .takeUnless { CrisisMemoryGate.forgetsSession(turns) }
+        }
+        return RecentChatsNote.note(
+            stored = RecentChatStore.forContext(appContext).read(),
+            pending = pending,
+            vehicleId = vehicleId,
+            nowMs = com.kevin.midnightai.time.TrustedClock.nowMs(),
+            zone = com.kevin.midnightai.time.TrustedClock.zone(),
+        )
+    }
+
     private fun formatMemory(c: Candidate): String {
         val date = Instant.ofEpochMilli(c.createdAt)
             .atZone(com.kevin.midnightai.time.TrustedClock.zone()).toLocalDate()
@@ -438,6 +461,9 @@ class AriaBrain private constructor(context: Context) {
         sb.appendSection(com.kevin.midnightai.time.TrustedClock.promptLine())
 
         buildContinuityNote()?.let { sb.appendSection(it) }
+        // Issue #452: the last chats. Not behind CONTINUITY_MIN_GAP_MS: minutes after a chat is
+        // exactly when it is wanted. Local reads only, so it costs no wait.
+        runCatching { buildRecentChatsNote() }.getOrNull()?.let { sb.appendSection(it) }
 
         if (ObdBluetoothManager.isConnected) {
             val codes = cachedDtcCodes()
@@ -615,6 +641,10 @@ class AriaBrain private constructor(context: Context) {
         // Ticket 06 (2026-07-22) continuity note. Below this gap, it's still the
         // same outing (another PTT tap minutes later) - not a "welcome back" moment.
         private const val CONTINUITY_MIN_GAP_MS = 20 * 60 * 1000L
+
+        // Issue #452: how many of the car's newest raw turns are read for a chat not yet
+        // consolidated; only the newest session's driver lines are kept from them.
+        private const val RAW_TURNS_READ = 20
         private const val CONTINUITY_MEMORY_COUNT = 3
 
         // Common words dropped from a recall query so they don't match everything.
