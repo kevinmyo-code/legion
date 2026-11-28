@@ -135,7 +135,12 @@ internal object InCallRule {
      */
     fun speaker(outlet: VoiceOutlet): CallControl = when (outlet) {
         VoiceOutlet.EARPIECE ->
-            CallControl("Speaker", enabled = true, detail = "Move the call to the loudspeaker", glyph = CallGlyph.SPEAKER)
+            CallControl(
+                "Speaker",
+                enabled = true,
+                detail = "Move the call to the loudspeaker",
+                glyph = CallGlyph.SPEAKER,
+            )
         VoiceOutlet.LOUDSPEAKER ->
             CallControl(
                 "Earpiece",

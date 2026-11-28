@@ -4061,7 +4061,6 @@ internal class CascadeSession(
                 clipListen = null
             }
         }
-        // A hang-up while it still rings is silent at once.
         step("ringback") { ringback.stop() }
         try {
             micJob?.takeIf { it !== caller }?.cancelAndJoin()

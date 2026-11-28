@@ -69,7 +69,8 @@ internal object RingbackRule {
     }
 
     /** The gap between rings: silence, written as audio so the track keeps its place. */
-    fun silence(rate: Int = SAMPLE_RATE, ms: Long = RING_OFF_MS): ByteArray = ByteArray((rate * ms / MS_PER_S).toInt() * 2)
+    fun silence(rate: Int = SAMPLE_RATE, ms: Long = RING_OFF_MS): ByteArray =
+        ByteArray((rate * ms / MS_PER_S).toInt() * 2)
 
     private const val MS_PER_S = 1_000L
     private const val BYTE_MASK = 0xFF
