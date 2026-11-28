@@ -19,10 +19,21 @@ internal data class TurnBody(
     @SerialName("spoken_at") val spokenAt: String,
 )
 
-/** What a closed turn asks the engine for: keep this turn, or forget a whole conversation. */
+/** `POST /api/member-memories/turns/end` (issue #451): a conversation ended, so summarize it. */
+@Serializable
+internal data class EndBody(
+    val session: String,
+    @SerialName("ended_by") val endedBy: String,
+)
+
+/**
+ * What a closed turn asks the engine for: keep this turn, forget a whole conversation, or (issue
+ * #451) note that a conversation ended so the engine writes its summary at once.
+ */
 internal sealed interface TurnAction {
     data class Save(val body: TurnBody) : TurnAction
     data class Forget(val session: String) : TurnAction
+    data class End(val body: EndBody) : TurnAction
 }
 
 /**
@@ -40,6 +51,11 @@ internal sealed interface TurnAction {
  * are the same exchange (the head unit's `CrisisMemoryGate.forgetsSession`). A source with session
  * events holds that until the next session starts; typed chat, which has none, starts a fresh
  * conversation id after the forget.
+ *
+ * **End (issue #451).** When a session ends, by hand, by the idle auto-close or by a failure, and
+ * at least one of its turns was sent, the engine is told so it writes the conversation's summary
+ * straight away. A crisis conversation sends no end: it was forgotten. Typed chat has no session
+ * end; the engine summarizes it once its turns have gone quiet.
  */
 internal class TurnAssembler(
     private val emit: (TurnAction) -> Unit,
@@ -51,6 +67,7 @@ internal class TurnAssembler(
     private var sawSessionEvents = false
     private var turn = 0
     private var crisis = false
+    private var savedAny = false
     private val user = mutableListOf<String>()
     private val assistant = StringBuilder()
     private val tools = linkedSetOf<String>()
@@ -62,11 +79,16 @@ internal class TurnAssembler(
         session = newSession()
         turn = 0
         crisis = false
+        savedAny = false
     }
 
-    fun sessionEnd() {
+    /** [reason] is the session's own close reason, as `LiveAudit` logs it. */
+    fun sessionEnd(reason: String = "") {
         closeTurn()
+        val id = session
+        if (id != null && savedAny && !crisis) emit(TurnAction.End(EndBody(id, endedBy(reason))))
         session = null
+        savedAny = false
     }
 
     fun user(text: String, final: Boolean) {
@@ -101,18 +123,21 @@ internal class TurnAssembler(
         when {
             crisis -> forget(id)
             closed.readThrough || closed.silent -> Unit
-            else -> emit(
-                TurnAction.Save(
-                    TurnBody(
-                        session = id,
-                        turn = index,
-                        userText = LiveAudit.scrub(closed.user),
-                        assistantText = LiveAudit.scrub(closed.reply),
-                        tools = closed.tools,
-                        spokenAt = Instant.ofEpochMilli(now()).toString(),
+            else -> {
+                savedAny = true
+                emit(
+                    TurnAction.Save(
+                        TurnBody(
+                            session = id,
+                            turn = index,
+                            userText = LiveAudit.scrub(closed.user),
+                            assistantText = LiveAudit.scrub(closed.reply),
+                            tools = closed.tools,
+                            spokenAt = Instant.ofEpochMilli(now()).toString(),
+                        ),
                     ),
-                ),
-            )
+                )
+            }
         }
     }
 
@@ -145,7 +170,27 @@ internal class TurnAssembler(
         val silent: Boolean get() = user.isEmpty() && reply.isEmpty()
     }
 
-    private companion object {
-        val WHITESPACE = Regex("\\s+")
+    internal companion object {
+        private val WHITESPACE = Regex("\\s+")
+
+        /** Close reasons that mean nobody was talking any more: the idle auto-closes. */
+        private val TIMEOUT_REASONS = setOf(
+            "idle", "warm expired", "follow_up", "missed_twice", "noise", "check_in_no_reply",
+        )
+
+        /** Close reasons that mean something broke: a socket, the engine, the mic. */
+        private val DROPPED_MARKS = listOf(
+            "fail", "stale socket", "closed code", "goaway", "unreachable", "microphone", "mic_",
+        )
+
+        /** The engine's word for how a session ended (`turns/end`'s `ended_by`). */
+        fun endedBy(reason: String): String {
+            val r = reason.trim().lowercase()
+            return when {
+                r in TIMEOUT_REASONS -> "timeout"
+                DROPPED_MARKS.any { it in r } -> "dropped"
+                else -> "closed"
+            }
+        }
     }
 }

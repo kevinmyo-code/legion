@@ -16,7 +16,7 @@ import kotlinx.coroutines.launch
  * the conversation reached the engine as a 3-minute batch and memory an hour later).
  *
  * Rides the same switch as the conversation record ([ConversationLog.keepAndSend], "Keep the
- * conversation log"): off sends no turn. A forget is always sent, so a crisis conversation is
+ * conversation log"): off sends no turn and no end (issue #451). A forget is always sent, so a crisis conversation is
  * removed whatever the switch says now. Not initialised means silent: JVM tests and anything
  * before `MidnightApplication.onCreate` submit into nothing.
  */
@@ -45,7 +45,7 @@ object TurnLog {
 
     internal fun submit(action: TurnAction) {
         val channel = queue ?: return
-        if (action is TurnAction.Save && !ConversationLog.keepAndSend) return
+        if (action !is TurnAction.Forget && !ConversationLog.keepAndSend) return
         channel.trySend(action)
     }
 }

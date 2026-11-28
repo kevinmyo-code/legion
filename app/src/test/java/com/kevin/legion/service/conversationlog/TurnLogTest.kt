@@ -11,7 +11,10 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** Issue #450: each finished turn goes to the engine as it ends, tool turns included. */
+/**
+ * Issue #450: each finished turn goes to the engine as it ends, tool turns included.
+ * Issue #451: when a conversation ends, the engine is told, so it summarizes it straight away.
+ */
 class TurnLogTest {
     private val actions = mutableListOf<TurnAction>()
     private var sessions = 0
@@ -104,7 +107,58 @@ class TurnLogTest {
         turns.sessionEnd()
         assertEquals(listOf("goodbye"), saves().map { it.userText })
         turns.turnComplete()
-        assertEquals(1, actions.size)
+        assertEquals(listOf(TurnAction.Save::class, TurnAction.End::class), actions.map { it::class })
+    }
+
+    @Test
+    fun `a session end tells the engine after its last turn, with how it ended`() {
+        val turns = assembler()
+        turns.sessionStart()
+        turns.user("hello", final = true)
+        turns.turnComplete()
+        turns.sessionEnd("idle")
+        assertEquals(TurnAction.End(EndBody("s1", "timeout")), actions.last())
+        turns.sessionStart()
+        turns.user("again", final = true)
+        turns.sessionEnd("stopped")
+        assertEquals(TurnAction.End(EndBody("s2", "closed")), actions.last())
+        assertTrue(actions[actions.size - 2] is TurnAction.Save)
+    }
+
+    @Test
+    fun `a session that sent no turn sends no end`() {
+        val turns = assembler()
+        turns.sessionStart()
+        turns.sessionEnd("idle")
+        turns.sessionStart()
+        turns.user("what did Sam email me", final = true)
+        turns.toolCall("search_mail", readThroughTool = true)
+        turns.assistant("Sam says hello.", readThroughTurn = false)
+        turns.sessionEnd("stopped")
+        assertTrue(actions.isEmpty())
+    }
+
+    @Test
+    fun `a crisis conversation is forgotten and sends no end`() {
+        val turns = assembler()
+        turns.sessionStart()
+        turns.user("rough day", final = true)
+        turns.turnComplete()
+        turns.user("I want to die", final = true)
+        turns.sessionEnd("crisis")
+        assertEquals(listOf(TurnAction.Save::class, TurnAction.Forget::class), actions.map { it::class })
+    }
+
+    @Test
+    fun `close reasons map to the engine's words`() {
+        listOf("idle", "warm expired", "follow_up", "missed_twice").forEach {
+            assertEquals(it, "timeout", TurnAssembler.endedBy(it))
+        }
+        listOf("failure http 500: x", "stale socket", "closed code 1011", "goAway", "engine_unreachable")
+            .forEach { assertEquals(it, "dropped", TurnAssembler.endedBy(it)) }
+        listOf("stopped", "hung_up", "destroyed", "superseded", "sleep_phrase", "").forEach {
+            assertEquals(it, "closed", TurnAssembler.endedBy(it))
+        }
     }
 
     @Test
@@ -186,6 +240,8 @@ class TurnLogTest {
             fields.keys,
         )
         assertEquals("phone", fields["source"]!!.jsonPrimitive.content)
+        val end = Json.parseToJsonElement(turnJson.encodeToString(EndBody.serializer(), EndBody("s", "timeout")))
+        assertEquals(setOf("session", "ended_by"), end.jsonObject.keys)
     }
 
     private class FakeTransport(var result: TurnSendResult = TurnSendResult.SENT) : TurnTransport {
@@ -196,6 +252,10 @@ class TurnLogTest {
         }
         override suspend fun forget(session: String): TurnSendResult {
             calls += "forget:$session"
+            return result
+        }
+        override suspend fun end(json: String): TurnSendResult {
+            calls += "end:" + Json.parseToJsonElement(json).jsonObject["session"]!!.jsonPrimitive.content
             return result
         }
     }
@@ -238,6 +298,21 @@ class TurnLogTest {
         transport.calls.clear()
         sender.send(save(1, "b"))
         assertEquals(listOf("save:0", "forget:a", "save:1"), transport.calls)
+    }
+
+    @Test
+    fun `an end goes behind its conversation's turns, and a forget drops it`() = runBlocking {
+        val transport = FakeTransport(TurnSendResult.RETRY)
+        val sender = TurnSender(transport)
+        sender.send(save(0, "a"))
+        sender.send(TurnAction.End(EndBody("a", "closed")))
+        sender.send(save(0, "b"))
+        sender.send(TurnAction.End(EndBody("b", "timeout")))
+        sender.send(TurnAction.Forget("b"))
+        transport.result = TurnSendResult.SENT
+        transport.calls.clear()
+        sender.send(save(0, "c"))
+        assertEquals(listOf("save:0", "end:a", "forget:b", "save:0"), transport.calls)
     }
 
     @Test
