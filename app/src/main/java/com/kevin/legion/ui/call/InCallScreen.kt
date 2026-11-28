@@ -2,8 +2,8 @@ package com.kevin.legion.ui.call
 
 import android.content.Context
 import android.content.Intent
+import androidx.annotation.DrawableRes
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,9 +12,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -24,23 +25,27 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.kevin.legion.R
 import com.kevin.legion.ai.CompanionProfile
 import com.kevin.legion.service.AriaForegroundService
 import com.kevin.legion.service.CompanionPhase
 import com.kevin.legion.service.cascade.CallControl
+import com.kevin.legion.service.cascade.CallGlyph
 import com.kevin.legion.service.cascade.CallLine
 import com.kevin.legion.service.cascade.InCallRule
 import com.kevin.legion.service.turn.VoiceOutlet
+import com.kevin.legion.ui.theme.soft.MsIcon
 import com.kevin.legion.ui.theme.soft.SoftColors
 import com.kevin.legion.ui.theme.soft.TypesetType
 import kotlinx.coroutines.delay
@@ -52,8 +57,8 @@ import kotlinx.coroutines.delay
  * It carries four facts and nothing else: who answered, how long it has been, and the three controls.
  * The screen is dark at his ear for most of a call, so this is not where work goes.
  *
- * Typeset (ADR 0081): one face, the ink tokens, square. All three controls are ink; `Hang up` is told
- * apart by its weight and its word, never by the one accent, which is spent on flags.
+ * Typeset (ADR 0081) for the words: one face, the ink tokens. The controls are a phone's own (Kevin,
+ * 2026-11-28): round icon buttons, Mute and Speaker lit while on, and a red Hang up.
  */
 @Composable
 internal fun InCallOverlay() {
@@ -99,18 +104,22 @@ internal fun InCallScreen(
             delay(TICK_MS)
         }
     }
-    Box(
-        Modifier.fillMaxSize()
-            .background(SoftColors.ground)
-            // Every touch stops here, as the card stage's own overlay does. Without it a tap on the
-            // screen's empty middle reaches whatever is under it, and on the home page that is the
-            // orb, which would interrupt or end the call he is on.
-            .pointerInput(Unit) {
-                awaitPointerEventScope {
-                    while (true) awaitPointerEvent(PointerEventPass.Final).changes.forEach { it.consume() }
-                }
-            },
-    ) {
+    Box(Modifier.fillMaxSize()) {
+        // Every touch that lands off a control stops here, so a tap on the screen's empty middle never
+        // reaches what is under it (on the home page that is the orb, which would interrupt or end the
+        // call he is on). It is a SIBLING under the controls, never their parent (Kevin, 2026-11-28:
+        // the buttons did not work): as a parent it consumed each move of his finger before the
+        // control's own tap detector saw it, and a press that moved a pixel was cancelled, so on a
+        // real hand almost every tap was lost. A control is hit first and never reaches this layer.
+        Box(
+            Modifier.matchParentSize()
+                .background(SoftColors.ground)
+                .pointerInput(Unit) {
+                    awaitPointerEventScope {
+                        while (true) awaitPointerEvent(PointerEventPass.Final).changes.forEach { it.consume() }
+                    }
+                },
+        )
         Column(
             Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 48.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -125,38 +134,59 @@ internal fun InCallScreen(
                     color = SoftColors.text2,
                 )
             }
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                ControlButton(InCallRule.mute(muted), onMute)
-                ControlButton(InCallRule.speaker(outlet), onSpeaker)
-                ControlButton(InCallRule.hangUp(), onHangUp, strong = true)
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    ControlButton(InCallRule.mute(muted), onMute)
+                    ControlButton(InCallRule.speaker(outlet), onSpeaker)
+                }
+                Spacer(Modifier.height(40.dp))
+                ControlButton(InCallRule.hangUp(), onHangUp)
             }
         }
     }
 }
 
+/**
+ * One control as a dialer draws it: a round button with the call icon, no word (Kevin, 2026-11-28).
+ * Mute and Speaker are lit while on, as a phone lights them; Hang up is the red one. TalkBack reads
+ * [CallControl.detail], so the icon alone is never the only way to know what a button does.
+ */
 @Composable
-private fun ControlButton(control: CallControl, onClick: () -> Unit, strong: Boolean = false) {
-    val ink = if (control.enabled) SoftColors.text else SoftColors.text3
+private fun ControlButton(control: CallControl, onClick: () -> Unit) {
+    val hangUp = control.glyph == CallGlyph.HANG_UP
+    val fill = when {
+        hangUp -> HANG_UP_RED
+        control.active -> SoftColors.text
+        else -> SoftColors.cardHighest
+    }
+    val ink = when {
+        hangUp -> Color.White
+        !control.enabled -> SoftColors.text3
+        control.active -> SoftColors.ground
+        else -> SoftColors.text
+    }
     Box(
-        Modifier.heightIn(min = TAP_TARGET)
-            .border(1.dp, if (control.enabled) SoftColors.outline else SoftColors.text3)
+        Modifier.size(if (hangUp) HANG_UP_SIZE else CONTROL_SIZE)
+            .clip(CircleShape)
+            .background(fill)
             .clickable(enabled = control.enabled, role = Role.Button, onClick = onClick)
-            .semantics { contentDescription = control.detail }
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .semantics { contentDescription = control.detail },
         contentAlignment = Alignment.Center,
     ) {
-        Text(
-            control.label,
-            style = if (strong) TypesetType.bodyStrong else TypesetType.body,
-            color = ink,
-            fontWeight = if (strong) FontWeight.SemiBold else null,
-            maxLines = 1,
-        )
+        MsIcon(glyphRes(control.glyph), contentDescription = null, tint = ink, size = ICON_SIZE)
     }
+}
+
+@DrawableRes
+private fun glyphRes(glyph: CallGlyph): Int = when (glyph) {
+    CallGlyph.MIC_OFF -> R.drawable.ms_mic_off
+    CallGlyph.SPEAKER -> R.drawable.ms_volume_up
+    CallGlyph.HEADPHONES -> R.drawable.ms_headphones
+    CallGlyph.HANG_UP -> R.drawable.ms_call_end
 }
 
 /**
@@ -180,5 +210,11 @@ internal object CallControls {
     }
 }
 
-private val TAP_TARGET = 48.dp
+private val CONTROL_SIZE = 64.dp
+private val HANG_UP_SIZE = 72.dp
+private val ICON_SIZE = 30.dp
+
+/** A dialer's end-call red, the one fixed colour on this screen. */
+@Suppress("MagicNumber")
+private val HANG_UP_RED = Color(0xFFE5393B)
 private const val TICK_MS = 1_000L

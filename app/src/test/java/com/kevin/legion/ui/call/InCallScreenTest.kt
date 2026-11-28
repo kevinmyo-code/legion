@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertHeightIsAtLeast
@@ -95,17 +96,45 @@ class InCallScreenTest {
                 .assertHasClickAction()
                 .assertHeightIsAtLeast(48.dp)
         }
-        rule.onNodeWithText("Mute").assertExists()
-        rule.onNodeWithText("Speaker").assertExists()
-        rule.onNodeWithText("Hang up").assertExists()
+    }
+
+    /** Kevin, 2026-11-28: regular call icons, not words. TalkBack still reads each one's detail. */
+    @Test
+    fun `the controls are icons, with no word on them`() {
+        show()
+        for (word in listOf("Mute", "Unmute", "Speaker", "Earpiece", "Hang up")) {
+            rule.onNodeWithText(word).assertDoesNotExist()
+        }
     }
 
     @Test
     fun `each control reports its own press`() {
         show()
-        rule.onNodeWithText("Mute").performClick()
-        rule.onNodeWithText("Speaker").performClick()
-        rule.onNodeWithText("Hang up").performClick()
+        rule.onNodeWithContentDescription(MUTE).performClick()
+        rule.onNodeWithContentDescription(SPEAKER).performClick()
+        rule.onNodeWithContentDescription(HANG_UP).performClick()
+        assertEquals(1, muteTaps)
+        assertEquals(1, speakerTaps)
+        assertEquals(1, hangUps)
+    }
+
+    /**
+     * Kevin, 2026-11-28: the buttons did not work. A finger always moves a little between down and up;
+     * the screen's touch blocker, as their parent, consumed that move and the control's tap was
+     * cancelled. [performClick] has no move in it, which is why the case above stayed green. This
+     * press moves, as a thumb does, and each control must still report it.
+     */
+    @Test
+    fun `a press that moves a little, as a real thumb does, still works`() {
+        show()
+        for (detail in listOf(MUTE, SPEAKER, HANG_UP)) {
+            rule.onNodeWithContentDescription(detail).performTouchInput {
+                down(center)
+                moveBy(Offset(2f, 3f))
+                moveBy(Offset(-1f, 1f))
+                up()
+            }
+        }
         assertEquals(1, muteTaps)
         assertEquals(1, speakerTaps)
         assertEquals(1, hangUps)
@@ -114,7 +143,6 @@ class InCallScreenTest {
     @Test
     fun `muted says so and offers the way back`() {
         show(muted = true)
-        rule.onNodeWithText("Unmute").assertExists()
         rule.onNodeWithContentDescription(InCallRule.mute(true).detail).assertHasClickAction()
     }
 
@@ -150,24 +178,26 @@ class InCallScreenTest {
     @Test
     fun `on the loudspeaker the control offers the ear again`() {
         show(outlet = VoiceOutlet.LOUDSPEAKER)
-        rule.onNodeWithText("Earpiece").assertExists()
+        rule.onNodeWithContentDescription(InCallRule.speaker(VoiceOutlet.LOUDSPEAKER).detail).assertHasClickAction()
     }
 
     @Test
     fun `on a headset the route is not ours to move, and the control says so`() {
         show(outlet = VoiceOutlet.BLUETOOTH)
-        rule.onNodeWithText("Headset").assertExists()
         rule.onNodeWithContentDescription(InCallRule.speaker(VoiceOutlet.BLUETOOTH).detail)
             .assertIsNotEnabled()
             .performClick()
         assertEquals("a hands-free link takes no ask", 0, speakerTaps)
         // Hang up is still his: the call ends on the phone even when the audio is not on it.
-        rule.onNodeWithText("Hang up").performClick()
+        rule.onNodeWithContentDescription(HANG_UP).performClick()
         assertEquals(1, hangUps)
     }
 
     private companion object {
         /** A held clock, so the timer's text is exact rather than a race with the wall clock. */
         const val NOW = 1_764_000_000_000L
+        val MUTE = InCallRule.mute(false).detail
+        val SPEAKER = InCallRule.speaker(VoiceOutlet.EARPIECE).detail
+        val HANG_UP = InCallRule.hangUp().detail
     }
 }
