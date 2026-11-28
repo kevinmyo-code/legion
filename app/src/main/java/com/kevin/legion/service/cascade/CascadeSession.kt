@@ -4016,6 +4016,8 @@ internal class CascadeSession(
 
     @Suppress("TooGenericExceptionCaught")
     private suspend fun release(reason: String) {
+        // A hang-up while it still rings is silent at once, before anything else is taken down.
+        ringback.stop()
         // The conversation is over: no remove question outlives it.
         EventRemoval.reset()
         com.kevin.legion.service.tools.day.EventMove.reset()
@@ -4061,7 +4063,6 @@ internal class CascadeSession(
                 clipListen = null
             }
         }
-        step("ringback") { ringback.stop() }
         try {
             micJob?.takeIf { it !== caller }?.cancelAndJoin()
         } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {

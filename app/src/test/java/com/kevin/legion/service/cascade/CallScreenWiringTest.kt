@@ -108,7 +108,7 @@ class CallScreenWiringTest {
         assertTrue("nothing of his is heard while it rings", done < open.indexOf("startMic()"))
         assertTrue("and Alfred answers after it", done < open.indexOf("speakPickup()"))
         assertTrue("the line is fetched during the rings", open.indexOf("pickPickupLine(b)") in rings until done)
-        assertTrue(bodyOf(session(), "releaseNow").contains("step(\"ringback\") { ringback.stop() }"))
+        assertTrue("every close stops it", bodyOf(session(), "release").contains("ringback.stop()"))
     }
 
     @Test
