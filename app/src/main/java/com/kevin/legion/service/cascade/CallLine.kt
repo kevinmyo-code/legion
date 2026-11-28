@@ -66,8 +66,22 @@ internal object CallLine {
     }
 }
 
-/** One control on the in-call screen: what it says, whether it can be pressed, and what TalkBack says. */
-internal data class CallControl(val label: String, val enabled: Boolean, val detail: String)
+/**
+ * One control on the in-call screen: its name, whether it can be pressed, and what TalkBack says.
+ * The screen draws [glyph], the icon a phone's dialer uses for it (Kevin, 2026-11-28: "regular call
+ * icons and not words"), lit when [active], as a dialer lights Mute and Speaker while they are on.
+ * [label] is the control's short name, kept for the rule's own tests and logs; the screen shows no word.
+ */
+internal data class CallControl(
+    val label: String,
+    val enabled: Boolean,
+    val detail: String,
+    val glyph: CallGlyph = CallGlyph.HANG_UP,
+    val active: Boolean = false,
+)
+
+/** The icons the in-call screen draws, one per face a control can have. */
+internal enum class CallGlyph { MIC_OFF, SPEAKER, HEADPHONES, HANG_UP }
 
 /**
  * What the in-call screen says. Pure, so every case is a unit test: the status line, the elapsed
@@ -97,9 +111,20 @@ internal object InCallRule {
      */
     fun mute(muted: Boolean): CallControl =
         if (muted) {
-            CallControl("Unmute", enabled = true, detail = "Muted. He cannot hear you. Tap to let him hear you again")
+            CallControl(
+                "Unmute",
+                enabled = true,
+                detail = "Muted. He cannot hear you. Tap to let him hear you again",
+                glyph = CallGlyph.MIC_OFF,
+                active = true,
+            )
         } else {
-            CallControl("Mute", enabled = true, detail = "Mute your microphone. Alfred keeps talking")
+            CallControl(
+                "Mute",
+                enabled = true,
+                detail = "Mute your microphone. Alfred keeps talking",
+                glyph = CallGlyph.MIC_OFF,
+            )
         }
 
     /**
@@ -110,19 +135,44 @@ internal object InCallRule {
      */
     fun speaker(outlet: VoiceOutlet): CallControl = when (outlet) {
         VoiceOutlet.EARPIECE ->
-            CallControl("Speaker", enabled = true, detail = "Move the call to the loudspeaker")
+            CallControl(
+                "Speaker",
+                enabled = true,
+                detail = "Move the call to the loudspeaker",
+                glyph = CallGlyph.SPEAKER,
+            )
         VoiceOutlet.LOUDSPEAKER ->
-            CallControl("Earpiece", enabled = true, detail = "Move the call back to your ear")
+            CallControl(
+                "Earpiece",
+                enabled = true,
+                detail = "On the loudspeaker. Tap to move the call back to your ear",
+                glyph = CallGlyph.SPEAKER,
+                active = true,
+            )
         VoiceOutlet.WIRED ->
-            CallControl("Headphones", enabled = false, detail = "The call is on the connected headphones")
+            CallControl(
+                "Headphones",
+                enabled = false,
+                detail = "The call is on the connected headphones",
+                glyph = CallGlyph.HEADPHONES,
+            )
         VoiceOutlet.BLUETOOTH ->
-            CallControl("Headset", enabled = false, detail = "The call is on the connected headset")
+            CallControl(
+                "Headset",
+                enabled = false,
+                detail = "The call is on the connected headset",
+                glyph = CallGlyph.HEADPHONES,
+            )
         VoiceOutlet.PHONE_CALL ->
-            CallControl("Speaker", enabled = false, detail = "A phone call has the line")
+            CallControl("Speaker", enabled = false, detail = "A phone call has the line", glyph = CallGlyph.SPEAKER)
     }
 
-    /** Hang up ends the call. The word and its weight carry it: ADR 0081 spends the one accent on flags. */
-    fun hangUp(): CallControl = CallControl("Hang up", enabled = true, detail = "End the call with Alfred")
+    /**
+     * Hang up ends the call: the red round button every phone has (Kevin, 2026-11-28), an exception to
+     * ADR 0081's one accent, because a call screen whose end button is not red does not read as a call.
+     */
+    fun hangUp(): CallControl =
+        CallControl("Hang up", enabled = true, detail = "End the call with Alfred", glyph = CallGlyph.HANG_UP)
 
     private const val MS_PER_S = 1_000L
     private const val S_PER_MIN = 60L

@@ -80,4 +80,19 @@ class InCallRuleTest {
             assertNull("no colour word in ${control.label}", Regex("\\bred\\b").find(control.detail))
         }
     }
+
+    /** Kevin, 2026-11-28: the controls are a dialer's icons, lit while on. */
+    @Test
+    fun `each control has a dialer's icon, lit while it is on`() {
+        assertEquals(CallGlyph.MIC_OFF, InCallRule.mute(false).glyph)
+        assertFalse(InCallRule.mute(false).active)
+        assertTrue("muted lights the mute button", InCallRule.mute(true).active)
+        assertEquals(CallGlyph.SPEAKER, InCallRule.speaker(VoiceOutlet.EARPIECE).glyph)
+        assertFalse(InCallRule.speaker(VoiceOutlet.EARPIECE).active)
+        assertTrue("the loudspeaker lights the speaker button", InCallRule.speaker(VoiceOutlet.LOUDSPEAKER).active)
+        assertEquals(CallGlyph.SPEAKER, InCallRule.speaker(VoiceOutlet.LOUDSPEAKER).glyph)
+        assertEquals(CallGlyph.HEADPHONES, InCallRule.speaker(VoiceOutlet.BLUETOOTH).glyph)
+        assertEquals(CallGlyph.HEADPHONES, InCallRule.speaker(VoiceOutlet.WIRED).glyph)
+        assertEquals(CallGlyph.HANG_UP, InCallRule.hangUp().glyph)
+    }
 }

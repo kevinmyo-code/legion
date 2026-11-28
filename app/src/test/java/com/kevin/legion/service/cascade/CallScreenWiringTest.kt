@@ -89,6 +89,28 @@ class CallScreenWiringTest {
         assertTrue("every buffer carries whether something was playing", feed.contains("playbackActive"))
     }
 
+    /**
+     * Kevin, 2026-11-28: a call rings about three times before Alfred picks up. It starts once the
+     * call's route is entered (so it rings at his ear), it ends before the mic listens and before the
+     * pickup speaks, and the release stops it, so a hang-up while it rings is silent at once.
+     */
+    @Test
+    fun `a call rings at its own route before the pickup, and a hang-up silences it`() {
+        val open = bodyOf(session(), "openNow")
+        val route = open.indexOf("if (listens && opening == OpeningRule.Opening.PICKUP) enterRouteNow()")
+        val rings = open.indexOf("ringback.start()")
+        assertTrue("it rings", rings >= 0)
+        assertTrue("after the route is entered", route in 0 until rings)
+        assertTrue("before the turn models and the voice open", rings < open.indexOf("TurnModels.awaitReady"))
+        val done = open.indexOf("ringback.awaitDone()")
+        assertTrue("the pickup waits for the rings", done > rings)
+        assertTrue("Alfred is ready before the wait", open.indexOf("ringback.answerReady()") in rings until done)
+        assertTrue("nothing of his is heard while it rings", done < open.indexOf("startMic()"))
+        assertTrue("and Alfred answers after it", done < open.indexOf("speakPickup()"))
+        assertTrue("the line is fetched during the rings", open.indexOf("pickPickupLine(b)") in rings until done)
+        assertTrue("every close stops it", bodyOf(session(), "release").contains("ringback.stop()"))
+    }
+
     @Test
     fun `mute keeps the capture open and feeds nothing, and silence does not hang up on him`() {
         val feed = bodyOf(session(), "onMicBuffer")

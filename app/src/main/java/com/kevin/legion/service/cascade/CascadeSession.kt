@@ -233,6 +233,12 @@ internal class CascadeSession(
      */
     private val callId = CallLine.nextId()
 
+    /** The ringing before Alfred picks up a call ([CallRingback]); never started for any other opening. */
+    private val ringback = CallRingback(scope)
+
+    /** The line Alfred answers this call with, picked while it rings ([pickPickupLine]). */
+    @Volatile private var pickupLine: String? = null
+
     /** The call screen is up for this conversation: set by [beginCallLine], the one door to it. */
     private val callLineUp = AtomicBoolean(false)
 
@@ -642,6 +648,8 @@ internal class CascadeSession(
         // the tap's, and a call's first sound is the pickup line.
         if (listens && opening == OpeningRule.Opening.CHIME) openMicNow()
         if (listens && opening == OpeningRule.Opening.PICKUP) enterRouteNow()
+        // And it rings at the ear it took ([CallRingback]) while the voice opens behind it.
+        if (listens && opening == OpeningRule.Opening.PICKUP) ringback.start()
         // Either voice needs the phone's turn detection to listen: without it, nothing can.
         val models = if (listens) {
             withContext(Dispatchers.IO) { TurnModels.awaitReady(ctx, CascadeTimings.MODEL_WAIT_MS) }
@@ -736,6 +744,15 @@ internal class CascadeSession(
         )
         val openMs = System.currentTimeMillis() - started
         LiveLatency.log(LiveLatency.TAG, CascadeLines.open(openMs, probeMs, p, b.tts.streamsText, b.kind.token))
+        // A call rings about three times before Alfred picks up (Kevin, 2026-11-28), and nothing of his
+        // is listened to while it rings: nobody has answered yet. The pickup line is picked and its
+        // audio fetched during the rings, so it starts as the last ring ends.
+        if (opening == OpeningRule.Opening.PICKUP) {
+            pickupLine = pickPickupLine(b)
+            ringback.answerReady()
+            ringback.awaitDone()
+            if (closing.get()) return
+        }
         // A check-in opens the mic only once its line has passed and played ([afterCheckInLine]).
         val micFree = micJob == null && !deafMic.switching
         if (listens && checkInStep == CheckInStep.NONE && micFree) startMic()
@@ -3080,13 +3097,7 @@ internal class CascadeSession(
      */
     private fun speakPickup() {
         val voice = backend ?: return
-        val name = CompanionProfile.name(ctx)
-        val line = CallPickup.pick(
-            ctx,
-            name,
-            ALFRED.defaultName,
-            inHand = { voice.tts.inHand(SpokenText.forSpeech(it)) },
-        )
+        val line = pickupLine ?: pickPickupLine(voice)
         val spoken = SpokenText.forSpeech(line)
         LiveLatency.log(LiveLatency.TAG, "pickup in_hand=${voice.tts.inHand(spoken)}")
         val reply = newSpeaker(null)
@@ -3099,6 +3110,21 @@ internal class CascadeSession(
             }
         }
         openingJob = turnJob
+    }
+
+    /**
+     * The pickup line for this call ([CallPickup]), its audio asked for at once (one line, never the
+     * pool), so a line not yet kept is fetched while the phone rings rather than after it.
+     */
+    private fun pickPickupLine(voice: SpeechBackend): String {
+        val line = CallPickup.pick(
+            ctx,
+            CompanionProfile.name(ctx),
+            ALFRED.defaultName,
+            inHand = { voice.tts.inHand(SpokenText.forSpeech(it)) },
+        )
+        voice.tts.warm(listOf(SpokenText.forSpeech(line)))
+        return line
     }
 
     /**
@@ -3990,6 +4016,8 @@ internal class CascadeSession(
 
     @Suppress("TooGenericExceptionCaught")
     private suspend fun release(reason: String) {
+        // A hang-up while it still rings is silent at once, before anything else is taken down.
+        ringback.stop()
         // The conversation is over: no remove question outlives it.
         EventRemoval.reset()
         com.kevin.legion.service.tools.day.EventMove.reset()
