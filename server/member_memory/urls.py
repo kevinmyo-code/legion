@@ -1,7 +1,11 @@
 from django.urls import path
 
 from member_memory import review_views as rv
-from member_memory.turn_views import ConversationTurnsView
+from member_memory.turn_views import (
+    ConversationSummariesView,
+    ConversationTurnsView,
+    SessionEndView,
+)
 from member_memory.views import (
     MemoryDetailView,
     MemoryImportView,
@@ -15,6 +19,9 @@ urlpatterns = [
     path("import", MemoryImportView.as_view(), name="member-memory-import"),
     # issue #450: each conversation turn, saved as it ends.
     path("turns", ConversationTurnsView.as_view(), name="member-memory-turns"),
+    # issue #451: a conversation ended, and the summaries written when one does.
+    path("turns/end", SessionEndView.as_view(), name="member-memory-turns-end"),
+    path("summaries", ConversationSummariesView.as_view(), name="member-memory-summaries"),
     # memory-review tickets 06, 08 and 15.
     path("review/context", rv.ReviewContextView.as_view(), name="member-memory-review-context"),
     path("review/changes", rv.ReviewChangesView.as_view(), name="member-memory-review-changes"),

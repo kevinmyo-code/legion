@@ -78,7 +78,7 @@ internal class LiveAudit(
     @Synchronized
     fun sessionEnd(reason: String) {
         emit("session_end reason=${quote(reason)}")
-        turn?.sessionEnd()
+        turn?.sessionEnd(reason)
         onSession(false)
     }
 

@@ -195,6 +195,9 @@ TENANT_TABLES: tuple[str, ...] = (
     # issue #450: each finished conversation turn, saved as it ends, private to the member who
     # spoke it (`OWNER_PATHS`; `member_memory/models.py`).
     "member_conversation_turns",
+    # issue #451: a few sentences on each finished conversation, private to the member like its
+    # turns (`OWNER_PATHS`; `member_memory/models.py`).
+    "member_conversation_summaries",
     # memory-and-vault map (ADR 0076): the ID vault and its reveal audit, always private to one
     # member (`id_vault/models.py`).
     "vault_items",
@@ -323,6 +326,7 @@ DJANGO_MANAGED_TENANT_TABLES: frozenset[str] = frozenset(
         "memory_reviews",
         "memory_review_changes",
         "member_conversation_turns",
+        "member_conversation_summaries",
         "vault_items",
         "vault_reveals",
         "body_profiles",
@@ -575,6 +579,8 @@ OWNER_PATHS: dict[str, str] = {
     "memory_review_changes": "owner_user",
     # issue #450: never null, always the member who spoke the turn.
     "member_conversation_turns": "owner_user",
+    # issue #451: never null, always the member whose conversation it sums up.
+    "member_conversation_summaries": "owner_user",
     # ADR 0076: never null, so `visible()` gives a member their own vault items and no one else's.
     "vault_items": "owner_user",
     "vault_reveals": "owner_user",

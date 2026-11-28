@@ -5156,6 +5156,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/member-memories/summaries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The caller's own conversation summaries, the most recently ended first. */
+        get: operations["api_member_memories_summaries_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/member-memories/turns": {
         parameters: {
             query?: never;
@@ -5170,6 +5187,23 @@ export interface paths {
         post: operations["api_member_memories_turns_save"];
         /** @description Deletes every turn of one of the caller's conversations, for good. */
         delete: operations["api_member_memories_turns_forget"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/member-memories/turns/end": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Says one of the caller's conversations ended, by hand, by timeout or by a failure. The engine writes a short summary of it from its saved turns before answering, then summarizes any other of the caller's chats whose end never arrived. No summary is a 200 with `summarized: false` and the reason; never retry it, the engine tries again itself. */
+        post: operations["api_member_memories_turns_end"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -11771,6 +11805,34 @@ export interface components {
             readonly deleted_at: string | null;
             origin_guid?: string | null;
         };
+        SessionEnd: {
+            /** @description The client's own id for the conversation. */
+            session: string;
+            /**
+             * @description closed (by hand), timeout (the idle auto-close) or dropped (a failure).
+             *
+             *     * `closed` - closed
+             *     * `timeout` - timeout
+             *     * `dropped` - dropped
+             * @default closed
+             */
+            ended_by: components["schemas"]["SessionEndEndedByEnum"];
+        };
+        /**
+         * @description * `closed` - closed
+         *     * `timeout` - timeout
+         *     * `dropped` - dropped
+         * @enum {string}
+         */
+        SessionEndEndedByEnum: "closed" | "timeout" | "dropped";
+        SessionEnded: {
+            summarized: boolean;
+            /** @description Why there is no summary: no_turns, no_words, no_key, failed, sensitive or forgotten. Null when there is one. */
+            reason: string | null;
+            /** @description The reason in words. */
+            detail: string | null;
+            summary: components["schemas"]["Summary"] | null;
+        };
         SessionList: {
             sessions: components["schemas"]["SessionMetadata"][];
         };
@@ -12207,6 +12269,30 @@ export interface components {
             updated_at: string;
             /** Format: date-time */
             deleted_at: string | null;
+        };
+        Summary: {
+            /** Format: uuid */
+            id: string;
+            session: string;
+            source: components["schemas"]["AppEnum"];
+            text: string;
+            ended_by: components["schemas"]["SummaryEndedByEnum"];
+            turns_read: number;
+            /** Format: date-time */
+            started_at: string;
+            /** Format: date-time */
+            ended_at: string;
+        };
+        /**
+         * @description * `closed` - closed
+         *     * `timeout` - timeout
+         *     * `dropped` - dropped
+         *     * `idle` - idle
+         * @enum {string}
+         */
+        SummaryEndedByEnum: "closed" | "timeout" | "dropped" | "idle";
+        SummaryList: {
+            results: components["schemas"]["Summary"][];
         };
         SyncReport: {
             added: number;
@@ -24279,6 +24365,36 @@ export interface operations {
             };
         };
     };
+    api_member_memories_summaries_list: {
+        parameters: {
+            query?: {
+                /** @description Default 10, max 50. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SummaryList"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
     api_member_memories_turns_list: {
         parameters: {
             query?: {
@@ -24378,6 +24494,47 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TurnForget"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_member_memories_turns_end: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SessionEnd"];
+                "application/x-www-form-urlencoded": components["schemas"]["SessionEnd"];
+                "multipart/form-data": components["schemas"]["SessionEnd"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionEnded"];
                 };
             };
             400: {

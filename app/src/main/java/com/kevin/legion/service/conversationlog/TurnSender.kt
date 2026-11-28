@@ -13,13 +13,17 @@ internal enum class TurnSendResult { SENT, DROP, RETRY }
 internal interface TurnTransport {
     suspend fun save(json: String): TurnSendResult
     suspend fun forget(session: String): TurnSendResult
+
+    /** Issue #451: a conversation ended; the engine summarizes it before it answers. */
+    suspend fun end(json: String): TurnSendResult
 }
 
 /**
  * Sends each [TurnAction] in order, one at a time. A turn that could not go (offline, the engine
  * down, no sign-in yet) stays at the head of a bounded queue and goes before the next one; a
  * refusal the engine gave in words is dropped, never retried. A forget first removes any queued
- * save of the same conversation, so nothing it forgets can arrive after it.
+ * save or end of the same conversation, so nothing it forgets can arrive after it. An end goes in
+ * order behind its conversation's turns, so the engine summarizes all of them.
  *
  * The queue lives in memory only: the conversation record ([ConversationLog]) is still the durable
  * path, and the hourly memory job still reads it.
@@ -34,7 +38,10 @@ internal class TurnSender(
 
     suspend fun send(action: TurnAction) {
         if (action is TurnAction.Forget) {
-            pending.removeAll { it is TurnAction.Save && it.body.session == action.session }
+            pending.removeAll {
+                (it is TurnAction.Save && it.body.session == action.session) ||
+                    (it is TurnAction.End && it.body.session == action.session)
+            }
         }
         pending.addLast(action)
         while (pending.size > maxPending) pending.removeFirst()
@@ -46,6 +53,7 @@ internal class TurnSender(
             val result = when (val head = pending.first()) {
                 is TurnAction.Save -> transport.save(turnJson.encodeToString(TurnBody.serializer(), head.body))
                 is TurnAction.Forget -> transport.forget(head.session)
+                is TurnAction.End -> transport.end(turnJson.encodeToString(EndBody.serializer(), head.body))
             }
             if (result == TurnSendResult.RETRY) return
             pending.removeFirst()
@@ -66,11 +74,14 @@ internal class EngineTurnTransport(private val http: EngineHttp) : TurnTransport
     override suspend fun forget(session: String): TurnSendResult =
         classify(http.delete("$PATH?session=${URLEncoder.encode(session, "UTF-8")}"))
 
+    override suspend fun end(json: String): TurnSendResult = classify(http.post(END_PATH, json))
+
     private fun classify(result: Result<*>): TurnSendResult =
         result.fold(onSuccess = { TurnSendResult.SENT }, onFailure = { resultOf(it) })
 
     companion object {
         const val PATH = "/api/member-memories/turns"
+        const val END_PATH = "/api/member-memories/turns/end"
         private const val UNAUTHORIZED = 401
         private const val TIMEOUT = 408
         private const val TOO_MANY = 429
