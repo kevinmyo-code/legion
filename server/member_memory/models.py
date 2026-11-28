@@ -437,3 +437,83 @@ class ConversationTurn(models.Model):
 
     def __str__(self) -> str:
         return f"turn {self.turn} of {self.session}"
+
+
+# Issue #451: how a conversation's summary came to be written. `closed` and `timeout` are the
+# client's own word when it ends a chat (by hand, or the idle auto-close); `dropped` is a socket
+# or session failure the client saw; `idle` is the engine's sweep for a chat whose end never
+# arrived (the app was killed, the phone lost signal for good).
+SUMMARY_ENDED_CLOSED = "closed"
+SUMMARY_ENDED_TIMEOUT = "timeout"
+SUMMARY_ENDED_DROPPED = "dropped"
+SUMMARY_ENDED_IDLE = "idle"
+SUMMARY_ENDED_BY: tuple[str, ...] = (
+    SUMMARY_ENDED_CLOSED,
+    SUMMARY_ENDED_TIMEOUT,
+    SUMMARY_ENDED_DROPPED,
+    SUMMARY_ENDED_IDLE,
+)
+SUMMARY_TEXT_MAX_CHARS = 1200
+
+
+class ConversationSummary(models.Model):
+    """`public.member_conversation_summaries`: a few sentences on one finished chat (issue #451).
+
+    Kevin, 2026-11-25: past chats were not summarized; the hourly job writes up to five facts per
+    record, never what was talked about. This row is written the moment a chat ends, by hand or
+    by timeout, from that chat's saved turns (`ConversationTurn`): the topics, what was decided,
+    anything promised. A new chat can read the last few (issue #452). It is not a memory and is
+    never recalled as one.
+
+    It is built only from turns, so nothing a turn row may not hold is here either (CLAUDE.md
+    section 7), and the summary reads only the person's words and the replies of turns that called
+    no tool, as consolidation does. Forgetting a conversation's turns deletes its summary too, and
+    a crisis phrase forgets both.
+
+    Private to the member who spoke, like a turn (`owner_user = member`, a check constraint and
+    the ADR 0052 owner guard). One row per `(member, session)`: a chat that resumes and ends again
+    rewrites its summary, never adds a second.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    household = models.ForeignKey("household.Household", on_delete=models.PROTECT, related_name="+")
+    member = models.ForeignKey("household.User", on_delete=models.CASCADE, related_name="+")
+    owner_user = models.ForeignKey("household.User", on_delete=models.CASCADE, related_name="+")
+    session = models.TextField()
+    source = models.TextField()
+    text = models.TextField()
+    ended_by = models.TextField()
+    # How many saved turns the summary read, so a chat that grew since is summarized again.
+    turns_read = models.IntegerField()
+    # The first and last turns' times, by the client's clock.
+    started_at = models.DateTimeField()
+    ended_at = models.DateTimeField()
+    created_at = models.DateTimeField(db_default=Now())
+    updated_at = models.DateTimeField(db_default=Now())
+
+    class Meta:
+        db_table = "member_conversation_summaries"
+        indexes = [
+            models.Index(
+                fields=["household", "member", "-ended_at"], name="member_summaries_member_idx"
+            ),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["member", "session"], name="member_summaries_once_per_session"
+            ),
+            models.CheckConstraint(
+                condition=models.Q(source__in=TURN_SOURCES), name="member_summaries_source_valid"
+            ),
+            models.CheckConstraint(
+                condition=models.Q(ended_by__in=SUMMARY_ENDED_BY),
+                name="member_summaries_ended_by_valid",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(owner_user=models.F("member")),
+                name="member_summaries_private_to_its_member",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"summary of {self.session}"

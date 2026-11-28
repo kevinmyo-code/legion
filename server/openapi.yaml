@@ -12175,6 +12175,35 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: ''
+  /api/member-memories/summaries:
+    get:
+      operationId: api_member_memories_summaries_list
+      description: The caller's own conversation summaries, the most recently ended
+        first.
+      parameters:
+      - in: query
+        name: limit
+        schema:
+          type: integer
+        description: Default 10, max 50.
+      tags:
+      - member-memories
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SummaryList'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
   /api/member-memories/turns:
     get:
       operationId: api_member_memories_turns_list
@@ -12278,6 +12307,50 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TurnForget'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/member-memories/turns/end:
+    post:
+      operationId: api_member_memories_turns_end
+      description: 'Says one of the caller''s conversations ended, by hand, by timeout
+        or by a failure. The engine writes a short summary of it from its saved turns
+        before answering, then summarizes any other of the caller''s chats whose end
+        never arrived. No summary is a 200 with `summarized: false` and the reason;
+        never retry it, the engine tries again itself.'
+      tags:
+      - member-memories
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SessionEnd'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SessionEnd'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SessionEnd'
+        required: true
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionEnded'
           description: ''
         '400':
           content:
@@ -26779,6 +26852,58 @@ components:
       - service_name
       - updated_at
       - vehicle_id
+    SessionEnd:
+      type: object
+      properties:
+        session:
+          type: string
+          description: The client's own id for the conversation.
+          maxLength: 64
+        ended_by:
+          allOf:
+          - $ref: '#/components/schemas/SessionEndEndedByEnum'
+          default: closed
+          description: |-
+            closed (by hand), timeout (the idle auto-close) or dropped (a failure).
+
+            * `closed` - closed
+            * `timeout` - timeout
+            * `dropped` - dropped
+      required:
+      - session
+    SessionEndEndedByEnum:
+      enum:
+      - closed
+      - timeout
+      - dropped
+      type: string
+      description: |-
+        * `closed` - closed
+        * `timeout` - timeout
+        * `dropped` - dropped
+    SessionEnded:
+      type: object
+      properties:
+        summarized:
+          type: boolean
+        reason:
+          type: string
+          nullable: true
+          description: 'Why there is no summary: no_turns, no_words, no_key, failed,
+            sensitive or forgotten. Null when there is one.'
+        detail:
+          type: string
+          nullable: true
+          description: The reason in words.
+        summary:
+          allOf:
+          - $ref: '#/components/schemas/Summary'
+          nullable: true
+      required:
+      - detail
+      - reason
+      - summarized
+      - summary
     SessionList:
       type: object
       properties:
@@ -27676,6 +27801,58 @@ components:
       - id
       - updated_at
       - user_id
+    Summary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        session:
+          type: string
+        source:
+          $ref: '#/components/schemas/AppEnum'
+        text:
+          type: string
+        ended_by:
+          $ref: '#/components/schemas/SummaryEndedByEnum'
+        turns_read:
+          type: integer
+        started_at:
+          type: string
+          format: date-time
+        ended_at:
+          type: string
+          format: date-time
+      required:
+      - ended_at
+      - ended_by
+      - id
+      - session
+      - source
+      - started_at
+      - text
+      - turns_read
+    SummaryEndedByEnum:
+      enum:
+      - closed
+      - timeout
+      - dropped
+      - idle
+      type: string
+      description: |-
+        * `closed` - closed
+        * `timeout` - timeout
+        * `dropped` - dropped
+        * `idle` - idle
+    SummaryList:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Summary'
+      required:
+      - results
     SyncReport:
       type: object
       properties:

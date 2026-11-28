@@ -35,7 +35,7 @@ from agents.voice.crisis import detect as is_crisis
 from devicelogs import voice_audit
 from household.tenancy import household_of, visible
 from member_memory.consolidate import READ_THROUGH_TOOLS, REDACTION_MARK
-from member_memory.models import TURN_TEXT_MAX_CHARS, ConversationTurn
+from member_memory.models import TURN_TEXT_MAX_CHARS, ConversationSummary, ConversationTurn
 from member_memory.sensitive import looks_sensitive
 
 NOT_KEPT_READ_THROUGH = "read_through"
@@ -81,8 +81,16 @@ def own_turns(request):
     return visible(ConversationTurn, request).filter(member=request.user)
 
 
+def own_summaries(request):
+    """The caller's own conversation summaries (issue #451), through `visible()` like turns."""
+    return visible(ConversationSummary, request).filter(member=request.user)
+
+
 def forget_session(request, session: str) -> int:
-    """Deletes every turn the caller saved under `session`. Returns how many went."""
+    """Deletes every turn the caller saved under `session`, and that conversation's summary
+    (issue #451): forgetting a conversation forgets what was written about it. Returns how many
+    turns went."""
+    own_summaries(request).filter(session=session).delete()
     deleted, _ = own_turns(request).filter(session=session).delete()
     return deleted
 
