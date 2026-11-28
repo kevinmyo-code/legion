@@ -29,6 +29,10 @@ interface EpisodicTurnDao {
     @Query("DELETE FROM episodic_turns")
     suspend fun deleteAll()
 
+    /** A car's newest raw turns, newest first: what issue #452's note reads of a chat not yet consolidated. */
+    @Query("SELECT * FROM episodic_turns WHERE vehicleId = :vehicleId ORDER BY timestamp DESC LIMIT :limit")
+    suspend fun latestForVehicle(vehicleId: String, limit: Int): List<EpisodicTurn>
+
     /** Latest turn timestamp for a car, across any session (consolidated or not) - continuity (ticket 06). */
     @Query("SELECT MAX(timestamp) FROM episodic_turns WHERE vehicleId = :vehicleId")
     suspend fun latestTimestamp(vehicleId: String): Long?

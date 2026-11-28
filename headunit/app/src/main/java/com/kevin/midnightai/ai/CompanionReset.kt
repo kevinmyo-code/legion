@@ -23,6 +23,7 @@ object CompanionReset {
         // everything" must clear all three or it's a lie.
         db.companionMemoryDao().deleteAll()
         db.episodicTurnDao().deleteAll()
+        RecentChatStore.forContext(context).clear() // issue #452: the last chats' summaries
     }
 
     /**
@@ -45,6 +46,7 @@ object CompanionReset {
      */
     suspend fun factoryReset(context: Context) = withContext(Dispatchers.IO) {
         resetCompanion(context)
+        RecentChatStore.forContext(context).clear()
         CarDatabase.getDatabase(context).clearAllTables()
     }
 }
